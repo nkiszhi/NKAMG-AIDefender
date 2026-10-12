@@ -1,52 +1,150 @@
-# ── Python 缓存与编译产物 ──────────────────────────────
-__pycache__/
-*.pyc
-*.pyo
-*.egg-info/
+# =============================================================================
+#  CoDefenderC3 —— 构建上下文过滤
+#  原则：进镜像的只有「跑推理必需的代码 + 模型 + 签名库」。
+#       上下文越小 docker build 越快 —— 本项目从 VMware 共享目录构建，
+#       每 1GB 上下文都要过一次 hgfs，省下来的是分钟级时间。
+#
+#  写法约定（重要）：
+#   · Docker 的 .dockerignore 里，**裸名字默认只锚定上下文根目录**，
+#     `signatures/` 这种带尾斜杠的写法在部分版本上不会穿透子文件；
+#     所以下面凡是要排除整个目录的，都同时写「裸名」+「裸名/**」两种。
+#   · 规则是「最后一条匹配的生效」，例外( ! )必须写在对应通配的后面。
+#   · 只排除「绝对不需要」的东西。当前 Dockerfile 用的是显式 COPY，
+#     这些规则只影响上下文体积，但排错时要能一眼看出哪个 COPY 被挡了。
+# =============================================================================
 
-# ── 版本控制 ──────────────────────────────────────────
-.git/
+# ── Python 缓存与编译产物 ─────────────────────────────────────────────
+__pycache__
+__pycache__/**
+**/__pycache__
+**/__pycache__/**
+*.pyc
+**/*.pyc
+*.pyo
+**/*.pyo
+*.egg-info
+*.egg-info/**
+
+# ── 版本控制 / IDE ───────────────────────────────────────────────────
+.git
+.git/**
 .gitignore
 .gitattributes
-
-# ── IDE 与工具 ────────────────────────────────────────
-.vscode/
-.idea/
+.vscode
+.vscode/**
+.idea
+.idea/**
 *.swp
 *.swo
 *~
 
-# ── WorkBuddy 元数据 ──────────────────────────────────
-.workbuddy/
+# ── WorkBuddy 元数据 ────────────────────────────────────────────────
+.workbuddy
+.workbuddy/**
 
-# ── 构建产物与临时文件 ───────────────────────────────
+# ── 训练产物 / 归档模型 / 论文资料：最容易被整包上传的一批 ─────────────
+#   runs/ 是每次训练的完整产物（含历史 ensemble.pkl），本机 1.5GB；
+#   ensemble-old.pkl 是 834MB 的历史基线，镜像里只需要当前 ensemble.pkl。
+runs
+runs/**
+ensemble-old.pkl
+ensemble-*.pkl
+papers
+papers/**
+results
+results/**
+.feature_cache
+.feature_cache/**
+.cache
+.cache/**
+
+# ── 归档包 / 镜像导出（最容易被忽略的上下文炸弹）──────────────────────
+#  本机根目录曾躺着一个 codefenderc3_v8.tar.gz（3.9GB），它**不在任何 COPY
+#  指令里**、也不会进镜像，但 .dockerignore 没挡 → 每次 build 都要把这 3.9GB
+#  经 hgfs 送进 daemon，纯等。判定方法：docker/check_context.py 会打印
+#  「未过滤文件」与「COPY 入镜像」两个体积，两者差得越大越说明有这类文件。
+*.tar
+*.tar.gz
+*.tgz
+*.tar.bz2
+*.tar.xz
+*.tar.zst
+*.zip
+*_v8.tar.gz
+
+# ── 签名库 ──────────────────────────────────────────────────────────
+#  镜像里的副本来自 .docker_build/signatures/（由 docker/stage_signatures.py
+#  生成），绝不直接拷宿主的 signatures/：那个目录里同时躺着扁平的旧副本、
+#  releases/<v> 新副本、以及 current 符号链接（内容是绝对宿主路径，
+#  跨构建上下文无法解析）→ 直接 COPY 会体积翻倍，且可能拷到旧的那一份。
+signatures
+signatures/**
+#  暂存器的历史归档（硬链接，几乎不占空间，但没必要进上下文）
+.docker_build/signatures.old-*
+.docker_build/signatures.new-*
+#  暂存器的「本次运行」记录：含时间戳 / 主机名，每次运行都变。
+#  它刻意被排除在 COPY 源之外（不在 .docker_build/signatures/ 里面），
+#  这里再挡一层 —— 万一将来有人改成 `COPY .docker_build/ ...`，
+#  也不会因为一个时间戳字段让那 ~1GB 的签名库层每次都 cache miss。
+.docker_build/staging_run.json
+.docker_build/staging_run.json.*
+
+# ── SQLite 旁挂文件 / 半成品 ────────────────────────────────────────
+#  缺 -wal 会让 SQLite 读到不一致状态，stage 阶段已统一剔除，这里再挡一层。
+*.db-wal
+*.db-shm
+*.legacy
+*.partial
 *.downloading
 *.tmp
 *.temp
-dist/
-build/
-*.egg/
 
-# ── 测试样本目录 ──────────────────────────────────────
-testsamples/
+# ── 本机开发专属：绝不进镜像 ─────────────────────────────────────────
+#  runtime_config.json 是「免重启改配置」的覆盖文件（可能含纯模型调试开关）。
+#  容器档位本就忽略它（CODEFENDER_ENV=prod + 容器检测），这里再挡一层构建期，
+#  确保即使将来换用 `COPY . .` 也不会被带进镜像。
+runtime_config.json
+runtime_config.*.json
+*.runtime_config.json
+dev_model_only.cmd
+dev_model_only.sh
+_cfg_*.json
+_tmp_*
+_probe_*.py
+**/_probe_*.py
 
-# ── 实验/开发脚本 ──────────────────────────────────────
-experiments/
+# ── 夹在「保留目录」里的训练 / 开发产物 ─────────────────────────────
+#  Dockerfile 只 COPY 那 6 个生产目录，这些文件若不挡，会跟着 COPY 一起进镜像。
+#  判定标准同 Dockerfile：不是 engine/app.py 运行期闭包的一部分 → 不进镜像。
+#
+#  · MalGraph 的特征缓存中间产物（saved/ 103MB + output/ 3.7MB）——
+#    只有训练侧 1_exec_model.py / build_malgraph_cache_fast.py 读它；
+#    运行期 engine/app.py 只读同目录的 train_external_function_name_vocab.jsonl
+#    （MalGraph 运行只需 best_model.pt + 该 vocab）。
+#    挡住后「代码层」由 ~116MB 降到 ~2.8MB，改一行 .py 的重建代价同步变小。
+models/MalGraph_2022/**/features.jsonl
+models/MalGraph_2022/**/bad_files.txt
+#  · MalGraph 训练脚本（AST 闭包与全仓 import 均未触达）
+models/MalGraph_2022/1_exec_model.py
+models/MalGraph_2022/build_malgraph_cache_fast.py
+models/MalGraph_2022/dataset.py
+models/MalGraph_2022/train_external_function_name_vocab.py
+#  · 备份 / 旧版本文件（extract_feature111.py 是 extract_feature.py 的副本；
+#    ensemble copy.py 是 ensemble.py 的副本 —— import models 只走 .ensemble）
+feature_extraction/extract_feature111.py
+models/ensemble copy.py
+#  · 一次性维护脚本（patch / 修导入 / 离线建库），运行期不 import
+engine/_patch_*.py
+engine/_fix_import.py
+engine/_verify.txt
+engine/status.py
+scaner/build_md5_db.py
 
-# ── 文档 ──────────────────────────────────────────────
-PAPERS.md
-*.md
-
-# ── Docker 自身文件 ──────────────────────────────────
+# ── Docker 自身 ─────────────────────────────────────────────────────
 Dockerfile
 .dockerignore
 
-# ── 数据集构建脚本（推理不需要）────────────────────
-build_dataset.py
-build_rawpe.py
-dataset_utils.py
-run_all.py
-
-# ── 系统/OS文件 ──────────────────────────────────────
+# ── 系统垃圾 ────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
+desktop.ini

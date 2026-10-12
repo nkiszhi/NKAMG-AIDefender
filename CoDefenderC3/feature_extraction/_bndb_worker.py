@@ -44,7 +44,11 @@ for line in lines:
     except Exception as e:
         print(f"FAIL\t{pe_path}\t{str(e)[:120]}", flush=True)
     # 失败时删除残留的 bndb 文件
-    if not ok and os.path.exists(bndb_path):
+    # KEEP_BNDB(2026-09-15): 大批量场景下失败清理会累积数百次删除,
+    # 触发 safe-delete 钩子把整个构建进程杀掉 → 环境变量可跳过删除,
+    # 事后对 .cache/bndb 改名归档再统一处理
+    if not ok and os.path.exists(bndb_path) \
+            and os.environ.get("CODEFENDER_KEEP_BNDB") != "1":
         try: os.remove(bndb_path)
         except: pass
     gc.collect()

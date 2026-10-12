@@ -1,33 +1,92 @@
-# CoDefenderC3 依赖
-# 必需
-numpy>=1.21
-scipy>=1.7
-scikit-learn>=1.0
-matplotlib>=3.5
+# =============================================================================
+#  CoDefenderC3 依赖清单 —— 「生产环境」专用
+# =============================================================================
+#  收录范围：只有推理服务（engine/app.py 起的 FastAPI）跑起来并完整工作所必需的包。
+#      · 开发 / 调试用到的包        → 已删除，见文末 §5
+#      · 训练 / 数据集构建用到的包  → 全部注释，见 §4
+#      · 由 Dockerfile / 基础镜像装的包 → 注释保留，见 §3
+#
+#  判定依据：对 engine/app.py 做「导入闭包分析」（AST，138 个 .py），
+#           区分 顶层硬导入 / try 保护 / 函数内延迟导入，逐条核对真实调用点。
+#
+#  安装顺序（与 Dockerfile 分层一致）：
+#      1) pip install "torch>=2.0" torchvision --index-url https://download.pytorch.org/whl/cpu
+#      2) pip install torch_geometric -i https://mirrors.cloud.tencent.com/pypi/simple
+#      3) pip install -r requirements.txt
+#
+#  改完代码想确认本文件是否漏项 / 多了无用项，直接跑：
+#      python docker/check_requirements.py         # 只查运行时闭包（严格，推荐）
+#      python docker/check_requirements.py --all   # 连 train/ 工具链一起查
+#
+#  最后核对：2026-10-08
+# =============================================================================
 
-# 推荐
-lightgbm>=3.3          # EmberGBDT 模型
 
-# 可选 (Full 模式)
-# torch>=2.0           # 深度模型 (MalConv, LSTM, CNN, Transformer) — Docker 中从 PyTorch whl 安装
-# torchvision          # InceptionV3 / IMCFN — Docker 中从 PyTorch whl 安装
-# torch_geometric      # 图模型 (CFGGAT, GCN, DGCNN, MalGraph) — Docker 中单独安装
-# binaryninja           # PE 特征提取 (商业许可证) 
+# ── 1. 服务框架（缺任一 → 服务起不来）────────────────────────────────────
+numpy>=1.21             # engine/app.py / core / models / feature_extraction 全链路顶层导入
+fastapi>=0.110          # engine/app.py 顶层
+starlette>=0.27         # engine/app.py 直接 from starlette.responses import JSONResponse
+                        #   （fastapi 会带上，显式声明以免上游依赖变动后语义漂移）
+uvicorn>=0.29           # python -m uvicorn engine.app:app（start_codefender.sh）
+python-multipart>=0.0.9 # /predict-single 的 multipart/form-data 上传（缺则 FastAPI 启动即报错）
 
-# 可选 (EMBER 数据加载)
-# ember                 # pip install ember-dataset
 
-# API 服务层 (engine/app.py)
-fastapi>=0.110
-uvicorn>=0.29
-python-multipart>=0.0.9
+# ── 2. 检测链路（生产推理实际用到）────────────────────────────────────────
+pefile>=2023.2.7        # EMBER 静态特征 + 壳检测 + 静态信息的 imphash/authentihash
+scipy>=1.7              # SDD 漂移引擎：core/sdd_engine.py（/predict-single 的漂移字段依赖它）
+ppdeep>=20200505        # ssdeep/CTPH 模糊哈希（纯 Python）；缺 → 模糊预检自动关闭
+yara-python>=4.3        # 壳检测的 YARA 扩展规则：scaner/packer.py（无 .yar 规则时自动跳过）
+tqdm>=4.60              # MalGraph 生产模型：models/MalGraph_2022/{utils,Vocabulary}.py 顶层导入
 
-# 可选 (壳检测)
-pefile>=2023.2.7
 
-# 可选 (fuzzy 模糊哈希预检: ssdeep; 缺失自动降级跳过 ssdeep 级)
-ppdeep>=20200505
+# ── 3. 生产必需，但【不由本文件安装】（Dockerfile / 基础镜像负责）──────────
+#  保持注释状态：torch / torchvision 必须从 PyTorch CPU 源单独装（约省 2GB），
+#  否则 pip 会再从镜像源拉一份 CUDA 版。详见 Dockerfile 第 1 层。
+# torch>=2.0            # models/* 全部深度模型；feature_extraction/unified.py **顶层** import torch
+# torchvision           # IMCFN_2020 / InceptionV3_2020
+# torch_geometric       # 图模型 CFG_GAT / GCN / DGCNN / CallGraphGNN / GraphStatNet / MalGraph
+# binaryninja           # 商业库，由基础镜像 multiscan_basic_v3:with_binja 提供
+#
+#  ⚠ torch>=2.6 起 torch.load() 默认 weights_only=True：
+#    engine/app.py 加载 MalGraph ckpt 未显式传 weights_only，当前 state_dict 形态不受影响，
+#    但若将来 ckpt 里塞入非张量对象，需显式 weights_only=False（2.6+）。
 
-# 图模型工具链
-Pillow                 # IMCFN_2020 图像处理
-tqdm                   # MalGraph_2022 数据处理进度
+
+# ── 4. 训练 / 数据集构建（推理容器不需要，全部注释）────────────────────────
+#  依据：这些包只被 train/ 与数据集构建脚本触达，或只服务「离线生成特征缓存」。
+#  说明：图像视图（V8_gray / V8_color）在生产推理里走 BinaryNinja 的 F01/F02 特征
+#       （feature_extraction/extract_feature.py，纯 numpy 实现），
+#       并不走 unified.py 的 PIL/matplotlib 图像提取 → 故二者也归入本段。
+#
+#  —— 4.1 图像视图提取（仅数据集构建 / 训练用）——
+# Pillow>=9.0           # unified.py GRAY_IMAGE / COLOR_IMAGE 的 resize（函数内 import）
+# matplotlib>=3.5       # unified.py COLOR_IMAGE 的 jet colormap；缺失回退灰度
+#
+#  —— 4.2 训练 / 评测 ——
+# scikit-learn>=1.0     # 仅 train/run_all.py、train/train_all.py 的 metrics
+#
+#  —— 4.3 数据集构建（train/build_dataset.py，均延迟 import，脚本会自行 pip install）——
+# pandas>=2.0
+# requests>=2.28
+# gdown>=4.7
+# datasets>=2.14
+# boto3
+# botocore              # build_dataset.py 直接 import（S3 UNSIGNED 下载），boto3 伴生包
+# thrember
+#
+#  —— 4.4 EMBER 官方特征提取（可选回退）——
+# ember-dataset         # unified.py 优先用 ember 包，否则回退 _tools/ember；
+#                       # 两者都不可用时退化为 pefile 字节直方图（精度大幅下降，但不报错）
+
+
+# ── 5. 已移除（开发 / 调试 / 实验用途，生产不需要）────────────────────────
+#  下面这些包对应的代码都不在生产推理链路上，故整条删除，不保留注释声明；
+#  需要时再单独 pip install：
+#
+#    anthropic —— core/llm_module.py 的漂移归因 LLM。API 从未调用 analyze_drift()，
+#                 且需 ANTHROPIC_API_KEY；仅在离线做漂移归因实验时才装。
+#
+#  ── 命名坑（不需要安装，务必别装错）────────────────────────────────────
+#   app.py 把 config.ROOT/scaner 插到 sys.path 最前，下列 import 命中的是【本地文件】：
+#       import tlsh      → scaner/tlsh.py       （官方算法纯 Python 移植，勿装 PyPI tlsh 扩展）
+#       import filetype  → scaner/filetype.py   （本地实现，勿装 PyPI filetype）

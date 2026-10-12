@@ -31,9 +31,11 @@ def _extract_fast_chunk(tasks):
     """多进程 worker: 提取一批文件的快速特征。
     关键: 直接 import 文件, 跳过 __init__.py (避免 import torch)。"""
     import importlib.util, os as _os, numpy as _np
+    # 注意：feature_extraction/ 留在**仓库根**（被 engine/ 共用），不在 train/ 下。
+    # 本模块已被移入 train/，故必须用 _REPO_ROOT 而非本文件所在目录解析。
     spec = importlib.util.spec_from_file_location(
         "extract_feature",
-        _os.path.join(_os.path.dirname(_os.path.abspath(__file__)),
+        _os.path.join(_REPO_ROOT,
                       "feature_extraction", "extract_feature.py"))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
@@ -329,74 +331,148 @@ class PELoader:
             ext = BinjaExtractor()
 
             # ── 阶段1: 生成 bndb ──
-            bndb_done = self._load_log("bndb_done")
+            # 日志语义:
+            #   bndb_done  成功
+            #   bndb_fail  永久失败（BN 明确报错，重试无意义）
+            #   bndb_slow  未成功但非硬失败（超时 / 子进程偶发崩溃）→ 下次仍重试，
+            #              累计 CODEFENDER_BNDB_MAX_SLOW_RETRY 次后转 bndb_fail
+            # bndb_done.log 仍会写入（记录历史上成功生成过的样本，便于人工排查），
+            # 但**不再参与决策**：是否生成只看 bndb 文件是否存在。
             bndb_fail = self._load_log("bndb_fail")
+            slow_counts = self._load_slow_log()
+            # ⚠ 判断「要不要生成 bndb」只看**文件在不在**（_is_valid_bndb），
+            #    不看 bndb_done 日志。早期版本加了 `p not in bndb_done`，结果
+            #    一旦 .cache/bndb 被清理/误删/改名归档，日志仍说"已完成"→
+            #    样本永远不重生成 → 最终以「无 bndb」被写成 de_fail 永久失败。
+            #    去掉后语义更硬：有文件就不做，没文件就补。
             need_bndb = [p for p in need_binja
                          if not self._is_valid_bndb(p)
-                         and p not in bndb_done
                          and p not in bndb_fail]
             n_have_bndb = sum(1 for p in need_binja if self._is_valid_bndb(p))
             n_skip_fail = sum(1 for p in need_binja if p in bndb_fail)
+            n_slow_known = sum(1 for p in need_bndb if p in slow_counts)
 
-            # 覆盖率 >98% → 剩余的标记为永久失败, 直接跳过
-            if need_bndb and n_have_bndb > 0:
-                coverage = n_have_bndb / len(need_binja)
-                if coverage > 0.98:
-                    print(f"  D/E 阶段1: bndb 覆盖率 {coverage:.1%} ({n_have_bndb}/{len(need_binja)}), "
-                          f"标记 {len(need_bndb)} 个为永久失败")
-                    self._append_log("bndb_fail", need_bndb)
-                    need_bndb = []
+            # ⚠ 早期版本在这里有一条「bndb 覆盖率 >98% → 剩余样本全部标记为
+            #    永久失败」的短路。实测这是错的：覆盖率高说明剩下的多半是
+            #    「病态慢样本」（BN 耗时由可执行代码量决定，5.4MB 单段巨 .text
+            #    要 130s+），属于**偶发资源问题**而非文件不可用；一旦写进
+            #    bndb_fail，_find_need_de 会永久排除，重跑也救不回来。
+            #    现在改为：不判覆盖率，一律进补救轮（放宽超时 + 低并发），
+            #    只有硬失败才写 bndb_fail。
 
             if need_bndb:
                 skip_msg = []
+                if n_have_bndb: skip_msg.append(f"已有 {n_have_bndb} 个 bndb")
                 if n_skip_fail: skip_msg.append(f"{n_skip_fail} 已确认失败")
-                skip_str = f" (跳过 {', '.join(skip_msg)})" if skip_msg else ""
-                print(f"  D/E 阶段1 [生成bndb]: {len(need_bndb)} 个, {self.n_workers} 并行{skip_str}...")
+                if n_slow_known: skip_msg.append(f"{n_slow_known} 已知慢样本")
+                skip_str = f" (另有 {', '.join(skip_msg)})" if skip_msg else ""
+                print(f"  D/E 阶段1 [生成bndb]: {len(need_bndb)} 个{skip_str}...")
                 t0 = time.time()
 
-                # 第一轮 batch_size=5
-                ok_set, fail_reasons = ext.generate_bndbs_batch(
-                    [(p, self._bndb_cache_path(p)) for p in need_bndb],
-                    n_workers=self.n_workers, batch_size=5)
-                self._append_log("bndb_done", ok_set)
+                # 并发上限: 高并发下 BN 子进程会硬崩溃（stderr 为空 / unreported）。
+                # 实测 16 并发 + batch_size>=4 崩溃率显著，batch_size=1 全过。
+                bndb_workers = int(os.environ.get(
+                    "CODEFENDER_BNDB_WORKERS", min(self.n_workers, 4)))
+                pf_first = int(os.environ.get(
+                    "CODEFENDER_BNDB_TIMEOUT_PER_FILE", "120"))
+                # ── 2026-10-10 修正：首轮 batch_size 默认 5 → 1 ──
+                # 实测（data_pe_1009，9966 个样本，14.5h）：一个 worker 子进程连续
+                # `bn.load()` 5 个 PE 时，BinaryNinja 从**第 2 个文件起**硬崩溃
+                # (unreported)，于是每批恒定只有 1 个 OK → 成功率恰好 1/5 = 20%
+                # （日志 ok=20/fail=80 逐批吻合）。首轮等于白跑一遍。
+                # batch_size=1 时全过（本文件下方原注释「batch_size=1 全过」已指出）。
+                # 注意：崩溃发生在 `create_database()` **之后**，所以磁盘上的 .bndb
+                # 往往仍是完整的 —— 不要因为「首轮失败」就丢弃/重生成它们。
+                bs_first = int(os.environ.get("CODEFENDER_BNDB_BATCH_FIRST", "1"))
+                pf_retry = int(os.environ.get(
+                    "CODEFENDER_BNDB_TIMEOUT_RETRY", "600"))
+                t_base = int(os.environ.get("CODEFENDER_BNDB_TIMEOUT_BASE", "30"))
+                max_slow = int(os.environ.get(
+                    "CODEFENDER_BNDB_MAX_SLOW_RETRY", "3"))
 
-                # 重试连坐的
+                ok_set, fail_reasons = set(), {}
+
+                # ① 首轮: batch_size=bs_first（2026-10-10 由 5 改为默认 1）。
+                #    已知慢样本不进首轮（避免拖垮整体 ETA），直接留给补救轮。
+                first_round = [p for p in need_bndb if p not in slow_counts]
+                if first_round:
+                    print(f"    首轮: {len(first_round)} 个, {bndb_workers} 并行, "
+                          f"batch_size={bs_first}, 单批超时 {pf_first}s/文件 + {t_base}s ...")
+                    ok1, fail1 = ext.generate_bndbs_batch(
+                        [(p, self._bndb_cache_path(p)) for p in first_round],
+                        n_workers=bndb_workers, batch_size=bs_first,
+                        per_file_timeout=pf_first, timeout_base=t_base)
+                    ok_set |= ok1
+                    fail_reasons.update(fail1)
+                    self._append_log("bndb_done", ok1)
+                    print(f"    首轮: {len(ok1)} 成功, {len(first_round)-len(ok1)} 未成功")
+
+                # ② 补救轮: 未成功的 + 已知慢样本 → batch_size=1 + 放宽超时
                 retry = [p for p in need_bndb
-                         if p not in ok_set and not os.path.exists(self._bndb_cache_path(p))]
+                         if p not in ok_set
+                         and not os.path.exists(self._bndb_cache_path(p))]
                 if retry:
-                    print(f"    第一轮: {len(ok_set)} 成功, {len(retry)} 连坐")
-                    print(f"    重试 (batch_size=1): {len(retry)} 个...")
+                    print(f"    补救轮: {len(retry)} 个, batch_size=1, "
+                          f"单文件超时 {pf_retry}s ...")
                     ok2, fail2 = ext.generate_bndbs_batch(
                         [(p, self._bndb_cache_path(p)) for p in retry],
-                        n_workers=self.n_workers, batch_size=1)
-                    ok_set.update(ok2)
+                        n_workers=bndb_workers, batch_size=1,
+                        per_file_timeout=pf_retry, timeout_base=t_base)
+                    ok_set |= ok2
                     fail_reasons.update(fail2)
                     self._append_log("bndb_done", ok2)
-                    print(f"    重试: {len(ok2)} 救回, {len(retry)-len(ok2)} 仍失败")
+                    print(f"    补救轮: {len(ok2)} 救回, "
+                          f"{len(retry)-len(ok2)} 仍失败")
 
-                # 清理残留 bndb + 记录失败到日志
+                # ③ 分流: 硬失败(BN 明确报错) → bndb_fail；超时/崩溃 → bndb_slow
+                #    （下次仍重试，累计到上限才转永久失败）
                 final_fails = []
                 for p in need_bndb:
-                    if p not in ok_set:
-                        bp = self._bndb_cache_path(p)
-                        if os.path.exists(bp):
-                            try: os.remove(bp)
-                            except: pass
+                    if p in ok_set:
+                        slow_counts.pop(p, None)   # 成功 → 清慢样本计数
+                        continue
+                    bp = self._bndb_cache_path(p)
+                    if os.path.exists(bp):
+                        try: os.remove(bp)
+                        except: pass
+                    reason = str(fail_reasons.get(p, "?"))
+                    soft = ("TIMEOUT" in reason
+                            or "崩溃" in reason
+                            or "unreported" in reason)
+                    if soft:
+                        n = slow_counts.get(p, 0) + 1
+                        if n >= max_slow:
+                            slow_counts.pop(p, None)
+                            final_fails.append(p)
+                            print(f"      ✗ {os.path.basename(p)[:16]}: "
+                                  f"慢样本重试 {max_slow} 次仍失败 → 标记永久失败")
+                        else:
+                            slow_counts[p] = n
+                            print(f"      ⏳ {os.path.basename(p)[:16]}: {reason} "
+                                  f"(第 {n}/{max_slow} 次, 下次重跑继续尝试)")
+                    else:
                         final_fails.append(p)
-                self._append_log("bndb_fail", final_fails)
+                        print(f"      ✗ {os.path.basename(p)[:16]}: {reason} "
+                              f"→ 硬失败, 标记永久失败")
 
+                self._append_log("bndb_fail", final_fails)
+                # 空且文件不存在时不写（与其他日志「空则不落盘」风格一致）
+                if slow_counts or os.path.exists(self._log_path("bndb_slow")):
+                    self._write_slow_log(slow_counts)
+
+                n_slow_left = sum(1 for p in need_bndb if p in slow_counts)
                 if final_fails:
-                    print(f"    失败 {len(final_fails)} 个 (已记录日志):")
-                    for p in final_fails[:5]:
-                        print(f"      ✗ {os.path.basename(p)}: {fail_reasons.get(p, '?')}")
-                    if len(final_fails) > 5:
-                        print(f"      ... 还有 {len(final_fails)-5} 个")
+                    print(f"    永久失败 {len(final_fails)} 个 (已记录 bndb_fail)")
+                if n_slow_left:
+                    print(f"    待重试慢样本 {n_slow_left} 个 (已记录 bndb_slow, "
+                          f"下次重跑自动用 {pf_retry}s 超时补救)")
                 print(f"    阶段1: {len(ok_set)}/{len(need_bndb)} ({time.time()-t0:.0f}s)")
             else:
                 msg = []
                 if n_skip_fail: msg.append(f"{n_skip_fail} 失败")
+                if n_slow_known: msg.append(f"{n_slow_known} 待重试慢样本")
                 extra = f" ({', '.join(msg)})" if msg else ""
-                print(f"  D/E 阶段1: 全部 bndb 已存在{extra}")
+                print(f"  D/E 阶段1: 全部 bndb 已存在或已记录{extra}")
 
             # ── 阶段2: bndb → D/E (持久化 Worker, 增量断点续传) ──
             have_bndb = [p for p in need_binja if self._is_valid_bndb(p)]
@@ -404,8 +480,17 @@ class PELoader:
 
             # 无 bndb 的样本永远不可能提取 D/E → 直接标记永久失败
             if no_bndb:
-                self._append_log("de_fail", no_bndb)
-                print(f"  D/E: {len(no_bndb)} 个无 bndb → 标记永久失败")
+                # ⚠ 不要一律写 de_fail（那是永久排除，会让慢样本重试机制失效）：
+                #   - bndb_slow 里的慢样本（超时/崩溃）→ 下次重跑仍应重试
+                #   - 其余（硬失败，或慢样本已达重试上限）→ 永久排除
+                no_bndb_soft = [p for p in no_bndb if p in slow_counts]
+                no_bndb_hard = [p for p in no_bndb if p not in slow_counts]
+                if no_bndb_hard:
+                    self._append_log("de_fail", no_bndb_hard)
+                    print(f"  D/E: {len(no_bndb_hard)} 个无 bndb → 标记永久失败")
+                if no_bndb_soft:
+                    print(f"  D/E: {len(no_bndb_soft)} 个无 bndb（慢样本）→ 保持待重试，"
+                          f"下次重跑自动补救")
 
             if have_bndb:
                 de_workers = self.n_workers
@@ -414,12 +499,43 @@ class PELoader:
 
                 # 增量日志: 每个文件成功后立即写入 de_done.log (Ctrl+C 不丢进度)
                 import threading as _th
+                import queue as _queue
                 _log_fh = open(self._log_path("de_done"), "a", encoding="utf-8")
                 _log_fh_lock = _th.Lock()
+
+                # ── 边提边删 (2026-10-12) ──
+                # D/E 一旦写入 npz，对应 bndb 即无用途；不清理的话 10k 规模会累积
+                # 到 ~160G 撑爆磁盘。异步 + 重试：Windows 下 worker 可能短暂仍持有句柄。
+                _purge = os.environ.get("CODEFENDER_BNDB_PURGE_AFTER_DE") == "1"
+                _purge_q = _queue.Queue()
+                _purge_stat = {"ok": 0, "leak": 0}
+                def _purge_daemon():
+                    while True:
+                        p = _purge_q.get()
+                        if p is None:
+                            return
+                        for _ in range(12):
+                            try:
+                                os.remove(p)
+                                _purge_stat["ok"] += 1
+                                break
+                            except FileNotFoundError:
+                                break
+                            except Exception:
+                                time.sleep(0.5)
+                        else:
+                            _purge_stat["leak"] += 1
+                _purge_thread = _th.Thread(target=_purge_daemon, daemon=True)
+                _purge_thread.start()
+                def _purge_bndb(pe_path):
+                    if _purge:
+                        _purge_q.put(self._bndb_cache_path(pe_path))
+
                 def _on_ok(pe_path):
                     with _log_fh_lock:
                         _log_fh.write(pe_path + "\n")
                         _log_fh.flush()
+                    _purge_bndb(pe_path)
 
                 try:
                     ok_set, fail_reasons = ext.extract_de_from_bndb_batch(
@@ -450,6 +566,7 @@ class PELoader:
                         with _log_fh_lock:
                             _log_fh2.write(pe_path + "\n")
                             _log_fh2.flush()
+                        _purge_bndb(pe_path)
                     try:
                         ok2, fail2 = ext.extract_de_from_bndb_batch(
                             retry,
@@ -467,6 +584,13 @@ class PELoader:
                         print(f"    重试: {len(ok2)} 救回, {len(still_fail)} 永久失败 (已记录)")
                     else:
                         print(f"    重试: 全部救回")
+
+                _purge_q.put(None)
+                _purge_thread.join(timeout=60)
+                if _purge:
+                    _leak = _purge_stat["leak"]
+                    print(f"    边提边删: 已释放 {_purge_stat['ok']} 个 bndb"
+                          + (f" (泄漏 {_leak})" if _leak else ""))
 
                 print(f"    阶段2: {len(ok_set)}/{len(have_bndb)} ({time.time()-t0:.0f}s)")
             else:
@@ -577,6 +701,53 @@ class PELoader:
             for item in items:
                 f.write(str(item) + "\n")
 
+    def _write_log_atomic(self, name, items):
+        """原子重写日志（tmp + os.replace）。
+
+        用 os.replace 而非 os.remove + rename：safe-delete 钩子在后台任务里会拦
+        进程内删除 API，把构建打断；replace 不触发钩子。临时名形如
+        `<name>.log.tmp-<pid>`，不匹配 `*.log`，_load_log 不会误读。
+        """
+        path = self._log_path(name)
+        tmp = f"{path}.tmp-{os.getpid()}"
+        with open(tmp, "w", encoding="utf-8") as f:
+            for it in items:
+                f.write(str(it) + "\n")
+        os.replace(tmp, path)
+
+    def _load_slow_log(self):
+        """读 bndb_slow.log → {pe_path: 已尝试次数}。
+
+        语义：bndb 生成本轮未成功，但**不是**硬失败（超时 / 子进程偶发崩溃）。
+        这类样本下次运行仍会重试（用放宽超时 + 单文件并发），累计到上限才转
+        bndb_fail 永久失败。兼容只写路径的旧格式（每行计 1 次）。
+
+        读取时**就地过滤**掉已经有 bndb 的样本：说明它后来成功了（或被
+        _fix_de_gap.py 补上），不该再算「慢样本」，否则记录会永久残留并
+        污染门禁的缺口归类。调用方若随后 _write_slow_log()，文件即自动收敛。
+        """
+        out = {}
+        path = self._log_path("bndb_slow")
+        if not os.path.exists(path):
+            return out
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.rstrip("\n")
+                if not line.strip():
+                    continue
+                parts = line.rsplit("\t", 1)
+                if len(parts) == 2 and parts[1].isdigit():
+                    out[parts[0]] = out.get(parts[0], 0) + int(parts[1])
+                else:
+                    out[line] = out.get(line, 0) + 1
+        return {p: n for p, n in out.items()
+                if not os.path.exists(self._bndb_cache_path(p))}
+
+    def _write_slow_log(self, counts):
+        """原子重写 bndb_slow.log（每行 `<pe_path>\\t<次数>`）。"""
+        self._write_log_atomic(
+            "bndb_slow", [f"{p}\t{n}" for p, n in sorted(counts.items())])
+
     @staticmethod
     def _has_de(npz_path):
         """D/E 特征是否存在 — 检查主 npz 是否含 D 开头的 key。"""
@@ -625,8 +796,11 @@ class PELoader:
         print(f"  D/E 扫描 {len(paths)} 个 npz (首次, 请等待)...")
         done_paths, need = [], []
         for i, p in enumerate(paths):
-            if p in skip:
-                continue  # 已完成/永久失败/无bndb, 跳过
+            # 只有「永久失败」才无条件跳过。de_done 里的样本**仍要核实 npz**：
+            # 缓存文件可能丢失/损坏（磁盘清理、误删 .cache、外部改写），
+            # 只信日志会让它永远不被重试，最终以缺视角被静默丢样本。
+            if p in de_fail or p in bndb_fail:
+                continue
             cp = cache_paths[p]
             if os.path.exists(cp) and self._has_de(cp):
                 done_paths.append(p)
@@ -641,9 +815,15 @@ class PELoader:
                       end="", flush=True)
 
         # 写日志 (后续启动直接用)
-        with open(self._log_path("de_done"), "w", encoding="utf-8") as f:
-            for p in done_paths:
-                f.write(p + "\n")
+        #
+        # ⚠ 必须与既有 done 取并集: 上面的扫描循环只把「本轮核实通过」的样本
+        #   收进 done_paths，de_done 里原有的记录若未参与本轮循环就会丢。
+        #   早期版本这里直接 `open(..., "w")` 覆盖写 done_paths, 等于把日志里
+        #   原有的完成记录整批抹掉 → 下次又走全量扫描; 且当样本数在
+        #   (0, 100] 区间时, 日志行数会在「实际条数 ↔ 1 条」之间震荡
+        #   (信任分支要求 len(done) > 100, 永远进不去), 每次重跑都白扫一遍 npz。
+        merged = list(dict.fromkeys(list(done) + done_paths))
+        self._write_log_atomic("de_done", merged)
 
         elapsed = time.time() - t0
         print(f"\r  D/E 扫描完成: {len(done_paths)} 已有, "

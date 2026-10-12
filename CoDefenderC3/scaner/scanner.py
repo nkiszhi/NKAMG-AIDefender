@@ -14,6 +14,7 @@ NKAMG Scanner - 轻量级静态恶意软件扫描核心引擎
   4. 布局一致性: meta 表记录 layout 版本与 shard_count; 检测到旧 hex 前缀布局
      (16/256/4096) 或修改 N 时启动自动重分片, 旧数据备份不丢失
 """
+import csv
 import hashlib
 import math
 import os
@@ -739,13 +740,14 @@ class HashSignatureDB:
             return row is not None
 
     # ---------- 导入 ----------
-    def import_hdb(self, filepath, batch=50_000):
+    def import_hdb(self, filepath, batch=50_000, record_name=None):
         """导入 .hdb/.hsb 明文签名文件 (增量, 幂等), 返回新插入条数
 
         仅接受与本库主键等长的哈希行 (sha256 库收 64hex, md5 库收 32hex),
         其它合法长度 (32/40/64hex) 计数跳过。
+        record_name: 传入则以该名字登记 imported_files (默认取文件 basename)。
         """
-        basename = os.path.basename(filepath)
+        basename = os.path.basename(record_name) if record_name else os.path.basename(filepath)
         pending = {}  # shard_id -> [(digest, size)]
         skipped = 0   # 非本库长度的合法哈希行
         start = time.time()
@@ -778,37 +780,116 @@ class HashSignatureDB:
                     pending.setdefault(
                         self._route(digest, self.shard_count), []
                     ).append(self._row_for_insert(digest, size))
-            inserted = 0
-            count_updates = []
-            dirty = set()
-            for sid, rows in pending.items():
-                shard = self._open_rw(self._shard_path(sid))
-                shard.execute(self._ddl)
-                before = shard.total_changes
-                for i in range(0, len(rows), batch):
-                    shard.executemany(self._insert_sql, rows[i:i + batch])
-                shard.commit()
-                delta = shard.total_changes - before
-                cnt = shard.execute("SELECT COUNT(*) FROM sigs").fetchone()[0]
-                shard.close()
-                inserted += delta
-                count_updates.append((self._shard_name(sid), cnt))
-                dirty.add(sid)
-            with self.meta:
-                self.meta.executemany(
-                    "INSERT OR REPLACE INTO shard_counts(prefix,cnt) VALUES(?,?)",
-                    count_updates,
-                )
-                self.meta.execute(
-                    "INSERT OR IGNORE INTO imported_files(name) VALUES(?)", (basename,)
-                )
-            self._count += inserted
-            self._bloom_dirty |= dirty  # 新增签名的分片 bloom 失效, 待 finalize 重建
-        if basename not in self.source_files:
-            self.source_files.append(basename)
+            inserted = self._commit_hash_rows(pending, basename, batch)
         if skipped:
             print(f"[NKAMG] 导入 {basename}: 跳过 {skipped:,} 条非 {self.hash_label} 签名"
                   f" (本库主键为 {self.hash_label})")
+        return inserted
+
+    def _commit_hash_rows(self, pending, basename, batch=50_000):
+        """把 {shard_id: [rows]} 写入分片并更新 meta (import_hdb / import_hashbase_hdb 共用)。
+
+        调用方必须已持有 self._lock。
+        """
+        inserted = 0
+        count_updates = []
+        dirty = set()
+        for sid, rows in pending.items():
+            shard = self._open_rw(self._shard_path(sid))
+            shard.execute(self._ddl)
+            before = shard.total_changes
+            for i in range(0, len(rows), batch):
+                shard.executemany(self._insert_sql, rows[i:i + batch])
+            shard.commit()
+            delta = shard.total_changes - before
+            cnt = shard.execute("SELECT COUNT(*) FROM sigs").fetchone()[0]
+            shard.close()
+            inserted += delta
+            count_updates.append((self._shard_name(sid), cnt))
+            dirty.add(sid)
+        with self.meta:
+            self.meta.executemany(
+                "INSERT OR REPLACE INTO shard_counts(prefix,cnt) VALUES(?,?)",
+                count_updates,
+            )
+            self.meta.execute(
+                "INSERT OR IGNORE INTO imported_files(name) VALUES(?)", (basename,)
+            )
+        self._count += inserted
+        self._bloom_dirty |= dirty  # 新增签名的分片 bloom 失效, 待 finalize 重建
+        if basename not in self.source_files:
+            self.source_files.append(basename)
+        return inserted
+
+    def import_hashbase_hdb(self, filepath, batch=50_000, record_name=None):
+        """导入 hashBase 9 字段 hdb 文件 (增量, 幂等), 返回新插入条数
+
+        行格式 (convert_hdb_to_signatures.py 源格式, 尾部多一个空段):
+          sha256:size:name:ssdeep:tlsh:md5:rich16:authentihash:imphash:
+        sha256 库取字段 1, md5 库取字段 6 (32hex, 可空); 其余字段由
+        FuzzySignatureDB.import_hashbase_hdb 负责。record_name 同 import_hdb。
+        """
+        basename = os.path.basename(record_name) if record_name else os.path.basename(filepath)
+        pending = {}  # shard_id -> [(digest, size)]
+        with self._lock:
+            with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    parts = line.split(":")
+                    if len(parts) < 9:
+                        continue
+                    src = parts[0] if self.pk_hex_len == 64 else parts[5]
+                    h = src.strip().lower()
+                    if len(h) != self.pk_hex_len:
+                        continue
+                    try:
+                        digest = bytes.fromhex(h)
+                    except ValueError:
+                        continue
+                    size_field = parts[1].strip()
+                    try:
+                        size = None if size_field in ("*", "0", "") else int(size_field)
+                    except ValueError:
+                        size = None
+                    pending.setdefault(
+                        self._route(digest, self.shard_count), []
+                    ).append(self._row_for_insert(digest, size))
+            inserted = self._commit_hash_rows(pending, basename, batch)
+        return inserted
+
+    def stage_csv_row(self, row, pending):
+        """把一条 CSV 行按其摘要列放入本库 pending (sha256 库取 sha256 列, md5 库取 md5 列)。
+
+        供模块级 import_csv_signatures 单趟解析后分发使用; 非本库长度/非法 hex 静默跳过。
+        返回是否计入。
+        """
+        h = row.get("sha256") if self.pk_hex_len == 64 else row.get("md5")
+        if not h or len(h) != self.pk_hex_len:
+            return False
+        try:
+            digest = bytes.fromhex(h)
+        except ValueError:
+            return False
+        pending.setdefault(self._route(digest, self.shard_count), []).append(
+            self._row_for_insert(digest, row.get("size")))
+        return True
+
+    def import_csv(self, filepath, batch=50_000, record_name=None, malicious_only=True,
+                   stats=None):
+        """导入日更 CSV 更新本库 (增量, 幂等), 返回新插入条数。
+
+        列映射: sha256 库取 sha256 列, md5 库取 md5 列, size 取 length 列。
+        行级幂等由 INSERT OR IGNORE 保证; record_name 语义同 import_hdb。
+        """
+        basename = os.path.basename(record_name) if record_name else os.path.basename(filepath)
+        pending = {}
+        with self._lock:
+            for row in iter_csv_signatures(filepath, malicious_only=malicious_only,
+                                           stats=stats):
+                self.stage_csv_row(row, pending)
+            inserted = self._commit_hash_rows(pending, basename, batch)
         return inserted
 
     # 旧接口兼容
@@ -1034,7 +1115,7 @@ class HashSignatureDB:
             "engine": "Hash DB",
             "type": "hash",
             "size": sig_size,
-            "detail": f"SHA256 命中: {sha256}",
+            # "detail": f"SHA256 命中: {sha256}",
         })
         return hits
 
@@ -1099,11 +1180,16 @@ class HashSignatureDB:
 
 
 # ============================================================
-# 模糊哈希签名库 (FuzzySignatureDB): 5 表独立结构
+# 模糊哈希签名库 (FuzzySignatureDB): 6 表独立结构
 # 每种 fuzzy hash 独立成表, 以 fuzzy hash 本身为主键 (不再是 sha256)
-# 数据源 ClamAV 8 字段 hdb 行: sha256:filesize:result:ssdeep:vhash:authentihash:imphash:rich_header_hash
+# 数据源 ClamAV hdb 行: sha256:filesize:result:ssdeep:vhash:authentihash:imphash:rich_header_hash[:tlsh]
+#   tlsh 为可选第 9 字段, 入库前归一化为官方 72 字符小写 't1'+70hex
 # ============================================================
-FUZZY_TYPES = ["ssdeep", "vhash", "authentihash", "imphash", "rich_header_hash"]
+FUZZY_TYPES = ["ssdeep", "vhash", "authentihash", "imphash", "rich_header_hash", "tlsh"]
+
+# 路由口径: 字符串型 fuzzy 值 (ssdeep / tlsh) 按 sha256(字符串) 首字节分片,
+# 其余 BLOB 型按值首字节分片; 与建库时一致, 改口径 = 全库失效。
+FUZZY_STR_TYPES = ("ssdeep", "tlsh")
 
 # 每种 fuzzy hash 的表定义: 表名 / 列名 / SQL 类型 / DDL / INSERT / SELECT 列
 FUZZY_TABLE_SPECS = {
@@ -1152,6 +1238,15 @@ FUZZY_TABLE_SPECS = {
         "insert": "INSERT OR IGNORE INTO sigs_rich_header_hash(rich_header_hash,size,name,sha256) VALUES(?,?,?,?)",
         "cols": "rich_header_hash,size,name,sha256",
     },
+    "tlsh": {
+        "col": "tlsh", "sql_type": "TEXT", "label": "TLSH",
+        "table": "sigs_tlsh",
+        "ddl": "CREATE TABLE IF NOT EXISTS sigs_tlsh("
+               " tlsh TEXT PRIMARY KEY, size INTEGER, name TEXT, sha256 BLOB)"
+               " WITHOUT ROWID",
+        "insert": "INSERT OR IGNORE INTO sigs_tlsh(tlsh,size,name,sha256) VALUES(?,?,?,?)",
+        "cols": "tlsh,size,name,sha256",
+    },
 }
 
 
@@ -1165,19 +1260,173 @@ def _hex_to_blob(s):
     return bytes.fromhex(s)
 
 
-class FuzzySignatureDB:
-    """5 表模糊哈希签名库 (每种 fuzzy hash 独立成表, 以 fuzzy hash 为主键)。
+# ============================================================
+# 日更 CSV 签名源 (cn_vt*.csv) 解析与入库
+# ------------------------------------------------------------
+# 列 (2026-09 实测 6 个文件一致, 22 列, UTF-8 BOM):
+#   name,length,sha256,md5,ssdeep,tlsh,vhash,authentihash,imphash,rich_header_hash,
+#   source,date,category,platform,family,kav_result,defender_result,filetype,packer,
+#   has_vt,has_vt_summary,has_vt_mitre
+# 按表头名取列 (容忍缺列/列序变化); 无表头时按上表位置兜底。
+# 字段落地: sha256→sha256 库; md5→md5 库; ssdeep/tlsh/authentihash/imphash/
+#   rich_header_hash→fuzzy 库 对应表。vhash 查询链不消费且值非纯 hex
+#   (如 '0460b6666d5c0d5d151c00d016z699zbaz1fz2'), 无法入 BLOB 主键 → 跳过并计数。
+# ============================================================
+CSV_REF_COLS = [
+    "name", "length", "sha256", "md5", "ssdeep", "tlsh", "vhash",
+    "authentihash", "imphash", "rich_header_hash", "source", "date",
+    "category", "platform", "family", "kav_result", "defender_result",
+    "filetype", "packer", "has_vt", "has_vt_summary", "has_vt_mitre",
+]
 
-    每个 hex 分片文件 (00.db ~ ff.db) 包含 5 张表:
+# 威胁标注列: 全空表示该行没有任何"恶意"证据 (良性/未标注), 默认不入检测库
+CSV_LABEL_COLS = ("category", "family", "kav_result", "defender_result", "has_vt_summary")
+
+
+def _csv_size(field):
+    """length 列 → int; 空/'*'/'0' 归一化为 None (不限大小)"""
+    s = (field or "").strip()
+    if s in ("", "*", "0"):
+        return None
+    try:
+        return int(s)
+    except ValueError:
+        return None
+
+
+def iter_csv_signatures(filepath, malicious_only=True, stats=None):
+    """流式解析日更 CSV, yield 规范化后的行 dict (逐行, 不整表载入内存)。
+
+    行 dict 键: sha256/md5/size/name/ssdeep/tlsh/vhash/authentihash/imphash/
+    rich_header_hash/date/source。已做: hex 小写校验 (sha256 必须为 64hex,
+    否则整行丢弃)、ssdeep 归一化为库口径 '-' 分隔、tlsh 归一化为 't1'+70hex 小写。
+
+    malicious_only=True 时跳过无任何威胁标注的行 (CSV_LABEL_COLS 全空)。
+    stats: 可选 dict, 就地累加 rows_total/rows_ok/skip_no_sha256/skip_unlabeled/
+    has_ssdeep/has_tlsh/has_imphash/has_authentihash/has_rich/has_vhash/has_md5。
+    """
+    st = stats if stats is not None else {}
+    for k in ("rows_total", "rows_ok", "skip_no_sha256", "skip_unlabeled",
+              "has_md5", "has_ssdeep", "has_tlsh", "has_imphash",
+              "has_authentihash", "has_rich", "has_vhash"):
+        st.setdefault(k, 0)
+
+    with open(filepath, "r", encoding="utf-8-sig", errors="ignore", newline="") as f:
+        reader = csv.reader(f)
+        try:
+            first = next(reader)
+        except StopIteration:
+            return
+        header = [(c or "").strip().lower() for c in first]
+        if "sha256" in header:
+            idx = {name: i for i, name in enumerate(header)}
+            rows = reader
+        else:
+            # 无表头: 首行按参考列序当作数据
+            idx = {name: i for i, name in enumerate(CSV_REF_COLS)}
+            rows = iter([first])
+
+        for raw in rows:
+            if not raw:
+                continue
+            st["rows_total"] += 1
+
+            def cell(col):
+                i = idx.get(col)
+                return raw[i].strip() if i is not None and i < len(raw) else ""
+
+            sha = cell("sha256").lower()
+            if len(sha) != 64 or not all(c in "0123456789abcdef" for c in sha):
+                st["skip_no_sha256"] += 1
+                continue
+            if malicious_only and not any(cell(c) for c in CSV_LABEL_COLS):
+                st["skip_unlabeled"] += 1
+                continue
+
+            md5 = cell("md5").lower() or None
+            if md5 and len(md5) != 32:
+                md5 = None
+            auth = cell("authentihash").lower() or None
+            imp = cell("imphash").lower() or None
+            rich = cell("rich_header_hash").lower() or None
+            ssdeep = cell("ssdeep") or None
+            tlsh = cell("tlsh") or None
+            vhash = cell("vhash") or None
+
+            st["rows_ok"] += 1
+            for flag, val in (("has_md5", md5), ("has_ssdeep", ssdeep),
+                              ("has_tlsh", tlsh), ("has_imphash", imp),
+                              ("has_authentihash", auth), ("has_rich", rich),
+                              ("has_vhash", vhash)):
+                if val:
+                    st[flag] += 1
+
+            yield {
+                "sha256": sha,
+                "md5": md5,
+                "size": _csv_size(cell("length")),
+                "name": cell("name"),
+                "ssdeep": ssdeep,
+                "tlsh": tlsh,
+                "vhash": vhash,
+                "authentihash": auth,
+                "imphash": imp,
+                "rich_header_hash": rich,
+                "date": cell("date"),
+                "source": cell("source"),
+            }
+
+
+def import_csv_signatures(filepath, dbs, record_name=None, batch=50_000,
+                          malicious_only=True, stats=None):
+    """把日更 CSV 一次性导入多个签名库 (单趟读盘, 流式)。
+
+    dbs: {"sha256": HashSignatureDB, "md5": HashSignatureDB, "fuzzy": FuzzySignatureDB}
+    （按 isinstance 分派, md5 库缺席时自动只喂存在的库。）
+    返回 {fam: inserted}；stats 见 iter_csv_signatures。
+
+    并发约定: 解析阶段无锁（只填本地 pending），提交阶段各自持库锁；
+    因此同一 dbs 对象不应被并发调用（/update-signatures 每次请求都用独立的
+    staging 副本实例, 天然满足）。
+    """
+    basename = os.path.basename(record_name) if record_name else os.path.basename(filepath)
+    pend_hash = {}    # fam -> {shard_id: [rows]}
+    pend_fuzzy = {}   # (ftype, shard_id) -> [rows]
+    for row in iter_csv_signatures(filepath, malicious_only=malicious_only, stats=stats):
+        for fam, db in dbs.items():
+            if isinstance(db, FuzzySignatureDB):
+                db.stage_csv_row(row, pend_fuzzy)
+            else:
+                db.stage_csv_row(row, pend_hash.setdefault(fam, {}))
+    out = {}
+    for fam, db in dbs.items():
+        with db._lock:
+            if isinstance(db, FuzzySignatureDB):
+                out[fam] = db._commit_fuzzy_rows(pend_fuzzy, basename, batch)
+            else:
+                out[fam] = db._commit_hash_rows(pend_hash[fam], basename, batch)
+    return out
+
+
+class FuzzySignatureDB:
+    """6 表模糊哈希签名库 (每种 fuzzy hash 独立成表, 以 fuzzy hash 为主键)。
+
+    每个 hex 分片文件 (00.db ~ ff.db) 包含 6 张表:
       sigs_ssdeep(ssdeep TEXT PK, size, name, sha256 BLOB)
       sigs_vhash(vhash BLOB PK, size, name, sha256 BLOB)
       sigs_authentihash(authentihash BLOB PK, size, name, sha256 BLOB)
       sigs_imphash(imphash BLOB PK, size, name, sha256 BLOB)
       sigs_rich_header_hash(rich_header_hash BLOB PK, size, name, sha256 BLOB)
+      sigs_tlsh(tlsh TEXT PK, size, name, sha256 BLOB)
 
-    路由: BLOB 类型取首字节, ssdeep 取 sha256(string) 首字节 → 00~ff 分片。
+    路由: 字符串型 (ssdeep/tlsh) 取 sha256(字符串) 首字节, BLOB 型取值首字节 → 00~ff 分片。
     Bloom 按类型 × 分片: {shard}_{type}.bloom, 懒加载 + LRU 缓存。
-    数据源: ClamAV 8 字段 hdb 行, 每个非空 fuzzy 字段独立写入对应表。
+
+    数据源 (三条通道, 口径统一):
+      ① ClamAV hdb 8 字段 (+可选第 9 字段 tlsh) → import_hdb
+      ② hashBase 9 字段 hdb → import_hashbase_hdb
+      ③ 日更 CSV (cn_vt*.csv, 22 列) → import_csv / import_csv_signatures
+    ssdeep 一律归一化为 '-' 分隔, tlsh 一律归一化为 't1'+70hex 小写。
     """
 
     LAYOUT_HEX = "hex"
@@ -1244,14 +1493,18 @@ class FuzzySignatureDB:
 
     # ---------- 路由 ----------
     def _route(self, fuzzy_type, value):
-        """Route fuzzy hash value → shard_id (0-255). ssdeep: sha256(str)[0]; BLOB: blob[0]"""
-        if fuzzy_type == "ssdeep":
+        """Route fuzzy hash value → shard_id (0-255).
+
+        字符串型 (ssdeep/tlsh): sha256(字符串) 首字节; BLOB 型: 值首字节。
+        实测建库口径与之一致 (抽样 256/256 分片命中), 改口径会导致全库查不中。
+        """
+        if fuzzy_type in FUZZY_STR_TYPES:
             return hashlib.sha256(value.encode("utf-8")).digest()[0]
         return value[0]
 
     def _bloom_key(self, fuzzy_type, value):
-        """Bloom 用的字节: ssdeep → sha256(str); BLOB → 原始字节"""
-        if fuzzy_type == "ssdeep":
+        """Bloom 用的字节: 字符串型 (ssdeep/tlsh) → sha256(str); BLOB → 原始字节"""
+        if fuzzy_type in FUZZY_STR_TYPES:
             return hashlib.sha256(value.encode("utf-8")).digest()
         return value
 
@@ -1404,13 +1657,15 @@ class FuzzySignatureDB:
             return bf
 
     # ---------- 导入 ----------
-    def import_hdb(self, filepath, batch=50_000):
-        """导入 ClamAV 8 字段 hdb 文件, 每个非空 fuzzy 字段独立写入对应表。
+    def import_hdb(self, filepath, batch=50_000, record_name=None):
+        """导入 ClamAV 8+1 字段 hdb 文件, 每个非空 fuzzy 字段独立写入对应表。
 
-        行格式: sha256:filesize:result:ssdeep:vhash:authentihash:imphash:rich_header_hash
+        行格式: sha256:filesize:result:ssdeep:vhash:authentihash:imphash:rich_header_hash[:tlsh]
+        第 9 字段 tlsh 可选 (兼容旧 8 字段行): 72 字符官方格式 ('t1'+70hex) 或
+        70 位无前缀大写均可, 入库前统一归一化为库口径 't1'+70hex 小写。
         每个 fuzzy hash 按自身值路由到 00~ff 分片, 写入对应表 (INSERT OR IGNORE 去重)。
         """
-        basename = os.path.basename(filepath)
+        basename = os.path.basename(record_name) if record_name else os.path.basename(filepath)
         start = time.time()
         with self._lock:
             # pending: {(fuzzy_type, shard_id): [(hash_value, size, name, sha256_blob)]}
@@ -1437,18 +1692,23 @@ class FuzzySignatureDB:
                     except ValueError:
                         size = None
                     name = parts[2].strip()
-                    ssdeep_val = parts[3].strip() or None
+                    ssdeep_val = staticinfo.normalize_ssdeep_db_key(parts[3])
                     vhash_blob = _hex_to_blob(parts[4])
                     auth_blob = _hex_to_blob(parts[5])
                     imp_blob = _hex_to_blob(parts[6])
                     rich_blob = _hex_to_blob(parts[7])
-                    # 分发到 5 个表
+                    # 可选第 9 字段: tlsh (两种格式均收, 入库前归一化为 't1'+70hex 小写)
+                    tlsh_val = None
+                    if len(parts) > 8:
+                        tlsh_val = staticinfo.normalize_tlsh_db_key(parts[8])
+                    # 分发到 6 个表
                     fuzzy_values = {
                         "ssdeep": ssdeep_val,
                         "vhash": vhash_blob,
                         "authentihash": auth_blob,
                         "imphash": imp_blob,
                         "rich_header_hash": rich_blob,
+                        "tlsh": tlsh_val,
                     }
                     for ftype, val in fuzzy_values.items():
                         if val is None:
@@ -1456,38 +1716,136 @@ class FuzzySignatureDB:
                         sid = self._route(ftype, val)
                         pending.setdefault((ftype, sid), []).append(
                             (val, size, name, sha256_blob))
-            inserted = 0
-            count_updates = []
-            dirty = set()
-            for (ftype, sid), rows in pending.items():
-                spec = FUZZY_TABLE_SPECS[ftype]
-                shard = self._open_rw(self._shard_path(sid))
-                # 确保所有 5 张表都存在
-                for ft in FUZZY_TYPES:
-                    shard.execute(FUZZY_TABLE_SPECS[ft]["ddl"])
-                before = shard.total_changes
-                for i in range(0, len(rows), batch):
-                    shard.executemany(spec["insert"], rows[i:i + batch])
-                shard.commit()
-                delta = shard.total_changes - before
-                cnt = shard.execute(
-                    f"SELECT COUNT(*) FROM {spec['table']}").fetchone()[0]
-                shard.close()
-                inserted += delta
-                count_updates.append((ftype, self._shard_name(sid), cnt))
-                dirty.add((ftype, sid))
-            with self.meta:
-                self.meta.executemany(
-                    "INSERT OR REPLACE INTO fuzzy_counts(type,prefix,cnt) VALUES(?,?,?)",
-                    count_updates)
-                self.meta.execute(
-                    "INSERT OR IGNORE INTO imported_files(name) VALUES(?)", (basename,))
-                self.meta.execute(
-                    "INSERT OR REPLACE INTO meta(k,v) VALUES('counts_valid','1')")
-            self._counts = self._load_counts()
-            self._bloom_dirty |= dirty
+            inserted = self._commit_fuzzy_rows(pending, basename, batch)
+        return inserted
+
+    def _commit_fuzzy_rows(self, pending, basename, batch=50_000):
+        """把 {(ftype, shard_id): [rows]} 写入分片并更新 meta (两种 importer 共用)。
+
+        调用方必须已持有 self._lock。
+        """
+        inserted = 0
+        count_updates = []
+        dirty = set()
+        for (ftype, sid), rows in pending.items():
+            spec = FUZZY_TABLE_SPECS[ftype]
+            shard = self._open_rw(self._shard_path(sid))
+            # 确保所有 6 张表都存在
+            for ft in FUZZY_TYPES:
+                shard.execute(FUZZY_TABLE_SPECS[ft]["ddl"])
+            before = shard.total_changes
+            for i in range(0, len(rows), batch):
+                shard.executemany(spec["insert"], rows[i:i + batch])
+            shard.commit()
+            delta = shard.total_changes - before
+            cnt = shard.execute(
+                f"SELECT COUNT(*) FROM {spec['table']}").fetchone()[0]
+            shard.close()
+            inserted += delta
+            count_updates.append((ftype, self._shard_name(sid), cnt))
+            dirty.add((ftype, sid))
+        with self.meta:
+            self.meta.executemany(
+                "INSERT OR REPLACE INTO fuzzy_counts(type,prefix,cnt) VALUES(?,?,?)",
+                count_updates)
+            self.meta.execute(
+                "INSERT OR IGNORE INTO imported_files(name) VALUES(?)", (basename,))
+            self.meta.execute(
+                "INSERT OR REPLACE INTO meta(k,v) VALUES('counts_valid','1')")
+        self._counts = self._load_counts()
+        self._bloom_dirty |= dirty
         if basename not in self.source_files:
             self.source_files.append(basename)
+        return inserted
+
+    def import_hashbase_hdb(self, filepath, batch=50_000, record_name=None):
+        """导入 hashBase 9 字段 hdb 文件, 各 fuzzy 字段写入对应表。
+
+        行格式 (convert_hdb_to_signatures.py 源格式, 尾部多一个空段):
+          sha256:size:name:ssdeep:tlsh:md5:rich16:authentihash:imphash:
+        ssdeep=字段4 (源以 '-' 替代 ':' 入库原样保留), tlsh=字段5 (归一化),
+        rich=字段7 / authentihash=字段8 / imphash=字段9 (当前源为空, 预留通道)。
+        record_name 同 HashSignatureDB.import_hdb。
+        """
+        basename = os.path.basename(record_name) if record_name else os.path.basename(filepath)
+        pending = {}
+        with self._lock:
+            with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    parts = line.split(":")
+                    if len(parts) < 9:
+                        continue
+                    h = parts[0].strip().lower()
+                    if len(h) != 64:
+                        continue
+                    try:
+                        sha256_blob = bytes.fromhex(h)
+                    except ValueError:
+                        continue
+                    size_field = parts[1].strip()
+                    try:
+                        size = None if size_field in ("*", "0", "") else int(size_field)
+                    except ValueError:
+                        size = None
+                    name = parts[2].strip()
+                    fuzzy_values = {
+                        "ssdeep": staticinfo.normalize_ssdeep_db_key(parts[3]),
+                        "tlsh": staticinfo.normalize_tlsh_db_key(parts[4]),
+                        "rich_header_hash": _hex_to_blob(parts[6]),
+                        "authentihash": _hex_to_blob(parts[7]),
+                        "imphash": _hex_to_blob(parts[8]),
+                    }
+                    for ftype, val in fuzzy_values.items():
+                        if val is None:
+                            continue
+                        sid = self._route(ftype, val)
+                        pending.setdefault((ftype, sid), []).append(
+                            (val, size, name, sha256_blob))
+            inserted = self._commit_fuzzy_rows(pending, basename, batch)
+        return inserted
+
+    def stage_csv_row(self, row, pending):
+        """把一条 CSV 行的各 fuzzy 字段放入本库 pending。
+
+        供模块级 import_csv_signatures 单趟解析后分发使用。
+        口径: ssdeep 归一化为 '-' 分隔 (与建库源一致), tlsh 归一化为 't1'+70hex 小写,
+        authentihash/imphash/rich_header_hash 为 hex → BLOB;
+        vhash 查询链不消费且值非纯 hex, 不入库 (由 stats 计数)。
+        """
+        sha_blob = _hex_to_blob(row.get("sha256"))
+        size = row.get("size")
+        name = row.get("name") or ""
+        values = {
+            "ssdeep": staticinfo.normalize_ssdeep_db_key(row.get("ssdeep")),
+            "tlsh": staticinfo.normalize_tlsh_db_key(row.get("tlsh")),
+            "authentihash": _hex_to_blob(row.get("authentihash")),
+            "imphash": _hex_to_blob(row.get("imphash")),
+            "rich_header_hash": _hex_to_blob(row.get("rich_header_hash")),
+        }
+        for ftype, val in values.items():
+            if not val:
+                continue
+            sid = self._route(ftype, val)
+            pending.setdefault((ftype, sid), []).append((val, size, name, sha_blob))
+
+    def import_csv(self, filepath, batch=50_000, record_name=None, malicious_only=True,
+                   stats=None):
+        """导入日更 CSV 更新本库 (增量, 幂等), 返回新插入条数。
+
+        列映射: ssdeep←ssdeep, tlsh←tlsh, authentihash←authentihash,
+        imphash←imphash, rich_header_hash←rich_header_hash (vhash 不入库)。
+        size 取 length 列并随行入库 (查询侧做二次大小校验)。
+        """
+        basename = os.path.basename(record_name) if record_name else os.path.basename(filepath)
+        pending = {}
+        with self._lock:
+            for row in iter_csv_signatures(filepath, malicious_only=malicious_only,
+                                           stats=stats):
+                self.stage_csv_row(row, pending)
+            inserted = self._commit_fuzzy_rows(pending, basename, batch)
         return inserted
 
     # ---------- Finalize ----------
@@ -1567,11 +1925,20 @@ class FuzzySignatureDB:
         return hits
 
     def check_by_computed_hashes(self, ssdeep=None, imphash_hex=None,
-                                  authentihash_hex=None, file_size=None):
-        """批量查询: 用 staticinfo 计算出的 fuzzy hash 查各表, 返回命中列表"""
+                                  authentihash_hex=None, tlsh=None,
+                                  file_size=None):
+        """批量查询: 用 staticinfo 计算出的 fuzzy hash 查各表, 返回命中列表
+
+        查询顺序即"级"的顺序: ssdeep → imphash → authentihash → tlsh。
+        tlsh 为字符串型, 需传入库口径 (官方 72 字符, 't1'+70hex 小写, 见
+        staticinfo.compute_tlsh_db_key); 传 70 位无前缀大写格式必然查不中。
+        """
         hits = []
         if ssdeep:
-            hits.extend(self.check_fuzzy("ssdeep", ssdeep, file_size))
+            # 建库口径为 '-' 分隔, 本地 ppdeep 输出 ':' → 必须归一化 (否则 100% 不命中)
+            key = staticinfo.normalize_ssdeep_db_key(ssdeep)
+            if key:
+                hits.extend(self.check_fuzzy("ssdeep", key, file_size))
         if imphash_hex:
             try:
                 hits.extend(self.check_fuzzy("imphash", bytes.fromhex(imphash_hex), file_size))
@@ -1582,6 +1949,8 @@ class FuzzySignatureDB:
                 hits.extend(self.check_fuzzy("authentihash", bytes.fromhex(authentihash_hex), file_size))
             except ValueError:
                 pass
+        if tlsh:
+            hits.extend(self.check_fuzzy("tlsh", tlsh, file_size))
         return hits
 
     # ---------- 统计 ----------
@@ -1929,13 +2298,15 @@ class Scanner:
         static_info = staticinfo.compute_static_info(data)
         static_ms = round((time.time() - static_start) * 1000, 1)
 
-        # 模糊哈希签名库查询: 用 staticinfo 计算出的 ssdeep/imphash/authentihash 查各表
+        # 模糊哈希签名库查询: 用 staticinfo 计算出的 ssdeep/imphash/authentihash/tlsh 查各表
+        # (tlsh 需库口径 't1'+70hex 小写 —— staticinfo 给的是 70 位无前缀大写, 须归一化)
         if self.fuzzy_db is not None:
             fuzzy_info = static_info.get("fuzzy", {}) if static_info else {}
             fuzzy_hits = self.fuzzy_db.check_by_computed_hashes(
                 ssdeep=fuzzy_info.get("ssdeep"),
                 imphash_hex=fuzzy_info.get("imphash"),
                 authentihash_hex=fuzzy_info.get("authentihash"),
+                tlsh=staticinfo.normalize_tlsh_db_key(fuzzy_info.get("tlsh")),
                 file_size=len(data),
             )
             detections.extend(fuzzy_hits)

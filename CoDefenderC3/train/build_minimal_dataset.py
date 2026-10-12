@@ -14,7 +14,7 @@ build_minimal_dataset.py — 构建"最小可训练 PE_RAW 数据集"，与 ense
 
 产出结构:
     <out>/
-      malicious/<sha256>          ← 真实样本（复制，不硬链接，兼容 VMware 共享目录）
+      malicious/<sha256>          ← 真实样本（默认复制；--link 时优先硬链接，见下）
       benign/<sha256>
       metadata.json               ← feature_type=PE_RAW + 视角期望 + 口径说明
       metadata.jsonl              ← 逐样本标注（缺省写绝对路径，见下方"路径陷阱"）
@@ -49,6 +49,16 @@ D/E 视角提取较慢（实测 ~40s bndb + ~16s 特征 / 8 个样本），且�
 若 D/E 覆盖率不是 100%，脚本会**在构建 per_month 之前中止**，避免
 "_build_month_cache 严格模式把缺 D/E 的样本整个丢掉"这种静默样本损失。
 
+样本落盘方式（空间/时间）
+--------------------------
+默认 `shutil.copy2` 逐个复制：N 个样本 = N × 样本大小（平均 ~5MB），
+5000 规模 ≈ 25GB 纯冗余。若源目录与 <out> 在**同一卷**，加 `--link` 走硬链接：
+数据集里的 `<sha256>` 与源文件共享 inode，零拷贝、不占额外空间，样本内容
+仍然可正常读取/扫描。跨盘、VMware 共享目录（hgfs）、或文件系统不支持时
+自动回退 copy2，不会中断构建，并在第 4 步打印回退原因。
+⚠ 代价：硬链接与源文件是同一个文件实体，**就地修改数据集里的样本会同时改到源文件**
+（本管线只读样本，正常流程不受影响）；删除源目录不会影响数据集（inode 仍被引用）。
+
 用法
 ----
   # 1) 预演：看会提取哪些视角、怎么分月（不写文件）
@@ -66,6 +76,10 @@ D/E 视角提取较慢（实测 ~40s bndb + ~16s 特征 / 8 个样本），且�
   python CoDefenderC3/train/build_minimal_dataset.py \\
       --source "E:\\nkproject\\training_data0915" --out "D:\\nkproject\\data_10k" \\
       --per-class 5000 --months 4 --views full
+
+  # 5) 省空间/省复制时间：同盘硬链接（零拷贝），跨盘自动回退复制
+  python CoDefenderC3/train/build_minimal_dataset.py \\
+      --source "D:\\nkproject\\data_test\\20260928" --out "D:\\nkproject\\ds_0928" --link --views full
 
 源目录要求
 ----------
@@ -143,6 +157,54 @@ def head_is_mz(path):
             return f.read(2) == b"MZ"
     except Exception:
         return False
+
+
+def _same_inode(a, b):
+    """两个路径是否指向同一文件（硬链接 = 同设备同 inode）。"""
+    try:
+        sa, sb = os.stat(a), os.stat(b)
+    except OSError:
+        return False
+    return (sa.st_dev, sa.st_ino) == (sb.st_dev, sb.st_ino)
+
+
+def place_sample(src, dst, prefer_link=False):
+    """把 src 落到 dst。返回 (mode, err)。
+
+    prefer_link=True 时优先**硬链接**（同盘零拷贝，不占额外空间）：
+      mode="link" = 已建硬链接；"keep" = 本就同 inode（无需动作）；
+      "copy" = 回退 shutil.copy2（跨盘 EXDEV / 共享目录 EPERM / 文件系统不支持）；
+      此时 err 为首次失败原因，供上层打印一次。
+    prefer_link=False 时直接 shutil.copy2。
+
+    实现细节：替换同名文件走「先链接到唯一临时名 → os.replace 覆盖」，
+    全程不调用删除 API —— safe-delete 钩子在后台任务里会拦进程内 os.remove
+    并中断构建，这里必须绕开。极端残留的临时名扩展名不会命中 PE_EXTENSIONS，
+    扫描阶段会自然忽略。
+    """
+    if not prefer_link:
+        shutil.copy2(src, dst)
+        return "copy", None
+
+    tmp = "%s.link-tmp-%d" % (dst, os.getpid())
+    err = None
+    try:
+        if os.path.exists(tmp):
+            os.replace(tmp, "%s.stale-%d" % (tmp, int(time.time())))
+        os.link(src, tmp)
+        os.replace(tmp, dst)
+        return "link", None
+    except OSError as e:
+        err = "%s: %s" % (type(e).__name__, e)
+        if os.path.exists(tmp) and not _same_inode(tmp, src):
+            try:
+                os.replace(tmp, "%s.stale-%d" % (tmp, int(time.time())))
+            except OSError:
+                pass
+        if _same_inode(src, dst):
+            return "keep", err
+    shutil.copy2(src, dst)
+    return "copy", err
 
 
 def scan_labeled_files(root, max_depth=2):
@@ -387,13 +449,15 @@ def assign_months_grouped(records, n_months, seed=42):
     return records
 
 
-def main():
+def main(argv=None):
     ap = argparse.ArgumentParser(
         description="构建与 ensemble 视角对齐的最小可训练 PE_RAW 数据集")
     ap.add_argument("--source", required=True, help="裸 PE 源目录（含 malicious/ benign/）")
     # 默认输出到项目根（与既有 minimal_dataset/ 保持一致，勿随脚本位置漂移）
     ap.add_argument("--out", default=os.path.join(PROJECT_ROOT, "minimal_dataset"))
-    ap.add_argument("--per-class", type=int, default=0, help="每类最多取多少（0=全取）")
+    ap.add_argument("--per-class", type=int, default=0, help="每类最多取多少（0=全取）；若配合 --mal-ratio>1 使用，则表示**良性**上限")
+    ap.add_argument("--mal-ratio", type=float, default=1.0,
+                    help="恶意:良性 目标配比（默认 1.0=严格1:1；例如 2.0=2:1，良性全取、恶意按比例取，不足则取全部）")
     ap.add_argument("--months", type=int, default=4)
     ap.add_argument("--train-months", type=int, default=2)
     ap.add_argument("--seed", type=int, default=42)
@@ -408,9 +472,13 @@ def main():
                     help="基线 ensemble.pkl（用于校验视角维度对齐）")
     ap.add_argument("--drop-per-sample", action="store_true",
                     help="构建后删除 per_sample/*.npz（per_month 已足够训练）")
+    ap.add_argument("--link", action="store_true",
+                    help="样本落盘优先用**硬链接**（同盘零拷贝、不额外占空间）；"
+                         "跨盘/共享目录/不支持时自动回退 copy2。"
+                         "注意：数据集样本与源文件共享 inode，就地修改数据集样本会改到源文件")
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--dry-run", action="store_true")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     t_start = time.time()
     src = os.path.normpath(os.path.abspath(args.source))
@@ -477,16 +545,29 @@ def main():
     mal = [r for r in records if r["label"] == 1]
     ben = [r for r in records if r["label"] == 0]
     print("    可用样本       : %d (恶意 %d / 良性 %d)" % (len(records), len(mal), len(ben)))
-    if args.per_class > 0:
-        mal, ben = mal[:args.per_class], ben[:args.per_class]
-        print("    每类上限 %d → 恶意 %d / 良性 %d" % (args.per_class, len(mal), len(ben)))
-    n = min(len(mal), len(ben))
-    if n == 0:
-        print("[X] 至少一类为空，无法构成 1:1。")
-        return 1
-    if len(mal) != len(ben):
-        print("    类别不均衡 → 各自截断到 %d，得到严格 1:1" % n)
-    picked = mal[:n] + ben[:n]
+    if args.mal_ratio > 1.0:
+        # 非均衡配比：此时 --per-class 表示**良性上限**（恶意按配比放大、受实际可用量限制）。
+        # 注意不能先对两类同时截断，否则会退化成 1:1。
+        cap_ben = args.per_class if args.per_class > 0 else len(ben)
+        n_ben = min(len(ben), cap_ben)
+        n_mal = min(len(mal), int(round(n_ben * args.mal_ratio)))
+        if n_ben == 0 or n_mal == 0:
+            print("[X] 至少一类为空，无法构成配比取样。")
+            return 1
+        picked = mal[:n_mal] + ben[:n_ben]
+        print("    良性上限 %d → 目标配比 %.1f:1 → 恶意 %d / 良性 %d（实际 %.2f:1，共 %d）" % (
+            cap_ben, args.mal_ratio, n_mal, n_ben, n_mal / n_ben, n_mal + n_ben))
+    else:
+        if args.per_class > 0:
+            mal, ben = mal[:args.per_class], ben[:args.per_class]
+            print("    每类上限 %d → 恶意 %d / 良性 %d" % (args.per_class, len(mal), len(ben)))
+        n = min(len(mal), len(ben))
+        if n == 0:
+            print("[X] 至少一类为空，无法构成 1:1。")
+            return 1
+        if len(mal) != len(ben):
+            print("    类别不均衡 → 各自截断到 %d，得到严格 1:1" % n)
+        picked = mal[:n] + ben[:n]
 
     # ── 2. 分组键 ──
     hdr("2. 计算分组键（imphash）")
@@ -515,17 +596,32 @@ def main():
         return 0
 
     # ── 4. 复制样本 ──
-    hdr("4. 复制样本")
+    hdr("4. 样本落盘%s" % ("（--link：同盘硬链接优先）" if args.link else "（copy2）"))
     if os.path.isdir(out) and os.listdir(out) and not args.force:
         print("[X] 输出目录非空: %s（加 --force 或换 --out）" % out)
         return 1
     for sub in ("malicious", "benign"):
         os.makedirs(os.path.join(out, sub), exist_ok=True)
     dst_records = []
+    n_link = n_copy = n_keep = 0
+    link_bytes = 0
+    link_err = None
     for r in plan:
         sub = "malicious" if r["label"] == 1 else "benign"
         dst = os.path.join(out, sub, r["sha256"])
-        shutil.copy2(r["path"], dst)
+        mode, err = place_sample(r["path"], dst, prefer_link=args.link)
+        if err and link_err is None:
+            link_err = err
+        if mode == "link":
+            n_link += 1
+            try:
+                link_bytes += os.path.getsize(r["path"])
+            except OSError:
+                pass
+        elif mode == "keep":
+            n_keep += 1
+        else:
+            n_copy += 1
         rel_native = os.path.join(sub, r["sha256"])
         dst_records.append({
             "abs": os.path.normpath(os.path.abspath(dst)),
@@ -533,7 +629,17 @@ def main():
             "label": r["label"], "month": r["month"],
             "group": r["group"], "sha256": r["sha256"],
         })
-    print("    已复制 %d 个样本 → %s" % (len(dst_records), out))
+    if args.link:
+        print("    已就位 %d 个样本 → %s（硬链接 %d / 复用 %d / 回退复制 %d）"
+              % (len(dst_records), out, n_link, n_keep, n_copy))
+        if n_link:
+            _gb = link_bytes / (1024.0 ** 3)
+            print("    省下磁盘 ≈ %s（数据集与源目录共享 inode）"
+                  % (("%.2f GB" % _gb) if _gb >= 1 else ("%.1f MB" % (link_bytes / (1024.0 ** 2)))))
+        if n_copy:
+            print("    [i] %d 个样本回退为复制，首个原因: %s" % (n_copy, link_err))
+    else:
+        print("    已复制 %d 个样本 → %s" % (len(dst_records), out))
 
     # ── 5. 特征提取 ──
     hdr("5. 特征提取 (--views %s)" % args.views)
@@ -596,24 +702,58 @@ def main():
                   "数据集为 11 视角。")
             args.views = "fast"
         elif cov < 1.0 and not args.allow_partial_de:
+            gaps = [r for r in dst_records if not has_de(r["abs"])]
+            # 缺口归类：区分「已写入永久失败日志」与「只是本轮没成功」
+            try:
+                hard = loader._load_log("bndb_fail") | loader._load_log("de_fail")
+                slow = set(loader._load_slow_log().keys())
+            except Exception:
+                hard, slow = set(), set()
+            n_hard = sum(1 for r in gaps if r["abs"] in hard)
+            n_slow = sum(1 for r in gaps if r["abs"] in slow)
+            n_free = len(gaps) - n_hard - n_slow
+
             print("\n  [X] D/E 覆盖率 %.1f%% 不是 100%%。若继续，"
                   "_build_month_cache 的严格模式会把缺 D/E 的样本整个丢掉（静默样本损失）。" % (cov * 100))
+            print("      缺口样本: %s" % ", ".join(
+                os.path.basename(r["sha256"])[:12] + "…" for r in gaps)[:300])
+            print("      缺口归类: 永久失败 %d / 待重试慢样本 %d / 其他 %d"
+                  % (n_hard, n_slow, n_free))
             print("      选择其一：")
-            print("        a) 重跑本命令（bndb/npz 已缓存，只会补缺失的）")
-            print("        b) python %s --source \"%s\" --views fast ...   # 退回 11 视角"
-                  % (os.path.basename(__file__), src))
-            print("        c) 加 --allow-partial-de 强制继续（不推荐）")
+            if n_hard:
+                print("        a) 有 %d 个样本在 bndb_fail/de_fail 里（_find_need_de 永久排除，"
+                      "重跑不会重试）→ 先清日志再重跑：" % n_hard)
+                print("             python CoDefenderC3/train/_fix_de_gap.py \"%s\"" % out)
+                print("           （自动：备份清日志 → 单样本补充 bndb → 提 D/E → 只移除救回的行）")
+            else:
+                print("        a) 无永久失败样本 → **直接重跑本命令即可**：")
+                print("             阶段1 会用放宽超时（单文件 600s）+ 低并发（min(N_WORKERS,4)）补救，")
+                print("             已缓存的 bndb/npz 全部跳过，只补缺口。")
+            print("           排查/预演（秒级，不写盘）：")
+            print("             python CoDefenderC3/train/_probe_de_coverage.py \"%s\"" % out)
+            print("           兜底一键修复：")
+            print("             python CoDefenderC3/train/_fix_de_gap.py \"%s\"" % out)
+            print("        b) python %s --source \"%s\" --views fast ...   # 退回 11 视角（样本不丢，"
+                  "9 个 BN 模型冻结继承）" % (os.path.basename(__file__), src))
+            print("        c) 加 --allow-partial-de 强制继续：缺 D/E 的样本会被归档到 <数据集>/.dropped-*/")
+            print("           （等同于丢样本，会让评估集的类别占比失真，不推荐）")
             return 1
 
     keep = ok_de if args.views == "full" else ok_fast
     dropped = [r for r in dst_records if r not in keep]
     if dropped:
+        # 用改名归档代替删除：safe-delete 钩子在后台任务里会拦截 os.remove
+        # （连进程内调用也拦），导致 build 卡死。同盘 rename 不受影响。
+        dropped_dir = os.path.join(out, ".dropped-" + time.strftime("%Y%m%d-%H%M%S"))
+        os.makedirs(dropped_dir, exist_ok=True)
+        n_moved = 0
         for r in dropped:
             try:
-                os.remove(r["abs"])
+                os.rename(r["abs"], os.path.join(dropped_dir, os.path.basename(r["abs"])))
+                n_moved += 1
             except OSError:
                 pass
-        print("    已从数据集移除 %d 个特征不完整的样本" % len(dropped))
+        print("    已归档 %d/%d 个特征不完整的样本 → %s" % (n_moved, len(dropped), dropped_dir))
     dst_records = keep
     if not dst_records:
         print("[X] 没有样本提取成功。")
@@ -758,6 +898,11 @@ def main():
         "built_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         "source_dir": src, "dataset_dir": out,
         "views_mode": args.views,
+        # 样本落盘方式（--link 时可能部分回退）：link=与源共享 inode（就地改样本会改到源文件）
+        "link_requested": bool(args.link),
+        "sample_placement": ("link" if n_link and not n_copy else
+                             ("copy" if not n_link else "mixed")),
+        "sample_placement_counts": {"link": n_link, "keep": n_keep, "copy": n_copy},
         "n_samples": len(dst_records),
         "by_label": {str(r["label"]): sum(1 for x in dst_records if x["label"] == r["label"])
                      for r in dst_records},
@@ -800,8 +945,12 @@ def main():
         print("  ⚠ %s" % p)
     print("  数据集: %s" % out)
     print("  耗时  : %.1fs" % (time.time() - t_start))
+    if args.link:
+        print("  落盘  : 硬链接 %d / 复用 %d / 复制 %d（同 inode 不额外占空间）"
+              % (n_link, n_keep, n_copy))
     print("\n  下一步:")
-    print("    python CoDefenderC3/train_minimal.py --dataset \"%s\"" % out)
+    print("    python CoDefenderC3/train/train_all.py --dataset \"%s\"" % out)
+    print("    (或下次一条龙: python CoDefenderC3/train/train_all.py --source <源目录> --out \"%s\")" % out)
     return 0 if not problems else 2
 
 

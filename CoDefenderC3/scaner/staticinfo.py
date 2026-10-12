@@ -82,6 +82,56 @@ def compute_tlsh(data):
     return tlsh_mod.hash_bytes(data)
 
 
+# 哈希库侧 TLSH 口径: 官方 72 字符小写格式 't1' + 70hex
+# (本地 tlsh.py 输出 70 位无前缀大写, 直接拿去查库必然不命中)
+TLSH_DB_PREFIX = "t1"
+
+
+def normalize_tlsh_db_key(tlsh_hex):
+    """已算出的 TLSH (70 位无前缀大写) → 库口径 't1'+70hex 小写; 非法输入返回 None"""
+    if not tlsh_hex:
+        return None
+    s = tlsh_hex.strip().lower()
+    if s.startswith(TLSH_DB_PREFIX):
+        return s
+    return TLSH_DB_PREFIX + s if len(s) == 70 else None
+
+
+# 哈希库侧 SSDEEP 口径: 分隔符为 '-' 而非原生的 ':'。
+# 建库源 (hashBase hdb / 日更 CSV 的 hdb 同源) 统一把 ':' 换成 '-' (否则 hdb 的
+# 冒号分列会错位); 而本地 ppdeep 输出原生 ':' 形式 (如 "3072:5yi3x...:5yi3x...")。
+# 因此"现算 ssdeep → 查库"必须归一化, 直接查必然 100% 不命中 (2026-09-23 实测
+# 40/40 样本: ':' 形式 0 命中 / '-' 形式 40 命中)。
+SSDEEP_DB_SEP = "-"
+
+
+def normalize_ssdeep_db_key(ssdeep):
+    """ssdeep → 库口径 (分隔符 '-'): 已归一化的入参幂等; 空/非法返回 None"""
+    if not ssdeep:
+        return None
+    s = ssdeep.strip()
+    if not s:
+        return None
+    return s.replace(":", SSDEEP_DB_SEP) if ":" in s else s
+
+
+def compute_tlsh_db_key(data, max_bytes=None):
+    """计算"库口径" TLSH, 用于查 fuzzy 库 sigs_tlsh 表。
+
+    与 compute_tlsh 的区别: (1) 返回 't1'+70hex 小写; (2) max_bytes 单独限流
+    (TLSH 纯 Python 实测 ~0.53 MB/s, 同步预检路径必须限流; 传 None 表示不限,
+    仅受 tlsh 自身最小长度约束)。
+    """
+    if not data or len(data) < tlsh_mod.MIN_DATA_LEN:
+        return None
+    if max_bytes is not None and len(data) > max_bytes:
+        return None
+    try:
+        return normalize_tlsh_db_key(tlsh_mod.hash_bytes(data))
+    except Exception:
+        return None
+
+
 def compute_imphash(data, pe_obj=None):
     """PE 导入表哈希 (pefile); 非 PE 或解析失败返回 None
 

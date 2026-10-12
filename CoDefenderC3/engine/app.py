@@ -18,11 +18,14 @@ import json
 import logging
 import os
 import re
+import shutil
+import sqlite3
 import sys
 import tempfile
 import time
 import traceback
 import uuid
+import zipfile
 import zlib
 from collections import Counter
 from contextlib import contextmanager
@@ -32,7 +35,7 @@ from concurrent.futures import ProcessPoolExecutor
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
-from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
+from fastapi import Body, FastAPI, File, HTTPException, Query, Request, UploadFile
 from starlette.responses import JSONResponse
 
 import config
@@ -54,6 +57,22 @@ try:
     import torch
 except Exception:  # pragma: no cover
     torch = None
+
+
+# ── 启动日志可见性 ───────────────────────────────────────────────
+# uvicorn 只给 "uvicorn.*" 命名空间挂了 handler，root logger 默认无 handler；
+# 于是 codefender.* 的 INFO 日志（[hashdb] … 签名库就绪 / 预检已禁用、模型加载等）
+# 全部被丢弃（Python 的 lastResort 只兜 WARNING+），启动时看不到任何一行。
+# 这里只给 "codefender" 命名空间挂一个 StreamHandler（不动 root / uvicorn 配置），
+# 让这些启动日志在 uvicorn / supervisor / Docker 下都能看到。
+_cf_logger = logging.getLogger("codefender")
+if not _cf_logger.handlers:
+    _cf_handler = logging.StreamHandler()
+    _cf_handler.setFormatter(logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(name)s: %(message)s", "%Y-%m-%d %H:%M:%S"))
+    _cf_logger.addHandler(_cf_handler)
+    _cf_logger.setLevel(logging.INFO)
+    _cf_logger.propagate = False   # 避免调用方另行 basicConfig 时重复输出
 
 
 RAW_LEN = 32768
@@ -529,6 +548,22 @@ def _expected_dim_for_model(ens: MultiModelEnsemble, model_name: str) -> Optiona
                     return d
             except Exception:
                 pass
+
+    # B-fix: torch 模型 kwargs 未写 input_dim 时（如图模型），从第一个
+    # nn.Linear 的 in_features 推导期望维度 —— 让 _coerce_row_dim 的
+    # 截断/拒绝有据可依，而不是放行任意维度的回退特征。
+    if model is not None and mtype == "pytorch":
+        try:
+            import torch as _torch
+            first_linear = next(
+                m for m in model.modules()
+                if isinstance(m, _torch.nn.Linear)
+            )
+            d = int(first_linear.in_features)
+            if d > 0:
+                return d
+        except Exception:
+            pass
     return None
 
 
@@ -629,6 +664,7 @@ def _extract_views_for_single_sample(
         row: Optional[np.ndarray] = None
         source = ""
         reason = ""
+        de_blocked = False
 
         if vn == "V1_byte":
             row_i = np.zeros(RAW_LEN, dtype=np.int32)
@@ -654,8 +690,12 @@ def _extract_views_for_single_sample(
                 reason = f"missing_binja_features:{','.join(missing_ids)}"
                 if (not include_de) and any(fid.startswith(("D", "E")) for fid in missing_ids):
                     reason += "; hint=include_de=true"
+                    # B-fix: include_de=false 时 D/E 视角整体缺失 → 禁止任何回退
+                    # （否则 EMBER 切片会伪造维度不符的特征行，喂给模型必然报错
+                    #   或产出垃圾分数）。标记 de_blocked，下方回退分支直接跳过。
+                    de_blocked = True
 
-        if row is None and "ember_ranges" in cfg:
+        if row is None and "ember_ranges" in cfg and not de_blocked:
             try:
                 full = ensure_ember_full()
                 ranges = ember_ranges or config.get_ember_ranges(len(full))
@@ -926,7 +966,7 @@ def _tmp_upload(suffix: str = ".bin"):
 
 # =============================================================================
 #  nkrepo SHA256 + MD5 哈希库预检（命中直出 Malicious，跳过模型）
-#  + fuzzy 模糊哈希库第三级预检（ssdeep / imphash / authentihash）
+#  + fuzzy 模糊哈希库第三/四级预检（ssdeep / imphash / authentihash / tlsh）
 # =============================================================================
 
 _sha256_db = None
@@ -934,33 +974,103 @@ _md5_db = None
 _fuzzy_db = None
 
 
-def _init_hash_dbs():
-    """启动时初始化双哈希库（失败自动降级为纯模型模式，功能不回退）。
+def _active_sig_dir() -> str:
+    """解析当前生效的签名库目录（版本化发布后的单一代码路径）。
 
-    降级粒度：sha256 库挂 → 双库全降；仅 md5 库挂 → 保留 sha256 预检。
+    优先级：HASH_DB_DIR/current（symlink，Linux 生产用）
+          → HASH_DB_DIR/releases/CURRENT 指针文件（Windows 无符号链接权限时的回退）
+          → HASH_DB_DIR 本身（首次部署 / 未做过版本化发布）。
     """
-    global _sha256_db, _md5_db
-    if not config.HASH_DB_ENABLED:
-        logging.getLogger("codefender.engine").info("[hashdb] 哈希库预检已禁用 (CODEFENDER_HASH_DB_ENABLED=0)")
-        return
-    sig_dir = config.HASH_DB_DIR
-    _log = logging.getLogger("codefender.engine")
+    root = config.HASH_DB_DIR
+    cur = os.path.join(root, "current")
+    if os.path.isdir(cur):  # isdir 会穿透 symlink
+        try:
+            return os.path.realpath(cur)
+        except OSError:
+            pass
+    ptr = os.path.join(root, "releases", "CURRENT")
+    if os.path.isfile(ptr):
+        try:
+            with open(ptr, "r", encoding="utf-8") as f:
+                ver = f.read().strip()
+            d = os.path.join(root, "releases", ver)
+            if ver and os.path.isdir(d):
+                return d
+        except OSError:
+            pass
+    return root
+
+
+def _copy_sig_family(src_dir: str, dst_dir: str, base: str) -> bool:
+    """复制一族签名库（<base>.db.shards/ + <base>.db.bloom/）到 staging。
+
+    排除 -wal/-shm 残留与 *.legacy/*.tmp；任一 shards 目录存在即返回 True。
+    """
+    ok = False
+    for suffix in (".db.shards", ".db.bloom"):
+        src = os.path.join(src_dir, base + suffix)
+        if not os.path.isdir(src):
+            continue
+        ok = True
+
+        def _ignore(_src, names, _suffix=suffix):
+            return [n for n in names
+                    if n.endswith(("-wal", "-shm", ".legacy", ".tmp"))]
+
+        shutil.copytree(src, os.path.join(dst_dir, base + suffix),
+                        ignore=_ignore, dirs_exist_ok=True)
+    return ok
+
+
+def _vacuum_shards(db_obj, sids) -> Dict[str, Any]:
+    """对指定分片逐个 VACUUM（回收 INSERT 造成的页碎片）。失败仅告警不阻断。"""
+    t0 = time.time()
+    done = 0
+    for sid in sids:
+        p = db_obj._shard_path(sid)
+        if not os.path.exists(p):
+            continue
+        try:
+            c = sqlite3.connect(p)
+            try:
+                c.execute("VACUUM")
+            finally:
+                c.close()
+            done += 1
+        except sqlite3.Error as e:
+            logging.getLogger("codefender.engine").warning(
+                "[sigupdate] VACUUM 分片失败(忽略) %s: %s", p, e)
+    return {"vacuumed_shards": done, "seconds": round(time.time() - t0, 1)}
+
+
+def _build_hash_dbs(sig_dir: str, log) -> Tuple[Dict[str, Any], Dict[str, str]]:
+    """按当前 config 在给定目录构建三库实例（不触碰全局引用），失败独立降级。
+
+    降级粒度：sha256 库挂 → 双哈希全降；仅 md5 库挂 → 保留 sha256 预检；
+    fuzzy/tlsh 库挂 → 独立降级，不影响双哈希预检。本函数不抛异常。
+
+    Returns:
+        ({"sha256"|"md5"|"fuzzy": db}, {"族名": "失败原因"})
+    """
+    dbs: Dict[str, Any] = {}
+    problems: Dict[str, str] = {}
     try:
-        _sha256_db = nkrepo_scanner.HashSignatureDB(
+        dbs["sha256"] = nkrepo_scanner.HashSignatureDB(
             os.path.join(sig_dir, "sha256.db"),
             shard_count=config.HASH_DB_SHARDS,
             bloom_fp_rate=config.HASH_DB_FP_RATE,
             max_open_shards=config.HASH_DB_MAX_OPEN,
             layout=config.HASH_DB_LAYOUT,
         )
-        _log.info("[hashdb] SHA256 签名库就绪: %s 条", f"{_sha256_db.count:,}")
+        log.info("[hashdb] SHA256 签名库就绪: %s 条", f"{dbs['sha256'].count:,}")
     except Exception as e:
-        _sha256_db = None
-        _log.warning("[hashdb] SHA256 库不可用，双库降级为纯模型检测: %s", e)
+        problems["sha256"] = str(e)
+        log.warning("[hashdb] SHA256 库不可用，双库降级为纯模型检测: %s", e)
+        return dbs, problems          # md5 预检依赖 sha256 的可用性判断，直接放弃
 
-    if _sha256_db is not None and os.path.isdir(os.path.join(sig_dir, "md5.db.shards")):
+    if os.path.isdir(os.path.join(sig_dir, "md5.db.shards")):
         try:
-            _md5_db = nkrepo_scanner.HashSignatureDB(
+            dbs["md5"] = nkrepo_scanner.HashSignatureDB(
                 os.path.join(sig_dir, "md5.db"),
                 shard_count=config.HASH_DB_SHARDS,
                 bloom_fp_rate=config.HASH_DB_FP_RATE,
@@ -968,29 +1078,232 @@ def _init_hash_dbs():
                 layout=config.HASH_DB_LAYOUT,
                 hash_algo="md5",
             )
-            _log.info("[hashdb] MD5 签名库就绪: %s 条", f"{_md5_db.count:,}")
+            log.info("[hashdb] MD5 签名库就绪: %s 条", f"{dbs['md5'].count:,}")
         except Exception as e:
-            _md5_db = None
-            _log.warning("[hashdb] MD5 库不可用，降级（仅 SHA256 预检）: %s", e)
+            problems["md5"] = str(e)
+            log.warning("[hashdb] MD5 库不可用，降级（仅 SHA256 预检）: %s", e)
 
     # fuzzy 模糊哈希库 (5 表 256 分片): 独立降级, 挂了不影响 sha256/md5 预检
     if config.FUZZY_DB_ENABLED and os.path.isdir(os.path.join(sig_dir, "fuzzy.db.shards")):
         try:
-            _fuzzy_db = nkrepo_scanner.FuzzySignatureDB(
+            dbs["fuzzy"] = nkrepo_scanner.FuzzySignatureDB(
                 os.path.join(sig_dir, "fuzzy.db"),
                 max_open_shards=config.FUZZY_DB_MAX_OPEN,
                 layout="hex",
             )
-            _log.info("[hashdb] Fuzzy 模糊哈希库就绪: %s 条 %s",
-                      f"{_fuzzy_db.count:,}", _fuzzy_db._counts)
+            log.info("[hashdb] Fuzzy 模糊哈希库就绪: %s 条 %s",
+                     f"{dbs['fuzzy'].count:,}", dbs["fuzzy"]._counts)
         except Exception as e:
-            _fuzzy_db = None
-            _log.warning("[hashdb] Fuzzy 库不可用，降级（仅双哈希预检）: %s", e)
+            problems["fuzzy"] = str(e)
+            log.warning("[hashdb] Fuzzy 库不可用，降级（仅双哈希预检）: %s", e)
     elif not config.FUZZY_DB_ENABLED:
-        _log.info("[hashdb] Fuzzy 预检已禁用 (CODEFENDER_FUZZY_DB_ENABLED=0)")
+        log.info("[hashdb] Fuzzy 预检已禁用 (CODEFENDER_FUZZY_DB_ENABLED=0)")
+    return dbs, problems
+
+
+def _log_hash_db_summary(dbs: Dict[str, Any], log) -> None:
+    """一行总结，便于一眼确认过滤引擎的有效模式。"""
+    if not dbs:
+        log.info("[hashdb] 过滤引擎未启用 → 所有样本走模型集成（纯模型模式）")
+        return
+    log.info("[hashdb] 过滤引擎已启用: sha256=%s md5=%s fuzzy=%s",
+             f"{dbs['sha256'].count:,}" if dbs.get("sha256") is not None else "关闭",
+             f"{dbs['md5'].count:,}" if dbs.get("md5") is not None else "关闭",
+             f"{dbs['fuzzy'].count:,}" if dbs.get("fuzzy") is not None else "关闭")
+
+
+def _log_engine_context(log) -> None:
+    """启动横幅：档位 / 覆盖文件是否生效 / 过滤引擎是否硬要求。
+
+    这三个值决定"当前进程到底该跑什么形态"，是排查"配置没生效"的第一现场。
+    """
+    log.info("[startup] 环境档位=%s 运行时覆盖文件=%s%s", config.ENV_PROFILE,
+             "启用" if config.RUNTIME_CFG_FILE_ENABLED else "禁用",
+             f"（{config.RUNTIME_CFG_DISABLED_REASON}）"
+             if not config.RUNTIME_CFG_FILE_ENABLED else "")
+    if getattr(config, "RUNTIME_CFG_SKIPPED", False):
+        log.warning("[startup] ⚠ 发现 %s，但当前档位不加载它 → 已忽略（生产档位特征，"
+                    "避免开发期开关被带进容器）。要生效请用环境变量。",
+                    config.RUNTIME_CFG_FILE)
+    if getattr(config, "RUNTIME_CFG_APPLIED", None):
+        log.warning("[startup] ⚠ 已按 %s 覆盖配置: %s（开发档位特征；生产请改用环境变量）",
+                    config.RUNTIME_CFG_FILE, config.RUNTIME_CFG_APPLIED)
+    if getattr(config, "RUNTIME_CFG_ERROR", ""):
+        log.error("[startup] runtime_config.json 解析失败，该文件已被整份忽略: %s",
+                  config.RUNTIME_CFG_ERROR)
+    log.info("[startup] 过滤引擎要求=%s", "硬要求（缺库拒绝启动）"
+             if config.REQUIRE_HASH_DB else "允许降级为纯模型")
+
+
+def _enforce_hash_db_requirement(dbs: Dict[str, Any], log) -> None:
+    """生产档位强校验：CODEFENDER_REQUIRE_HASH_DB=1 时缺库就拒绝启动。
+
+    动机：本项目对"哈希库缺失"的历史行为是**静默降级为纯模型**——服务照常返回
+    200、样本照常出分，只是预检再也不命中。开发期这很方便；生产期这是漏检，
+    而且签名目录写错、挂载漏掉都完全没人发现。生产要的是响的失败。
+    抛出的异常会冒泡到模块 import → uvicorn 退出 → supervisord 反复重试，
+    在 `docker logs` / `supervisorctl status` 里一眼可见。
+    """
+    if not config.REQUIRE_HASH_DB:
+        return
+    if not config.HASH_DB_ENABLED:
+        raise RuntimeError(
+            "[hashdb] CODEFENDER_REQUIRE_HASH_DB=1（过滤引擎为硬要求）与 "
+            "CODEFENDER_HASH_DB_ENABLED=0（关闭哈希预检）冲突：生产档位不允许纯模型模式。\n"
+            "  · 想跑纯模型对照（本机开发）：CODEFENDER_ENV=dev + 去掉 REQUIRE_HASH_DB，"
+            "或用 dev_model_only.cmd / dev_model_only.sh 启动\n"
+            "  · 生产要降级为纯模型：改 codefender.ini 的 environment=，"
+            "显式把 CODEFENDER_REQUIRE_HASH_DB 设为 0")
+    want = ["sha256", "md5"] + (["fuzzy"] if config.FUZZY_DB_ENABLED else [])
+    missing = [k for k in want if dbs.get(k) is None]
+    if missing:
+        raise RuntimeError(
+            f"[hashdb] CODEFENDER_REQUIRE_HASH_DB=1：要求以 {want} 全部就绪，但缺失 {missing}。\n"
+            f"  签名库目录={_active_sig_dir()}\n"
+            f"  · Docker：签名库已在构建期打进镜像，容器内 {_active_sig_dir()} 应直接含 "
+            f"sha256.db.shards / md5.db.shards / fuzzy.db.shards（**不要**用 -v 挂宿主机目录，"
+            f"挂载会让容器读到与镜像脱钩的旧库）；镜像不对就重新构建："
+            f"python docker/stage_signatures.py && docker build\n"
+            f"  · 首次部署：靠 /update-signatures 完成一次发布（releases/v<ts> + current）\n"
+            f"  · 确实想允许降级：把 CODEFENDER_REQUIRE_HASH_DB 设为 0")
+    log.info("[hashdb] 硬要求校验通过：%s 全部就绪", want)
+
+
+def _init_hash_dbs():
+    """启动时初始化哈希库（默认失败自动降级为纯模型模式，功能不回退）。
+
+    ⚠️ 历史坑（2026-09-23）：本函数曾漏写 `global _fuzzy_db`，赋值落到局部变量，
+    fuzzy 库照常加载并打印"就绪"，但模块全局恒为 None → fuzzy/tlsh 预检静默失效。
+    现在三库统一由 _build_hash_dbs 返回、在同一处赋值，结构上不再可能漏项。
+
+    ⚠️ 降级行为在 CODEFENDER_REQUIRE_HASH_DB=1（生产推荐）下被禁用：缺库即拒绝启动，
+    见 _enforce_hash_db_requirement。
+    """
+    global _sha256_db, _md5_db, _fuzzy_db
+    log = logging.getLogger("codefender.engine")
+    if not config.HASH_DB_ENABLED:
+        _enforce_hash_db_requirement({}, log)     # 生产档位下这里会直接抛错
+        log.info("[hashdb] 哈希库预检已禁用 (CODEFENDER_HASH_DB_ENABLED=0)")
+        log.info("[hashdb] 过滤引擎未启用 → 所有样本走模型集成（纯模型模式）")
+        return
+    dbs, problems = _build_hash_dbs(_active_sig_dir(), log)
+    with _STATE_LOCK:
+        _sha256_db = dbs.get("sha256")
+        _md5_db = dbs.get("md5")
+        _fuzzy_db = dbs.get("fuzzy")
+    if problems:
+        log.warning("[hashdb] 启动时降级的族: %s", problems)
+    _log_hash_db_summary(dbs, log)
+    _enforce_hash_db_requirement(dbs, log)
 
 
 _init_hash_dbs()
+_log_engine_context(logging.getLogger("codefender.engine"))
+
+
+def _engine_mode() -> str:
+    """当前检测链路形态 —— 一句话回答"预检到底生效没有"。
+
+    model_only            : 三库全关/全不可用 → 所有样本走模型集成
+    hash_db+model         : config 声明的族全部就绪（sha256/md5[/fuzzy]）
+    hash_db_partial+model : 部分族缺失，剩余族仍在预检（如只有 sha256 可用）
+    """
+    have = {"sha256": _sha256_db, "md5": _md5_db, "fuzzy": _fuzzy_db}
+    if not config.HASH_DB_ENABLED or all(v is None for v in have.values()):
+        return "model_only"
+    want = ["sha256", "md5"] + (["fuzzy"] if config.FUZZY_DB_ENABLED else [])
+    return "hash_db+model" if all(have[k] is not None for k in want) \
+        else "hash_db_partial+model"
+
+
+def _hash_db_state() -> Dict[str, Any]:
+    """三库运行时状态（/health、/metrics、/admin/config 共用同一口径）。
+
+    enabled=True 但某族 count 为 None = 该族加载失败已降级，不是"没生效"。
+    """
+    return {
+        "enabled": bool(config.HASH_DB_ENABLED),
+        "fuzzy_enabled": bool(config.FUZZY_DB_ENABLED),
+        "mode": _engine_mode(),
+        "dir": _active_sig_dir(),
+        "sha256": _sha256_db.count if _sha256_db is not None else None,
+        "md5": _md5_db.count if _md5_db is not None else None,
+        "fuzzy": _fuzzy_db.count if _fuzzy_db is not None else None,
+    }
+
+
+def _close_hash_dbs() -> int:
+    """摘掉三库全局引用并关闭句柄，返回成功关闭的数量。"""
+    global _sha256_db, _md5_db, _fuzzy_db
+    with _STATE_LOCK:
+        olds = [_sha256_db, _md5_db, _fuzzy_db]
+        _sha256_db, _md5_db, _fuzzy_db = None, None, None
+    closed = 0
+    for db in olds:
+        if db is None:
+            continue
+        try:
+            db.close()
+            closed += 1
+        except Exception as e:
+            logging.getLogger("codefender.engine").warning(
+                "[hashdb] 关闭旧库句柄失败(忽略): %s", e)
+    return closed
+
+
+def _reload_hash_dbs(reason: str = "") -> Dict[str, Any]:
+    """按当前 config 值重建三库引用 —— 免重启切换过滤引擎的落地点。
+
+    **先建后换**：新实例装载完成前旧库继续承接查询，不留"配置已改、查询还是旧行为"
+    的空窗。实测整库装载约 9s，若先摘引用再建，这 9s 内所有样本都会走模型集成 ——
+    正是"改了配置却没生效/行为对不上"的经典错觉来源。
+    两套句柄短暂共存可以接受（分片均为只读，max_open_shards=16 的 LRU 上限不变），
+    旧句柄只在新实例就位后才关闭。
+
+    关闭方向（HASH_DB_ENABLED=0）无需装载，直接释放引用，瞬时生效。
+    """
+    global _sha256_db, _md5_db, _fuzzy_db
+    log = logging.getLogger("codefender.engine")
+    tag = f" ({reason})" if reason else ""
+
+    if not config.HASH_DB_ENABLED:
+        closed = _close_hash_dbs()
+        log.info("[hashdb] 过滤引擎已关闭%s → 纯模型模式（释放 %d 个旧句柄）", tag, closed)
+        if config.REQUIRE_HASH_DB:
+            # 运行时热切换是显式运维动作，不阻止；但生产档位下必须喊出来：
+            # 这是内存内生效、重启进程即恢复全引擎，绝不落盘（见 config.save_runtime_cfg_file）。
+            log.warning("[hashdb] ⚠ 生产档位(REQUIRE_HASH_DB=1)下被运行时关闭哈希预检"
+                        "%s → 当前为纯模型模式；重启进程即恢复全引擎", tag)
+        return _hash_db_state()
+
+    dbs, problems = _build_hash_dbs(_active_sig_dir(), log)
+    with _STATE_LOCK:
+        olds = [_sha256_db, _md5_db, _fuzzy_db]
+        _sha256_db = dbs.get("sha256")
+        _md5_db = dbs.get("md5")
+        _fuzzy_db = dbs.get("fuzzy")
+
+    closed = 0
+    for db in olds:
+        if db is None:
+            continue
+        try:
+            db.close()
+            closed += 1
+        except Exception as e:
+            log.warning("[hashdb] 关闭旧库句柄失败(忽略): %s", e)
+
+    _log_hash_db_summary(dbs, log)
+    st = _hash_db_state()
+    log.info("[hashdb] 配置热切换完成%s: mode=%s enabled=%s sha256=%s md5=%s fuzzy=%s (关闭旧句柄 %d 个)",
+             tag, st["mode"], st["enabled"], st["sha256"], st["md5"], st["fuzzy"], closed)
+    if problems:
+        log.warning("[hashdb] 热切换中降级的族: %s", problems)
+        if config.REQUIRE_HASH_DB:
+            log.error("[hashdb] ⚠ 生产档位要求三库齐备，但热切换后有族不可用: %s。"
+                      "旧库已释放，当前处于降级形态；建议修复后再次热切换或重启进程。",
+                      problems)
+    return st
 
 
 def _lookup_hashes(md5_hex: str, sha256_hex: str, file_size: int):
@@ -1038,11 +1351,33 @@ def _compute_fuzzy_hashes(content: bytes) -> Dict[str, Optional[str]]:
     return out
 
 
-def _lookup_fuzzy(content: bytes, file_size: int):
-    """第三级预检：fuzzy 模糊哈希库（ssdeep / imphash / authentihash 按值查 5 表）。
+def _compute_tlsh_key(content: bytes, max_bytes: Optional[int] = None) -> Optional[str]:
+    """第四级 tlsh 的库口径键 ('t1'+70hex 小写); 超限/不可用返回 None
 
-    带 file_size 做大小比对——imphash/vhash 类哈希对常见壳/运行时存在碰撞
-    （如 PyInstaller 打包的良性文件），大小校验可显著抑制误报。
+    独立于 _compute_fuzzy_hashes: tlsh 纯 Python 实测 ~0.53 MB/s，只在
+    ssdeep/imphash/authentihash 全未命中时才调用，按档位限流:
+    在线单文件 FUZZY_DB_TLSH_MAX_BYTES (默认 1MB) / 离线批量 FUZZY_DB_TLSH_MAX_BYTES_OFFLINE (默认 16MB)。
+    """
+    try:
+        return nkrepo_staticinfo.compute_tlsh_db_key(
+            content, max_bytes=max_bytes if max_bytes is not None
+            else config.FUZZY_DB_TLSH_MAX_BYTES)
+    except Exception:
+        return None
+
+
+def _lookup_fuzzy(content: bytes, file_size: int, tlsh_max_bytes: Optional[int] = None):
+    """第三/四级预检：fuzzy 模糊哈希库。
+
+    级序（任一级命中即返回）:
+      ssdeep → imphash → authentihash → tlsh
+
+    前三项一起算出后查一次；全部未命中才计算 tlsh（纯 Python 实测 ~0.53 MB/s，
+    只在"前三级都没命中"时才付这份代价，按 tlsh_max_bytes 档位限流：
+    在线默认 1MB / 离线批量默认 16MB）。
+
+    带 file_size 做大小比对——imphash/vhash/tlsh 类哈希对常见壳/运行时/近似样本
+    存在碰撞（TLSH 更是局部敏感哈希, 不同文件可同值），大小校验可显著抑制误报。
 
     Returns:
         (hit_dict, "fuzzy_db") 命中时；否则 (None, None)。
@@ -1050,15 +1385,19 @@ def _lookup_fuzzy(content: bytes, file_size: int):
     if _fuzzy_db is None:
         return None, None
     fz = _compute_fuzzy_hashes(content)
-    if not any(fz.values()):
-        return None, None
     try:
         hits = _fuzzy_db.check_by_computed_hashes(
             ssdeep=fz.get("ssdeep"),
             imphash_hex=fz.get("imphash"),
             authentihash_hex=fz.get("authentihash"),
             file_size=file_size,
-        )
+        ) if any(fz.values()) else []
+        if not hits:
+            # 第四级: tlsh（字符串型, 需库口径 't1'+70hex 小写）
+            tlsh_key = _compute_tlsh_key(content, max_bytes=tlsh_max_bytes)
+            if tlsh_key:
+                hits = _fuzzy_db.check_by_computed_hashes(
+                    tlsh=tlsh_key, file_size=file_size)
     except Exception as e:
         logging.getLogger("codefender.engine").warning("[hashdb] fuzzy 查询异常(忽略): %s", e)
         return None, None
@@ -1090,7 +1429,7 @@ def _build_hash_hit_result(md5_hex: str, sha256_hex: str, crc32: str,
 
 
 def _hash_precheck(content: bytes, file_name: str, file_size: int) -> Optional[Dict[str, Any]]:
-    """内存三级预检（/predict-single 用）：sha256 → md5 → fuzzy，任一命中返回结果 dict，全部未命中返回 None。"""
+    """内存四级预检（/predict-single 用）：sha256 → md5 → fuzzy(ssdeep/imphash/authentihash) → tlsh，任一命中返回结果 dict，全部未命中返回 None。"""
     if _sha256_db is None and _md5_db is None and _fuzzy_db is None:
         return None
     md5_hex, _sha1_hex, sha256_hex = nkrepo_scanner.compute_hashes_bytes(content)
@@ -1104,10 +1443,11 @@ def _hash_precheck(content: bytes, file_name: str, file_size: int) -> Optional[D
 
 
 def _hash_precheck_file(path: str) -> Optional[Dict[str, Any]]:
-    """流式三级哈希预检（/predict-directory 用，1MB 分块避免整文件载入内存）。
+    """流式四级哈希预检（/predict-directory 用，1MB 分块避免整文件载入内存）。
 
     fuzzy 级需要文件内容算哈希: 未命中双哈希库后才读文件（绝大多数干净文件
-    走不到这一步），读入上限 64MB 防御异常大文件。
+    走不到这一步），读入上限 64MB 防御异常大文件；tlsh 用离线档限流
+    FUZZY_DB_TLSH_MAX_BYTES_OFFLINE（默认 16MB，实测 ~0.53 MB/s ≈ ≤30s/文件）。
     """
     if _sha256_db is None and _md5_db is None and _fuzzy_db is None:
         return None
@@ -1127,7 +1467,8 @@ def _hash_precheck_file(path: str) -> Optional[Dict[str, Any]]:
         try:
             with open(path, "rb") as f:
                 content = f.read()
-            hit, source = _lookup_fuzzy(content, size)
+            hit, source = _lookup_fuzzy(
+                content, size, tlsh_max_bytes=config.FUZZY_DB_TLSH_MAX_BYTES_OFFLINE)
         except OSError:
             hit, source = None, None
     if hit is None:
@@ -1181,6 +1522,13 @@ def metrics() -> Dict[str, Any]:
     m["models_loaded"] = bool(_ENSEMBLE)
     if _ENSEMBLE:
         m["model_count"] = _ENSEMBLE.K
+    # 过滤引擎状态（与 /health 同口径）
+    _hdb = _hash_db_state()
+    m["hash_db_enabled"] = _hdb["enabled"]
+    m["hash_db_mode"] = _hdb["mode"]
+    m["hash_db_sha256"] = _hdb["sha256"] or 0
+    m["hash_db_md5"] = _hdb["md5"] or 0
+    m["hash_db_fuzzy"] = _hdb["fuzzy"] or 0
     return m
 
 
@@ -1196,8 +1544,24 @@ def health() -> Dict[str, Any]:
             except OSError:
                 model_md5 = "read_error"
 
+        hdb = _hash_db_state()
         base = {
             "status": "ok",
+            # pid / started_at：判断"配置改完没生效"的第一现场证据 —— 重启后这两个
+            # 值必须变化。若不变，说明你改的配置根本没进到这个进程（端口被旧进程占着、
+            # 或者重启的是别的东西）。
+            "pid": os.getpid(),
+            "started_at": datetime.fromtimestamp(_START_TIME).strftime("%Y-%m-%d %H:%M:%S"),
+            # env=dev 是本机开发档位（可读写 runtime_config.json），prod 是容器/生产档位
+            # （覆盖文件被忽略）。engine_mode 一眼回答"预检到底生效没有"。
+            "env": config.ENV_PROFILE,
+            "engine_mode": hdb["mode"],
+            "runtime_cfg_file": config.RUNTIME_CFG_FILE,
+            "runtime_cfg_file_enabled": config.RUNTIME_CFG_FILE_ENABLED,
+            "runtime_cfg_disabled_reason": config.RUNTIME_CFG_DISABLED_REASON,
+            "runtime_cfg_applied": list(getattr(config, "RUNTIME_CFG_APPLIED", [])),
+            "runtime_cfg_error": getattr(config, "RUNTIME_CFG_ERROR", ""),
+            "require_hash_db": bool(config.REQUIRE_HASH_DB),
             "model_path": MODEL_PATH,
             "model_md5": model_md5,
             "model_count": ens.K,
@@ -1208,6 +1572,9 @@ def health() -> Dict[str, Any]:
                 "checkpoint": _resolve_malgraph_ckpt_path(),
                 "vocab": _resolve_malgraph_vocab_path(),
             },
+            # 过滤引擎（四级哈希签名库预检）实际状态：不接受日志即可确认开关是否生效
+            # enabled=False → 三库恒为 None 且 count 全为 null，所有样本走模型。
+            "hash_db": hdb,
         }
         if MALGRAPH_ENABLED:
             try:
@@ -1350,6 +1717,479 @@ def reload_model(
     except OSError:
         new_info["file_size"] = 0
     return {"status": "reloaded", "previous": old_info, "current": new_info}
+
+
+# ──────────────────────────────────────────────────────────────────
+# 签名库周更上传（hdb 一条龙：导入 → finalize → 校验 → VACUUM → 发布 → 热切换）
+# 上传的是 ClamAV hdb 系明文文件（3 字段行喂 sha256/md5 库，8 字段行喂 fuzzy 库，
+# 一个文件混装即可）。全程在 staging 副本上操作，最后一步才原子换引用，失败自动保留旧库。
+# ──────────────────────────────────────────────────────────────────
+
+def _sig_families() -> List[str]:
+    """需要参与更新的库族名（md5 目录缺失时自动跳过，与 _init_hash_dbs 行为一致）。"""
+    fams = ["sha256"]
+    if os.path.isdir(os.path.join(_active_sig_dir(), "md5.db.shards")):
+        fams.append("md5")
+    if config.FUZZY_DB_ENABLED and os.path.isdir(
+            os.path.join(_active_sig_dir(), "fuzzy.db.shards")):
+        fams.append("fuzzy")
+    return fams
+
+
+def _build_sig_instances(sig_dir: str) -> Dict[str, Any]:
+    """按 _init_hash_dbs 同参数在指定目录构建三个库实例（任何一族失败即抛异常，不降级——
+    发布路径不允许半残状态，与启动时的降级语义不同）。"""
+    out: Dict[str, Any] = {}
+    out["sha256"] = nkrepo_scanner.HashSignatureDB(
+        os.path.join(sig_dir, "sha256.db"),
+        shard_count=config.HASH_DB_SHARDS,
+        bloom_fp_rate=config.HASH_DB_FP_RATE,
+        max_open_shards=config.HASH_DB_MAX_OPEN,
+        layout=config.HASH_DB_LAYOUT,
+    )
+    if os.path.isdir(os.path.join(sig_dir, "md5.db.shards")):
+        out["md5"] = nkrepo_scanner.HashSignatureDB(
+            os.path.join(sig_dir, "md5.db"),
+            shard_count=config.HASH_DB_SHARDS,
+            bloom_fp_rate=config.HASH_DB_FP_RATE,
+            max_open_shards=config.HASH_DB_MAX_OPEN,
+            layout=config.HASH_DB_LAYOUT,
+            hash_algo="md5",
+        )
+    if config.FUZZY_DB_ENABLED and os.path.isdir(os.path.join(sig_dir, "fuzzy.db.shards")):
+        out["fuzzy"] = nkrepo_scanner.FuzzySignatureDB(
+            os.path.join(sig_dir, "fuzzy.db"),
+            max_open_shards=config.FUZZY_DB_MAX_OPEN,
+            layout="hex",
+        )
+    return out
+
+
+def _detect_source_format(sample_path: str) -> str:
+    """探测签名源文件格式: 'csv' / 'hashbase9' / 'clamav-hdb'（以首个有效行为准）。
+
+    - csv:       日更 CSV（cn_vt*.csv, 22 列, 表头含 sha256/md5/ssdeep）
+    - hashbase9: sha256:size:name:ssdeep:tlsh:md5:rich:authentihash:imphash:
+    - clamav-hdb: sha256:size:name[:ssdeep:vhash:authentihash:imphash:rich[:tlsh]]
+    """
+    with open(sample_path, "r", encoding="utf-8-sig", errors="ignore") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            low = line.lower()
+            if "," in line and "sha256" in low and ("md5" in low or "ssdeep" in low):
+                return "csv"
+            # 无表头 CSV 兜底: 逗号分段里出现 64 位 hex 字段
+            if line.count(",") >= 5:
+                cells = [t.strip().lower() for t in line.split(",")]
+                if any(len(t) == 64 and all(ch in "0123456789abcdef" for ch in t)
+                       for t in cells):
+                    return "csv"
+            parts = line.split(":")
+            if len(parts) < 9:
+                return "clamav-hdb"
+            f5 = parts[5].strip().lower()
+            if len(f5) == 32 and all(ch in "0123456789abcdef" for ch in f5):
+                return "hashbase9"
+            return "clamav-hdb"
+    return "clamav-hdb"
+
+
+def _detect_hashbase_format(sample_path: str) -> bool:
+    """（兼容旧接口）True = hashBase 9 字段 hdb。"""
+    return _detect_source_format(sample_path) == "hashbase9"
+
+
+@app.post("/update-signatures")
+def update_signatures(
+    file: Optional[UploadFile] = File(
+        None, description="上传单个 .csv / .hdb 或 .zip（内含多个）"),
+    dir_path: Optional[str] = Query(
+        default=None,
+        description="服务器本地目录（含日更 CSV 或 00.hdb~ff.hdb，如挂载的 hashBase），与 file 二选一"),
+    week_id: Optional[str] = Query(
+        default=None,
+        description="周/日标识（如 2026W39 或 20260923）：imported_files 以 <week_id>__<文件名> 登记，每次必须换新"),
+    malicious_only: bool = Query(
+        default=True,
+        description="CSV 源专用：跳过无任何威胁标注（category/family/kav/defender/vt）的行"),
+    vacuum: bool = Query(
+        default=True, description="是否对受影响分片执行 VACUUM（增量更新建议开）"),
+) -> Dict[str, Any]:
+    """上传/指向签名源（日更 CSV / hdb）→ staging 导入 → 校验 → 发布 releases/v<ts> → 热切换。
+
+    源格式自动探测（逐文件）：
+    输入支持单个文件 / .zip 包 / 服务器本地目录。imported_files 以 <week_id>__<文件名>
+    登记，同名文件重复投递不会被去重误跳；行级幂等由 INSERT OR IGNORE 保证，
+    同一批数据重复喂也安全。重复提交同一输入 → inserted=0 → no_new_rows 不发布。
+    """
+    log = logging.getLogger("codefender.engine")
+    if not config.HASH_DB_ENABLED:
+        raise HTTPException(400, detail="hash db disabled (CODEFENDER_HASH_DB_ENABLED=0)")
+    # 直接函数调用（测试/脚本）时未传的形参是 FastAPI 的 File/Query 标记对象而非 None,
+    # 统一归一化为"实际值或默认值", 否则标记对象恒为真会误判参数二选一
+    upload_name = getattr(file, "filename", None) if file is not None else None
+    if not isinstance(upload_name, str):
+        upload_name = None
+    if not isinstance(dir_path, str):
+        dir_path = None
+    if not isinstance(week_id, str):
+        week_id = None
+    malicious_only = malicious_only if isinstance(malicious_only, bool) else True
+    vacuum = vacuum if isinstance(vacuum, bool) else True
+    has_upload = bool(upload_name)
+    if has_upload == bool(dir_path):
+        raise HTTPException(400, detail="file(上传 .csv/.hdb/.zip) 与 dir_path(本地目录) 必须二选一")
+
+    root = config.HASH_DB_DIR
+    build_dir = os.path.join(root, "build")
+    os.makedirs(build_dir, exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+    staging = os.path.join(build_dir, f"staging-{ts}")
+    incoming_dir = os.path.join(build_dir, f"incoming-{ts}")
+    week = "".join(ch for ch in (week_id or "") if ch.isalnum() or ch in "-_") or ts
+    old_counts: Dict[str, Optional[int]] = {}
+    new_counts: Dict[str, int] = {}
+    inserted_rows: Dict[str, int] = {}
+    fmt_count: Dict[str, int] = {}
+    csv_stats: Dict[str, int] = {}
+    zip_tmp: Optional[str] = None
+    src_exts = (".csv", ".hdb")
+
+    try:
+        # 2) 收集签名源文件（本地目录 / zip 解包 / 单文件上传，统一落位并带周前缀）
+        src_dir = _active_sig_dir()
+        fams = _sig_families()
+        if not fams:
+            raise HTTPException(500, detail="当前签名库目录缺少 sha256.db.shards，无法更新")
+        os.makedirs(staging, exist_ok=True)
+        os.makedirs(incoming_dir, exist_ok=True)
+        sources: List[str] = []
+        if dir_path:
+            if not os.path.isdir(dir_path):
+                raise HTTPException(400, detail=f"dir_path 不是目录: {dir_path}")
+            sources = [os.path.join(dir_path, n) for n in sorted(os.listdir(dir_path))
+                       if n.lower().endswith(src_exts)]
+        else:
+            raw_name = os.path.basename(file.filename)
+            if os.path.sep in raw_name or "/" in raw_name or raw_name.startswith("."):
+                raise HTTPException(400, detail=f"非法文件名: {raw_name!r}")
+            if raw_name.lower().endswith(".zip"):
+                zip_tmp = os.path.join(build_dir, f"upload-{ts}.zip")
+                with open(zip_tmp, "wb") as out:
+                    shutil.copyfileobj(file.file, out, length=1024 * 1024)
+                try:
+                    with zipfile.ZipFile(zip_tmp) as zf:
+                        for info in zf.infolist():
+                            member = os.path.basename(info.filename)
+                            if not member.lower().endswith(src_exts) or member.startswith("."):
+                                continue
+                            dest = os.path.join(incoming_dir, f"{week}__{member}")
+                            with zf.open(info) as fsrc, open(dest, "wb") as fdst:
+                                shutil.copyfileobj(fsrc, fdst, length=1024 * 1024)
+                            sources.append(dest)
+                except zipfile.BadZipFile:
+                    raise HTTPException(400, detail="zip 文件损坏")
+            elif raw_name.lower().endswith(src_exts):
+                dest = os.path.join(incoming_dir, f"{week}__{raw_name}")
+                with open(dest, "wb") as out:
+                    shutil.copyfileobj(file.file, out, length=1024 * 1024)
+                sources = [dest]
+            else:
+                raise HTTPException(400, detail=f"仅接受 .csv/.hdb/.zip 文件，收到: {raw_name!r}")
+        sources = [p for p in sources if os.path.getsize(p) > 0]
+        if not sources:
+            raise HTTPException(400, detail="输入中未找到任何非空 .csv/.hdb 文件")
+        for fam in fams:
+            if not _copy_sig_family(src_dir, staging, fam):
+                raise HTTPException(500, detail=f"复制 {fam} 库失败: {src_dir} 缺少分片目录")
+
+        # 3) staging 上构建实例并导入（逐文件格式探测；record_name 带周前缀防 basename 去重）
+        before_dbs = _build_sig_instances(staging)
+        dirty: Dict[str, set] = {}
+        try:
+            for fam, db in before_dbs.items():
+                old_counts[fam] = db.count
+                inserted_rows[fam] = 0
+            for path in sources:
+                rec = os.path.basename(path) if not dir_path \
+                    else f"{week}__{os.path.basename(path)}"
+                fmt = _detect_source_format(path)
+                fmt_count[fmt] = fmt_count.get(fmt, 0) + 1
+                if fmt == "csv":
+                    per_fam = nkrepo_scanner.import_csv_signatures(
+                        path, before_dbs, record_name=rec, malicious_only=malicious_only,
+                        stats=csv_stats)
+                    for fam, n in per_fam.items():
+                        inserted_rows[fam] += int(n)
+                elif fmt == "hashbase9":
+                    for fam, db in before_dbs.items():
+                        inserted_rows[fam] += int(db.import_hashbase_hdb(path, record_name=rec))
+                else:
+                    for fam, db in before_dbs.items():
+                        inserted_rows[fam] += int(db.import_hdb(path, record_name=rec))
+            print(f"[sigupdate] %d 个源文件, 格式分布={fmt_count}, week={week}" % len(sources))
+            log.info("[sigupdate] 输入 %d 个文件, 格式分布=%s, week=%s, malicious_only=%s",
+                     len(sources), fmt_count, week, malicious_only)
+            if csv_stats:
+                log.info("[sigupdate] CSV 统计: %s", csv_stats)
+            # dirty 必须在 finalize 之前采集（finalize 会清空 _bloom_dirty）
+            for fam, db in before_dbs.items():
+                dirty[fam] = set(db._bloom_dirty)
+                db.finalize()
+            new_counts = {fam: db.count for fam, db in before_dbs.items()}
+        finally:
+            for db in before_dbs.values():
+                try:
+                    db.close()
+                except Exception:
+                    pass
+
+        # 4) 幂等检查：零新增 = 输入已在库中，不发布
+        if sum(inserted_rows.values()) == 0:
+            return {"status": "no_new_rows",
+                    "detail": "所有输入均未产生新签名（行级去重），未发布新版本",
+                    "files": len(sources), "week": week, "formats": fmt_count,
+                    "csv_stats": csv_stats, "counts": new_counts}
+
+        # 5) 校验：各库计数不得回退（对照在线旧库；在线库缺席时仅要求 staging 自洽）
+        with _STATE_LOCK:
+            cur = {"sha256": _sha256_db, "md5": _md5_db, "fuzzy": _fuzzy_db}
+        for fam, old_db in cur.items():
+            if fam in new_counts and old_db is not None and new_counts[fam] < old_db.count:
+                raise HTTPException(409, detail=(
+                    f"{fam} 库计数回退: {new_counts[fam]:,} < {old_db.count:,}，拒绝发布"))
+
+        # 6) VACUUM 受影响分片（fuzzy 的 dirty 是 (ftype, sid) 对，分片号取 sid 并集）
+        vac_info: Dict[str, Any] = {}
+        if vacuum:
+            vac_dbs = _build_sig_instances(staging)
+            try:
+                for fam, db in vac_dbs.items():
+                    sids = {sid for (_ft, sid) in dirty[fam]} if fam == "fuzzy" \
+                        else dirty[fam]
+                    sids = sorted(s for s in sids if isinstance(s, int))
+                    if sids:
+                        vac_info[fam] = _vacuum_shards(db, sids)
+            finally:
+                for db in vac_dbs.values():
+                    try:
+                        db.close()
+                    except Exception:
+                        pass
+
+        # 7) 发布：staging → releases/v<ts>（同卷 rename，原子）；current 指向它
+        rel_dir = os.path.join(root, "releases")
+        release = os.path.join(rel_dir, f"v{ts}")
+        os.makedirs(rel_dir, exist_ok=True)
+        os.rename(staging, release)
+        try:
+            link = os.path.join(root, "current")
+            if os.path.islink(link):
+                os.remove(link)
+            elif os.path.isdir(link):
+                # 已有实体目录（旧布局残留）：不能覆盖，退化为指针文件
+                raise OSError("current 为实体目录")
+            os.symlink(release, link)
+        except OSError:
+            # Windows 无符号链接权限等场景：用 releases/CURRENT 指针文件兜底
+            with open(os.path.join(rel_dir, "CURRENT"), "w", encoding="utf-8") as f:
+                f.write(f"v{ts}")
+        # 8) 热切换：直接从发布目录构建新实例，校验通过后换全局引用（失败保留旧库）
+        new_dbs = _build_sig_instances(release)
+        try:
+            for fam, db in new_dbs.items():
+                if db.count != new_counts[fam]:
+                    raise RuntimeError(f"发布后 {fam} 计数不一致: {db.count} != {new_counts[fam]}")
+        except Exception:
+            for db in new_dbs.values():
+                try:
+                    db.close()
+                except Exception:
+                    pass
+            raise
+
+        replaced: Dict[str, Any] = {}
+        with _STATE_LOCK:
+            globals_map = {"sha256": "_sha256_db", "md5": "_md5_db", "fuzzy": "_fuzzy_db"}
+            for fam, gname in globals_map.items():
+                if fam in new_dbs:
+                    replaced[gname] = globals()[gname]
+                    globals()[gname] = new_dbs[fam]
+        log.info("[sigupdate] %d 个源文件 (week=%s, 格式=%s) 已发布并热切换: %s → %s",
+                 len(sources), week, fmt_count, old_counts, new_counts)
+        return {
+            "status": "published",
+            "files": len(sources),
+            "week": week,
+            "formats": fmt_count,
+            "csv_stats": csv_stats,
+            "release": release,
+            "active_dir": release,
+            "rows_inserted": inserted_rows,
+            "counts": {"before": old_counts, "after": new_counts},
+            "vacuum": vac_info,
+            "note": "已热切换，无需重启。回滚：将 current 指回上一版本目录后重启进程（重启会经 _active_sig_dir 解析回旧版）。",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.error("update-signatures 失败:\n%s", traceback.format_exc())
+        raise HTTPException(500, detail=f"update failed: {e}")
+    finally:
+        if os.path.isdir(staging):
+            shutil.rmtree(staging, ignore_errors=True)
+        if os.path.isdir(incoming_dir):
+            shutil.rmtree(incoming_dir, ignore_errors=True)
+        if zip_tmp and os.path.isfile(zip_tmp):
+            try:
+                os.remove(zip_tmp)
+            except OSError:
+                pass
+
+
+# ──────────────────────────────────────────────────────────────────
+# 运行时配置（免重启改配置）
+# ──────────────────────────────────────────────────────────────────
+# 背景：config.py 的常量在 import 时从 env 读一次。环境变量类的问题（CMD 语法、
+# 容器 env 固化、supervisord 自管环境）会让人误以为"改配置不生效"。这里给出一条
+# 与 env 完全解耦的旁路：直接改 config 模块属性 + 重建受影响的运行期对象。
+#
+# 与 /update-signatures、/reload-model 一致，本端点不做鉴权，生产请置于内网/网关之后。
+
+_CONFIG_HOT_KEYS = {"HASH_DB_ENABLED", "FUZZY_DB_ENABLED", "HASH_DB_DIR"}
+_CONFIG_META_KEYS = {"PERSIST", "RESET", "RELOAD_FILE", "RELOAD_FROM_ENV"}
+
+
+def _admin_config_payload() -> Dict[str, Any]:
+    return {
+        "pid": os.getpid(),
+        "started_at": datetime.fromtimestamp(_START_TIME).strftime("%Y-%m-%d %H:%M:%S"),
+        # 档位：dev 才能读写覆盖文件；prod（容器）忽略它 → 开发期开关进不了生产
+        "env_profile": config.ENV_PROFILE,
+        "engine_mode": _engine_mode(),
+        "config_file": config.RUNTIME_CFG_FILE,
+        "config_file_exists": os.path.isfile(config.RUNTIME_CFG_FILE),
+        "config_file_enabled": config.RUNTIME_CFG_FILE_ENABLED,
+        "config_file_disabled_reason": config.RUNTIME_CFG_DISABLED_REASON,
+        "config_file_error": getattr(config, "RUNTIME_CFG_ERROR", ""),
+        "config_file_applied": list(getattr(config, "RUNTIME_CFG_APPLIED", [])),
+        "require_hash_db": bool(config.REQUIRE_HASH_DB),
+        "items": config.runtime_cfg_state(),
+        "hash_db": _hash_db_state(),
+        "note": ("hot_reload=true 的项改完立即生效；false 的项只影响下次启动，"
+                 "需重启进程（如数据集构建期开关）。"
+                 "config_file_enabled=false 时覆盖文件被忽略且 persist 会被拒绝"
+                 "（生产档位特征，重启即恢复全引擎）。"),
+    }
+
+
+@app.get("/admin/config")
+def admin_config_get() -> Dict[str, Any]:
+    """查看每个可覆盖配置项的当前值、来源（env/default/runtime）与生效方式。"""
+    return _admin_config_payload()
+
+
+@app.post("/admin/config")
+def admin_config_set(payload: Dict[str, Any] = Body(default={})) -> Dict[str, Any]:
+    """运行时改配置（默认免重启）。请求体示例：
+
+        {"hash_db_enabled": false}                       # 关闭过滤引擎 → 纯模型
+        {"hash_db_enabled": true, "fuzzy_db_enabled": true}
+        {"persist": true, "hash_db_enabled": false}      # 同时落盘，重启后仍生效
+        {"reset": ["HASH_DB_ENABLED"]}                   # 回到 env/默认基线
+        {"reload_file": true}                            # 重新读取 runtime_config.json
+
+    键大小写不敏感，也接受 {"overrides": {...}} 包装形式。
+
+    档位差异（开发 vs 生产）：
+      · 内存内覆盖（默认）→ 两种档位都可用；重启进程即恢复，不留痕。
+      · persist=true 落盘   → 仅本机开发档位允许；生产档位返回 409（见 config 档位隔离）。
+    """
+    log = logging.getLogger("codefender.engine")
+    # 直接函数调用（探针/单测）时 FastAPI 的默认值是 Body 标记对象而非 dict，容错
+    p = payload if isinstance(payload, dict) else {}
+    nested = p.get("overrides") if isinstance(p.get("overrides"), dict) else None
+
+    meta = {str(k).upper(): v for k, v in p.items()
+            if str(k).upper() in _CONFIG_META_KEYS}
+    raw: Dict[str, Any] = {}
+    for src in (p, nested or {}):
+        for k, v in src.items():
+            ku = str(k).upper()
+            if ku in _CONFIG_META_KEYS or ku == "OVERRIDES":
+                continue
+            raw[ku] = v
+
+    bad = [k for k in raw if k not in config.RUNTIME_SPEC]
+    if bad:
+        raise HTTPException(400, detail=(
+            f"不支持的配置项 {bad}；可用: {sorted(config.RUNTIME_SPEC)}"))
+
+    persist = bool(meta.get("PERSIST", False))
+    reset = meta.get("RESET") or []
+    if isinstance(reset, (str, bytes)):
+        reset = [reset]
+    reset = [str(r).upper() for r in reset]
+    bad_r = [k for k in reset if k not in config.RUNTIME_SPEC]
+    if bad_r:
+        raise HTTPException(400, detail=f"不支持的配置项 {bad_r}")
+
+    # 档位闸门：生产档位不落盘、也不读覆盖文件。
+    # 在动手之前就拒绝 → 整请求原子失败，不会出现"内存改了、盘没写"的中间态。
+    if not config.RUNTIME_CFG_FILE_ENABLED:
+        _why = (f"当前档位({config.ENV_PROFILE})的运行时覆盖文件被禁用："
+                f"{config.RUNTIME_CFG_DISABLED_REASON}")
+        _how = ("  · 只做临时切换（重启即恢复、不留痕）：去掉 persist，改用纯内存覆盖\n"
+                "  · 要长期固化：改 codefender.ini 的 environment= 行后重启\n"
+                "  · 本机开发要用覆盖文件：CODEFENDER_ENV=dev（或 dev_model_only 脚本）")
+        if persist:
+            raise HTTPException(409, detail=f"{_why}\n{_how}")
+        if meta.get("RELOAD_FILE"):
+            raise HTTPException(409, detail=f"{_why}\n{_how}")
+
+    try:
+        # 1) 覆盖文件重载（可选）：文件 → 模块属性
+        file_applied: Dict[str, Any] = {}
+        if meta.get("RELOAD_FILE"):
+            file_applied, err = config.load_runtime_cfg_file(origin="file")
+            if err:
+                raise HTTPException(400, detail=f"runtime_config.json 读取失败: {err}")
+            config.RUNTIME_CFG_APPLIED = sorted(file_applied)
+            config.RUNTIME_CFG_ERROR = ""
+
+        # 2) 显式覆盖 / 复位（API 优先级最高）
+        restored = config.reset_runtime_overrides(reset) if reset else {}
+        applied = config.apply_runtime_overrides(raw, origin="api", persist=persist) \
+            if raw else {}
+
+        # 3) 受影响的运行期对象重建：过滤引擎三库是唯一需要在进程内重建的重对象
+        touched = set(applied) | set(restored) | set(file_applied)
+        hdb = _reload_hash_dbs(
+            "admin/config: " + ",".join(sorted(touched))) if (touched & _CONFIG_HOT_KEYS) \
+            else _hash_db_state()
+
+        only_cold = sorted(k for k in (touched & set(config.RUNTIME_SPEC))
+                           if not config.RUNTIME_SPEC[k][2])
+        resp = _admin_config_payload()
+        resp.update({
+            "status": "ok",
+            "applied": applied,
+            "reset": restored,
+            "reloaded_from_file": file_applied,
+            "persisted_to": config.RUNTIME_CFG_FILE if persist else None,
+            "hash_db": hdb,
+            "cold_keys_pending_restart": only_cold,
+        })
+        log.info("[admin/config] applied=%s reset=%s persist=%s → hash_db=%s",
+                 applied, list(restored), persist, hdb)
+        return resp
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.error("admin/config 失败:\n%s", traceback.format_exc())
+        raise HTTPException(500, detail=f"config update failed: {e}")
 
 
 # ──────────────────────────────────────────────────────────────────
@@ -1606,12 +2446,16 @@ def _build_batch_views(
             if vname in views:
                 view_dims[vname] = views[vname].reshape(-1).shape[0]
                 break
-        # Fallback if no sample has this view
-        if vname not in view_dims:
-            view_dims[vname] = RAW_LEN if vname == "V1_byte" else 2381
+        # B-fix: 整批都没有该视角（如 include_de=false 时的 D/E 视角）→
+        # 不再落 2381 全零兜底矩阵喂模型，直接跳过构建。该视角对应的
+        # 模型在 predict_all 中因视角缺席而整轮不参与，由聚合掩码排除。
+        if vname not in view_dims and vname == "V1_byte":
+            view_dims[vname] = RAW_LEN
     
     # Second pass: build batch matrix for each view
     for vname in view_names:
+        if vname not in view_dims:
+            continue  # 整批缺席的视角：不构建假矩阵，对应模型由聚合掩码排除
         view_rows: List[np.ndarray] = []
         expected_dim = view_dims[vname]
         
@@ -1816,12 +2660,41 @@ async def _batch_scan_samples(
             batch_views,
         )
         
-        # Step 4: Ensemble prediction (仅有效模型参与, 缺失模型不计入分母)
-        valid_k = [k for k, mname in enumerate(ens._model_names) if ens._models.get(mname) is not None]
+        # Step 4: Ensemble prediction (B3/B-fix 掩码聚合)
+        # 排除三类无效槽位，避免 0.5 常量把集成分数拉向 0.5：
+        #   a) 模型对象缺失 / special / skip（valid_model_mask 口径）
+        #   b) 本轮视角整批缺席的模型（如 include_de=false 时的 D/E 模型，
+        #      predict_all 从未给它们赋分，_scores 里是 0.5 初值）
+        valid_model_of_view = {}
+        for vname, mnames in ens.view_groups.items():
+            for mname in mnames:
+                valid_model_of_view[mname] = vname
+        available_views = set(batch_views.keys())
+
+        valid_k: List[int] = []
+        excluded: Dict[str, str] = {}
+        for k, mname in enumerate(ens._model_names):
+            # 先看类型再对象（special 槽位 load() 后对象为 None，但语义是 special）
+            if ens._model_types.get(mname) in ("special", "skip"):
+                excluded[mname] = "special_pipeline"
+                continue
+            if ens._models.get(mname) is None:
+                excluded[mname] = "model_not_loaded"
+                continue
+            vname = valid_model_of_view.get(mname)
+            if vname is not None and vname not in available_views:
+                excluded[mname] = f"view_unavailable:{vname}"
+                continue
+            valid_k.append(k)
+
         if valid_k:
             valid_scores = per_model_scores[:, valid_k]       # (N, K_valid)
             batch_scores = valid_scores.mean(axis=1)           # 等权平均
             batch_predictions = (batch_scores > 0.5).astype(int)
+            if excluded:
+                print(f"  [集成掩码] 本次批量排除 {len(excluded)} 个模型: "
+                      f"{ {m: r for m, r in list(excluded.items())[:8]} }"
+                      + (" ..." if len(excluded) > 8 else ""))
         else:
             N_batch = per_model_scores.shape[0]
             batch_predictions = np.zeros(N_batch, dtype=int)

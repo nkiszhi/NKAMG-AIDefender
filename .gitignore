@@ -17,3 +17,11 @@ CoDefenderC3/.feature_cache/
 CoDefenderC3/_tools/ember.zip
 CoDefenderC3/*.pyc
 CoDefenderC3/**/__pycache__/
+
+# local agent workspace / scratch
+.workbuddy/
+CoDefenderC3/tmp*/
+# oversized derived data (>100MB GitHub limit)
+CoDefenderC3/models/MalGraph_2022/saved/features.jsonl
+CoDefenderC3/**/*.jsonl
+!CoDefenderC3/models/MalGraph_2022/saved/train_external_function_name_vocab.jsonl

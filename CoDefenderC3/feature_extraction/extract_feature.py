@@ -509,14 +509,32 @@ class BinjaExtractor:
 
     # ─── 批量生成 bndb ──────────────────
 
-    def generate_bndbs_batch(self, pe_bndb_pairs, n_workers=4, batch_size=20):
-        """批量 PE → .bndb。每个子进程处理 batch_size 个文件。"""
+    def generate_bndbs_batch(self, pe_bndb_pairs, n_workers=4, batch_size=20,
+                             per_file_timeout=None, timeout_base=None):
+        """批量 PE → .bndb。每个子进程处理 batch_size 个文件。
+
+        per_file_timeout / timeout_base:
+            单个文件的超时预算与固定缓冲（秒），batch 超时 =
+            per_file_timeout * len(batch) + timeout_base。
+            为 None 时读环境变量 CODEFENDER_BNDB_TIMEOUT_PER_FILE（默认 120）
+            与 CODEFENDER_BNDB_TIMEOUT_BASE（默认 30）。
+
+        补救轮（batch_size=1）应显式传大值（如 600），原因：
+        BN 耗时由**可执行代码量**决定而非文件体积 —— 存在 5.4MB 单段巨 .text
+        的病态样本需要 130s+，而 87MB 正常样本只要 6s。默认 150s 的补救预算
+        会把这类样本误判为永久失败。
+        """
         from concurrent.futures import ThreadPoolExecutor
         import subprocess as sp, threading
 
         total = len(pe_bndb_pairs)
         if total == 0:
             return set(), {}
+
+        _pf = (per_file_timeout if per_file_timeout is not None
+               else int(os.environ.get("CODEFENDER_BNDB_TIMEOUT_PER_FILE", "120")))
+        _base = (timeout_base if timeout_base is not None
+                 else int(os.environ.get("CODEFENDER_BNDB_TIMEOUT_BASE", "30")))
 
         script_dir = os.path.dirname(os.path.abspath(__file__))
         script_path = os.path.join(script_dir, "_bndb_worker.py")
@@ -595,7 +613,7 @@ for line in lines:
                 args_file = tf.name
 
             pe_set = {pe for pe, _ in batch}
-            batch_timeout = 120 * len(batch) + 30  # 2min/file + 30s buffer
+            batch_timeout = _pf * len(batch) + _base
             cflags = 0x08000000 if sys.platform == "win32" else 0
             try:
                 proc = sp.run([sys.executable, script_path, args_file],
@@ -636,13 +654,18 @@ for line in lines:
                                     print(f"    stderr: {stderr.strip()[:800]}")
 
             n_unreported = 0
+            timed_out = "TIMEOUT" in stderr
             for pe, bndb in batch:
                 if pe not in reported:
                     with lock:
                         progress[0] += 1
                         fail_count[0] += 1
                         n_unreported += 1
-                        fail_reasons[pe] = f"子进程崩溃(unreported)"
+                        # 区分超时与真崩溃：超时是「慢」，也许放宽预算就能救回；
+                        # 崩溃是「不稳」，两者都由上层按「软失败」处理（可重试）。
+                        fail_reasons[pe] = (f"TIMEOUT after {batch_timeout}s"
+                                            if timed_out
+                                            else f"子进程崩溃(unreported)")
                     if os.path.exists(bndb) and \
                             os.environ.get("CODEFENDER_KEEP_BNDB") != "1":
                         try: os.remove(bndb)
@@ -650,7 +673,8 @@ for line in lines:
 
             if n_unreported > 0 and not first_error_printed[0]:
                 first_error_printed[0] = True
-                print(f"\n    子进程崩溃 ({n_unreported} 个未报告)")
+                head = "子进程超时" if timed_out else "子进程崩溃"
+                print(f"\n    {head} ({n_unreported} 个未报告)")
                 if stderr.strip():
                     print(f"    stderr: {stderr.strip()[:800]}")
 
