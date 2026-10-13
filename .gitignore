@@ -4,8 +4,8 @@ __pycache__/
 *.log
 uploads/*
 !uploads/.gitkeep
-backend/uploads/*
-!backend/uploads/.gitkeep
+web/FastAPI/uploads/*
+!web/FastAPI/uploads/.gitkeep
 node_modules/
 dist/
 .env

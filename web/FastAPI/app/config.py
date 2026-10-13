@@ -4,8 +4,8 @@ from pathlib import Path
 from typing import List
 
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-CONFIG_PATH = REPO_ROOT / "config.ini"
+WEB_ROOT = Path(__file__).resolve().parents[2]
+CONFIG_PATH = WEB_ROOT / "config.ini"
 
 
 def _load_config() -> configparser.ConfigParser:
@@ -18,7 +18,7 @@ def _as_path(value: str, default: str) -> Path:
     raw = (value or default).strip()
     path = Path(raw)
     if not path.is_absolute():
-        path = REPO_ROOT / path
+        path = WEB_ROOT / path
     return path.resolve()
 
 
@@ -31,7 +31,7 @@ class Settings:
         self.cors_origins = self._get_list("server", "cors_origins", ["*"])
         self.max_upload_size = self._getint("server", "max_upload_size", 100 * 1024 * 1024)
 
-        self.upload_dir = _as_path(self._get("paths", "upload_dir", "backend/uploads"), "backend/uploads")
+        self.upload_dir = _as_path(self._get("paths", "upload_dir", "FastAPI/uploads"), "FastAPI/uploads")
 
         self.codefender_api_base = self._get("codefender", "api_base", "http://127.0.0.1:8001").rstrip("/")
         self.codefender_scan_endpoint = self._get("codefender", "scan_endpoint", "/scan/file")

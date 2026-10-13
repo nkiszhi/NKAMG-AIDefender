@@ -62,9 +62,12 @@ Codefender 是一个独立的 PE 样本恶意文件检测 Web 项目。系统由
 ## 目录结构
 
 ```text
-backend/   FastAPI 后端，提供上传检测、PE结构分析和模型服务适配
-frontend/  Vue3 + Element Plus 单页前端
-config.ini 后端、Docker 模型服务和跨容器路径配置
+web/
+  FastAPI/   FastAPI 后端，提供上传检测、PE结构分析和模型服务适配
+  Vue/       Vue3 + Element Plus 单页前端
+    public/config.ini  浏览器访问后端的地址配置
+  config.ini 后端、Docker 模型服务和跨容器路径配置
+CoDefenderC3/ 模型推理服务及训练代码
 ```
 
 ## 环境要求
@@ -80,8 +83,8 @@ config.ini 后端、Docker 模型服务和跨容器路径配置
 
 ```powershell
 cd C:\zjp\github
-git clone https://github.com/nkiszhi/codefender.git
-cd C:\zjp\github\codefender
+git clone https://github.com/nkiszhi/NKAMG-AIDefender.git
+cd C:\zjp\github\NKAMG-AIDefender
 ```
 
 ### 2. 启动 Codefender 模型服务
@@ -105,7 +108,7 @@ curl http://127.0.0.1:8001/health
 curl http://127.0.0.1:8001/openapi.json
 ```
 
-如果容器名不是 `codefender-api`，需要修改根目录 `config.ini`：
+如果容器名不是 `codefender-api`，需要修改 `web/config.ini`：
 
 ```ini
 [docker]
@@ -121,7 +124,7 @@ docker ps
 
 ### 3. 配置后端
 
-根目录 `config.ini` 默认配置如下：
+`web/config.ini` 默认配置如下：
 
 ```ini
 [server]
@@ -131,7 +134,7 @@ cors_origins = *
 max_upload_size = 104857600
 
 [paths]
-upload_dir = backend/uploads
+upload_dir = FastAPI/uploads
 
 [codefender]
 api_base = http://127.0.0.1:8001
@@ -147,28 +150,30 @@ container_name = codefender-api
 container_upload_dir = /tmp/codefender_uploads
 ```
 
+配置中的相对路径以 `web/` 为基准，默认上传目录是 `web/FastAPI/uploads`。前端地址配置保留在 `web/Vue/public/config.ini`，供浏览器通过 `/config.ini` 加载。
+
 默认模式不需要给 Docker 挂载目录。后端会把上传样本复制到模型容器的 `container_upload_dir`，再调用 `/scan/file` 检测。
 
 如果你希望使用目录挂载方式，也可以这样启动 Docker：
 
 ```powershell
 docker run -d --name codefender-api -p 8001:8000 `
-  -v "C:\zjp\github\codefender\backend\uploads:/samples/uploads" `
+  -v "C:\zjp\github\NKAMG-AIDefender\web\FastAPI\uploads:/samples/uploads" `
   peng233/codefender:v2
 ```
 
-同时把 `config.ini` 改成：
+同时把 `web/config.ini` 改成：
 
 ```ini
 [codefender]
-host_path_prefix = C:\zjp\github\codefender\backend\uploads
+host_path_prefix = C:\zjp\github\NKAMG-AIDefender\web\FastAPI\uploads
 container_path_prefix = /samples/uploads
 ```
 
 ### 4. 启动后端
 
 ```powershell
-cd C:\zjp\github\codefender\backend
+cd C:\zjp\github\NKAMG-AIDefender\web\FastAPI
 python -m venv .venv
 .\.venv\Scripts\activate
 pip install -r requirements.txt
@@ -191,7 +196,7 @@ curl http://127.0.0.1:5005/models
 ### 5. 启动前端
 
 ```powershell
-cd C:\zjp\github\codefender\frontend
+cd C:\zjp\github\NKAMG-AIDefender\web\Vue
 npm install
 npm run dev
 ```
@@ -209,20 +214,20 @@ http://127.0.0.1:5173
 前端构建：
 
 ```powershell
-cd C:\zjp\github\codefender\frontend
+cd C:\zjp\github\NKAMG-AIDefender\web\Vue
 npm run build
 ```
 
 构建产物在：
 
 ```text
-frontend/dist
+web/Vue/dist
 ```
 
 后端可使用 `uvicorn` 启动：
 
 ```powershell
-cd C:\zjp\github\codefender\backend
+cd C:\zjp\github\NKAMG-AIDefender\web\FastAPI
 uvicorn main:app --host 0.0.0.0 --port 5005
 ```
 
@@ -243,7 +248,7 @@ docker ps
 curl http://127.0.0.1:8001/health
 ```
 
-再确认 `config.ini` 的容器名是否正确：
+再确认 `web/config.ini` 的容器名是否正确：
 
 ```ini
 [docker]
