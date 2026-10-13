@@ -1,4 +1,6 @@
+import asyncio
 import logging
+import ctypes
 from datetime import datetime
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
@@ -70,6 +72,19 @@ async def detect(file: UploadFile = File(...)) -> dict:
         file_path, info = await save_upload(file)
     except ValueError as error:
         raise HTTPException(status_code=413, detail=str(error)) from error
+    except OSError as error:
+        windows_error = getattr(error, "winerror", None)
+        # CPython's file open may expose EINVAL while Windows retains ERROR_VIRUS_INFECTED.
+        if windows_error is None and hasattr(ctypes, "windll"):
+            windows_error = ctypes.windll.kernel32.GetLastError()
+        if windows_error in (225, 226):
+            logger.warning("上传样本被 Windows 安全防护拦截: %s", error)
+            raise HTTPException(
+                status_code=422,
+                detail="Windows 安全防护拦截了上传样本，后端无法读取，尚未提交 Docker 检测。请查看 Windows 安全中心的保护历史记录。",
+            ) from error
+        logger.exception("保存上传文件失败")
+        raise HTTPException(status_code=500, detail=f"保存上传文件失败: {error}") from error
     except Exception as error:
         logger.exception("保存上传文件失败")
         raise HTTPException(status_code=500, detail=f"保存上传文件失败: {error}") from error
@@ -80,7 +95,11 @@ async def detect(file: UploadFile = File(...)) -> dict:
         reason = info["pe_info"].get("reason") or "不是有效PE样本"
         raise HTTPException(status_code=400, detail=f"不是有效PE样本: {reason}")
 
-    exe_result = scan_file(file_path)
+    try:
+        exe_result = await asyncio.to_thread(scan_file, file_path)
+    except RuntimeError as error:
+        logger.exception("模型服务检测失败")
+        raise HTTPException(status_code=502, detail=str(error)) from error
     return _response_payload(info, exe_result, "file")
 
 
