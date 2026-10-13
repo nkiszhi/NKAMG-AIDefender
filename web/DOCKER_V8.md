@@ -4,12 +4,18 @@
 
 ```powershell
 docker load -i D:\GitHub\codefenderc3_v8.tar.gz
-docker run -d --name codefender-c3-v8 --restart unless-stopped -p 127.0.0.1:8001:8000 codefender-c3:v8
+docker run -d --name codefender-c3-v8 --restart unless-stopped -p 127.0.0.1:8001:8000 codefender:latest
 docker logs --tail 50 codefender-c3-v8
 Invoke-RestMethod http://127.0.0.1:8001/readyz
 ```
 
-镜像内嵌模型和签名库，无需挂载。等待 `/readyz` 返回 `ready: true`。
+该镜像包实际导入标签为 `codefender:latest`，内嵌模型，无需挂载。等待 `/readyz` 返回 `ready: true`。
+本机确认加载 33 个模型、15 个特征视角；与外部说明不同，这个包没有 `/app/signatures`，
+也未提供 `/admin/config` 和 `/update-signatures`，不能按说明假设签名库预检可用。
+首次加载 InceptionV3 会下载约 104 MB 的预训练权重，需要联网；下载失败后健康检查会显示错误。
+容器日志存在 BinaryNinja 许可证初始化错误，但本次 `python.exe` 实测 `include_de=true` 返回
+`TotalModels=33`、`OkModels=33`、`SkippedModels=0`、`ErrorModels=0`，集成判定安全，得分约 0.4332。
+该单样本结果不代表所有样本的特征提取都不会失败。
 
 `web/config.ini` 使用 `/predict-single` HTTP 上传接口。
 `include_de = true` 开启反汇编和图特征；设为 `false` 可加快检测，但部分模型可能跳过。

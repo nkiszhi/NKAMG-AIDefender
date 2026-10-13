@@ -1,5 +1,8 @@
 # Codefender 多模型恶意文件检测
 
+> 当前本机部署使用 `D:\GitHub\codefenderc3_v8.tar.gz`，实际镜像标签为 `codefender:latest`。
+> 最新部署与接口配置见 [web/DOCKER_V8.md](web/DOCKER_V8.md)。下方 `peng233/codefender:v2` 步骤为旧版说明，不能直接用于当前 v8 配置。
+
 Codefender 是一个独立的 PE 样本恶意文件检测 Web 项目。系统由三部分组成：
 
 - 前端：Vue3 + Element Plus，提供样本上传、基础信息展示、PE 结构展示和模型结果展示。
