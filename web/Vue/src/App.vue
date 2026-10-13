@@ -32,7 +32,7 @@
           <h2>检测报告如下</h2>
           <div class="tags">
             <el-tag type="success">PE结构：有效</el-tag>
-            <el-tag v-if="ensembleResult" :type="ensembleResult.result === '恶意' ? 'danger' : 'success'">
+            <el-tag v-if="ensembleResult" :type="ensembleResult.result === '恶意' ? 'danger' : ensembleResult.result === '安全' ? 'success' : 'warning'">
               多模型结果：{{ ensembleResult.result }}
             </el-tag>
             <el-tag v-if="ensembleResult?.virus_name" type="warning">

@@ -34,8 +34,9 @@ class Settings:
         self.upload_dir = _as_path(self._get("paths", "upload_dir", "FastAPI/uploads"), "FastAPI/uploads")
 
         self.codefender_api_base = self._get("codefender", "api_base", "http://127.0.0.1:8001").rstrip("/")
-        self.codefender_scan_endpoint = self._get("codefender", "scan_endpoint", "/scan/file")
-        self.codefender_predict_endpoint = self._get("codefender", "predict_endpoint", "/predict")
+        self.codefender_scan_endpoint = self._get("codefender", "scan_endpoint", "")
+        self.codefender_predict_endpoint = self._get("codefender", "predict_endpoint", "/predict-single")
+        self.codefender_include_de = self._get("codefender", "include_de", "true").strip().lower() in ("true", "1", "yes", "on")
         self.codefender_timeout = self._getint("codefender", "timeout", 300)
         self.threshold = self._getfloat("codefender", "threshold", 0.5)
         self.host_path_prefix = self._get("codefender", "host_path_prefix", "").strip()

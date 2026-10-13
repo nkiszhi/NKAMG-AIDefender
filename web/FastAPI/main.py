@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from datetime import datetime
 
@@ -80,7 +81,11 @@ async def detect(file: UploadFile = File(...)) -> dict:
         reason = info["pe_info"].get("reason") or "不是有效PE样本"
         raise HTTPException(status_code=400, detail=f"不是有效PE样本: {reason}")
 
-    exe_result = scan_file(file_path)
+    try:
+        exe_result = await asyncio.to_thread(scan_file, file_path)
+    except RuntimeError as error:
+        logger.exception("模型服务检测失败")
+        raise HTTPException(status_code=502, detail=str(error)) from error
     return _response_payload(info, exe_result, "file")
 
 

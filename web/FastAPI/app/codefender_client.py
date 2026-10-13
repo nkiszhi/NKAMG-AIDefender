@@ -32,10 +32,7 @@ def scan_file(file_path: Path) -> Dict[str, Dict[str, Any]]:
     if upload_result is not None:
         return upload_result
 
-    return {
-        "CoDefender集成模型": {"probability": None, "result": "预测失败"},
-        "集成结果": {"probability": None, "result": "无有效预测"},
-    }
+    raise RuntimeError("模型服务检测失败，请检查容器日志和模型服务连接")
 
 
 def _scan_by_path(file_path: Path) -> Optional[Dict[str, Dict[str, Any]]]:
@@ -64,7 +61,12 @@ def _scan_by_upload(file_path: Path) -> Optional[Dict[str, Dict[str, Any]]]:
     url = f"{settings.codefender_api_base}{endpoint}"
     try:
         with Path(file_path).open("rb") as handle:
-            response = requests.post(url, files={"file": handle}, timeout=settings.codefender_timeout)
+            response = requests.post(
+                url,
+                files={"file": (Path(file_path).name, handle, "application/octet-stream")},
+                params={"include_de": str(settings.codefender_include_de).lower()},
+                timeout=settings.codefender_timeout,
+            )
         response.raise_for_status()
         return parse_codefender_response(response.json())
     except Exception as error:
@@ -145,6 +147,8 @@ def _translate_path_for_container(file_path: Path) -> str:
 
 
 def parse_codefender_response(data: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    if isinstance(data.get("ScanResult"), dict):
+        return _parse_v8_response(data)
     result_root = data.get("Result") or data.get("result") or data
     model_results = _read_first(
         result_root,
@@ -164,6 +168,36 @@ def parse_codefender_response(data: Dict[str, Any]) -> Dict[str, Dict[str, Any]]
         results["CoDefender集成模型"] = _format_model_result(final_raw, "CoDefender集成模型")
 
     ensemble = _build_ensemble(result_root if isinstance(result_root, dict) else data, results)
+    results["集成结果"] = ensemble
+    return results
+
+
+def _parse_v8_response(data: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    scan = data["ScanResult"]
+    scores = scan.get("PerModelScores") or {}
+    predictions = scan.get("PerModelPreds") or {}
+    stats = scan.get("ModelStats") or {}
+    if data.get("Status") == -1 or (stats and stats.get("OkModels") == 0):
+        raise ValueError("模型服务没有返回有效子模型预测")
+
+    results = OrderedDict()
+    for name, score in scores.items():
+        raw = {"probability": score}
+        prediction = predictions.get(name)
+        if prediction in (0, 1):
+            raw["is_malware"] = bool(prediction)
+        results[name] = _format_model_result(raw, name)
+
+    final = dict(data)
+    final["virus_name"] = scan.get("VirusName", "")
+    ensemble = _format_model_result(final, "CoDefender集成模型")
+    if data.get("Status") == 2:
+        ensemble["result"] = "疑似漂移"
+    if not scores:
+        if data.get("IsMalicious") is not True:
+            raise ValueError("模型服务返回空预测结果")
+        # Hash database hits return an ensemble verdict without running submodels.
+        results["签名库预检"] = dict(ensemble)
     results["集成结果"] = ensemble
     return results
 
@@ -282,7 +316,7 @@ def _extract_probability(data: Dict[str, Any]) -> Optional[float]:
 
 
 def _extract_result(data: Dict[str, Any], probability: Optional[float]) -> str:
-    is_malware = _read_first(data, ["is_malware", "isMalware", "IsMalware", "malicious", "is_malicious"])
+    is_malware = _read_first(data, ["is_malware", "isMalware", "IsMalware", "IsMalicious", "malicious", "is_malicious"])
     if isinstance(is_malware, bool):
         return "恶意" if is_malware else "安全"
 
