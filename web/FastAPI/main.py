@@ -70,12 +70,13 @@ async def models() -> dict:
 @app.get("/model-health")
 async def model_health() -> dict:
     """Expose the Docker model service readiness to the web UI."""
-    url = f"{settings.codefender_api_base}/health"
+    url = f"{settings.codefender_api_base}/readyz"
     try:
         response = await asyncio.to_thread(requests.get, url, timeout=10)
-        response.raise_for_status()
+        if response.status_code != 503:
+            response.raise_for_status()
         payload = response.json()
-        return {"connected": True, "ready": payload.get("status") == "ok", "model_count": payload.get("model_count", 0), "service": payload}
+        return {"connected": True, "ready": payload.get("ready") is True, "model_count": payload.get("model_count", 0), "service": payload}
     except Exception as error:
         logger.warning("模型服务健康检查失败: %s", error)
         return {"connected": False, "ready": False, "model_count": 0, "detail": str(error)}

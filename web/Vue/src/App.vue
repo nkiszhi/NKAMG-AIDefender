@@ -178,8 +178,7 @@ const safeCount = computed(() => modelRows.value.filter(row => row.result === 'å
 
 onMounted(async () => {
   await loadConfig()
-  await loadModels()
-  await loadModelHealth()
+  await Promise.allSettled([loadModels(), loadModelHealth()])
   modelHealthTimer = window.setInterval(loadModelHealth, 30000)
 })
 onUnmounted(() => window.clearInterval(modelHealthTimer))
