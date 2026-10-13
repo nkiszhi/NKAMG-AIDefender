@@ -63,7 +63,7 @@ def _scan_by_upload(file_path: Path) -> Optional[Dict[str, Dict[str, Any]]]:
         with Path(file_path).open("rb") as handle:
             response = requests.post(
                 url,
-                files={"file": (Path(file_path).name, handle, "application/octet-stream")},
+                files={"file": (f"{Path(file_path).name}.exe", handle, "application/octet-stream")},
                 params={"include_de": str(settings.codefender_include_de).lower()},
                 timeout=settings.codefender_timeout,
             )

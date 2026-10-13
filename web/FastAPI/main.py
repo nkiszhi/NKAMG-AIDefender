@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import ctypes
+import requests
 from datetime import datetime
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
@@ -66,6 +67,20 @@ async def models() -> dict:
     return {"count": len(DEFAULT_MODEL_NAMES), "models": DEFAULT_MODEL_NAMES}
 
 
+@app.get("/model-health")
+async def model_health() -> dict:
+    """Expose the Docker model service readiness to the web UI."""
+    url = f"{settings.codefender_api_base}/health"
+    try:
+        response = await asyncio.to_thread(requests.get, url, timeout=10)
+        response.raise_for_status()
+        payload = response.json()
+        return {"connected": True, "ready": payload.get("status") == "ok", "model_count": payload.get("model_count", 0), "service": payload}
+    except Exception as error:
+        logger.warning("模型服务健康检查失败: %s", error)
+        return {"connected": False, "ready": False, "model_count": 0, "detail": str(error)}
+
+
 @app.post("/detect")
 async def detect(file: UploadFile = File(...)) -> dict:
     try:
@@ -93,7 +108,7 @@ async def detect(file: UploadFile = File(...)) -> dict:
     if not info["is_pe"]:
         file_path.unlink(missing_ok=True)
         reason = info["pe_info"].get("reason") or "不是有效PE样本"
-        raise HTTPException(status_code=400, detail=f"不是有效PE样本: {reason}")
+        raise HTTPException(status_code=400, detail=f"不是有效PE样本 [{info['filename']}]: {reason}")
 
     try:
         exe_result = await asyncio.to_thread(scan_file, file_path)

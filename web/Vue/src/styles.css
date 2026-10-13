@@ -26,6 +26,14 @@ body {
   margin-bottom: 24px;
 }
 
+.status-tags {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .header h1 {
   margin: 0;
   color: #1d4f91;

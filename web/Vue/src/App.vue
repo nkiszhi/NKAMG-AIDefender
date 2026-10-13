@@ -5,7 +5,12 @@
         <h1>Codefender 多模型恶意文件检测</h1>
         <p>南开大学反病毒实验室NKAMG - 支持33个检测模型</p>
       </div>
-      <el-tag size="large" type="info">{{ backendLabel }}</el-tag>
+      <div class="status-tags">
+        <el-tag size="large" type="info">{{ backendLabel }}</el-tag>
+        <el-tag size="large" :type="modelService.ready ? 'success' : modelService.connected ? 'warning' : 'danger'">
+          {{ checkingModels ? '正在检查模型服务' : modelService.ready ? `模型服务已连接（${modelService.model_count}个）` : modelService.connected ? '模型服务未就绪' : '模型服务未连接' }}
+        </el-tag>
+      </div>
     </section>
 
     <section class="workbench">
@@ -118,7 +123,7 @@
 
 <script setup>
 import axios from 'axios'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { UploadFilled } from '@element-plus/icons-vue'
 
@@ -128,6 +133,9 @@ const showSection = ref('fileInfo')
 const loading = ref(false)
 const uploadResult = ref(null)
 const apiBaseUrl = ref('/api-backend')
+const modelService = ref({ connected: false, ready: false, model_count: 0 })
+const checkingModels = ref(true)
+let modelHealthTimer
 const fileInput = ref(null)
 const modelNames = ref([
   'MalConv', 'MalConv2', 'ByteTransformer', 'SaxeBerlinDNN', 'EmberDNN',
@@ -171,7 +179,10 @@ const safeCount = computed(() => modelRows.value.filter(row => row.result === '�
 onMounted(async () => {
   await loadConfig()
   await loadModels()
+  await loadModelHealth()
+  modelHealthTimer = window.setInterval(loadModelHealth, 30000)
 })
+onUnmounted(() => window.clearInterval(modelHealthTimer))
 
 async function loadConfig() {
   try {
@@ -180,6 +191,17 @@ async function loadConfig() {
     apiBaseUrl.value = parsed.codefender?.baseUrl || parsed.api?.baseUrl || apiBaseUrl.value
   } catch (error) {
     console.warn('加载配置文件失败:', error.message)
+  }
+}
+
+async function loadModelHealth() {
+  try {
+    const response = await apiService.get(`${apiBaseUrl.value}/model-health`, { timeout: 15000 })
+    modelService.value = response.data || modelService.value
+  } catch (error) {
+    modelService.value = { connected: false, ready: false, model_count: 0 }
+  } finally {
+    checkingModels.value = false
   }
 }
 

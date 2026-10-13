@@ -144,7 +144,8 @@ def analyze_pe(file_path: Path) -> Dict[str, Any]:
         return {"is_pe": False, "reason": f"读取文件失败: {error}"}
 
     if len(data) < 0x40 or data[:2] != b"MZ":
-        return {"is_pe": False, "reason": "缺少MZ头"}
+        header = data[:8].hex(" ").upper() or "空文件"
+        return {"is_pe": False, "reason": f"缺少MZ头（文件头: {header}；实际大小: {len(data)} bytes）。PE按内容识别，与文件后缀无关；若样本为压缩包或编码文本，请先解压或还原为原始PE文件"}
 
     pe_offset = _unpack_from("<I", data, 0x3C)
     if pe_offset is None or pe_offset + 24 > len(data):
