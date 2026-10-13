@@ -1,5 +1,7 @@
 # Codefender 多模型恶意文件检测
 
+腾讯云 Ubuntu 部署请按 [web/TENCENT_DEPLOY.md](web/TENCENT_DEPLOY.md) 执行：前端 9528、后端 5006、模型服务本机 8001。
+
 > 当前本机部署使用 `D:\GitHub\codefenderc3_v8.tar.gz`，实际镜像标签为 `codefender:latest`。
 > 最新部署与接口配置见 [web/DOCKER_V8.md](web/DOCKER_V8.md)。下方 `peng233/codefender:v2` 步骤为旧版说明，不能直接用于当前 v8 配置。
 
@@ -132,7 +134,7 @@ docker ps
 ```ini
 [server]
 host = 0.0.0.0
-port = 5005
+port = 5006
 cors_origins = *
 max_upload_size = 104857600
 
@@ -186,14 +188,14 @@ python main.py
 默认后端地址：
 
 ```text
-http://127.0.0.1:5005
+http://127.0.0.1:5006
 ```
 
 验证后端：
 
 ```powershell
-curl http://127.0.0.1:5005/health
-curl http://127.0.0.1:5005/models
+curl http://127.0.0.1:5006/health
+curl http://127.0.0.1:5006/models
 ```
 
 ### 5. 启动前端
@@ -207,7 +209,7 @@ npm run dev
 默认前端地址：
 
 ```text
-http://127.0.0.1:5173
+http://127.0.0.1:9528
 ```
 
 打开浏览器访问该地址，上传 PE 样本即可检测。
@@ -231,7 +233,7 @@ web/Vue/dist
 
 ```powershell
 cd C:\zjp\github\NKAMG-AIDefender\web\FastAPI
-uvicorn main:app --host 0.0.0.0 --port 5005
+uvicorn main:app --host 0.0.0.0 --port 5006
 ```
 
 ## 常用接口

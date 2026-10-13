@@ -127,7 +127,7 @@ const apiService = axios.create({ timeout: 600000 })
 const showSection = ref('fileInfo')
 const loading = ref(false)
 const uploadResult = ref(null)
-const apiBaseUrl = ref('http://127.0.0.1:5005')
+const apiBaseUrl = ref('/api-backend')
 const fileInput = ref(null)
 const modelNames = ref([
   'MalConv', 'MalConv2', 'ByteTransformer', 'SaxeBerlinDNN', 'EmberDNN',

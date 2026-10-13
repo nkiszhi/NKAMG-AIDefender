@@ -27,7 +27,7 @@ class Settings:
         self._config = _load_config()
 
         self.host = self._get("server", "host", "127.0.0.1")
-        self.port = self._getint("server", "port", 5005)
+        self.port = self._getint("server", "port", 5006)
         self.cors_origins = self._get_list("server", "cors_origins", ["*"])
         self.max_upload_size = self._getint("server", "max_upload_size", 100 * 1024 * 1024)
 

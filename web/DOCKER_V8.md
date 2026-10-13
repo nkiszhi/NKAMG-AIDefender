@@ -26,8 +26,8 @@ cd D:\GitHub\NKAMG-AIDefender\web\FastAPI
 python main.py
 ```
 
-前端在 `web/Vue` 执行 `npm run dev`，访问 http://localhost:5173。
-链路：前端 → `5005/detect` → Docker `8001/predict-single`。
+前端在 `web/Vue` 执行 `npm run dev`，访问 http://localhost:9528。
+链路：前端 → `5006/detect` → Docker `8001/predict-single`。
 
 后端读取 `ScanResult.PerModelScores`、`PerModelPreds` 和 `VirusName`；
 集成结果以服务返回的 `IsMalicious` 和 `Score` 为准。
