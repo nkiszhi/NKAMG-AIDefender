@@ -2,7 +2,7 @@
   <main class="page-shell">
     <section class="header">
       <div>
-        <h1>Codefender 多模型恶意文件检测</h1>
+        <h1>NKAMG-AIDefender 多模型恶意文件检测</h1>
         <p>南开大学反病毒实验室NKAMG - 支持33个检测模型</p>
       </div>
       <div class="status-tags">

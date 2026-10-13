@@ -1,1 +1,1 @@
-"""Codefender backend package."""
+"""NKAMG-AIDefender backend package."""

@@ -1,6 +1,6 @@
-# Codefender 多模型恶意文件检测
+# NKAMG-AIDefender 多模型恶意文件检测
 
-Codefender 是一个独立的 PE 样本恶意文件检测 Web 项目。系统由三部分组成：
+NKAMG-AIDefender 是一个独立的 PE 样本恶意文件检测 Web 项目，接入 CoDefenderC3 模型服务。系统由三部分组成：
 
 - 前端：Vue3 + Element Plus，提供样本上传、基础信息展示、PE 结构展示和模型结果展示。
 - 后端：FastAPI，负责文件上传、PE 结构校验、基础信息计算、模型服务适配。

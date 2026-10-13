@@ -16,12 +16,12 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
-logger = logging.getLogger("codefender")
+logger = logging.getLogger("aidefender")
 
 app = FastAPI(
-    title="Codefender 多模型恶意文件检测",
+    title="NKAMG-AIDefender 多模型恶意文件检测",
     version="1.0.0",
-    description="独立的 Codefender 文件检测后端",
+    description="NKAMG-AIDefender 文件检测后端，接入 CoDefenderC3 模型服务",
 )
 
 app.add_middleware(
@@ -54,7 +54,7 @@ def _response_payload(info: dict, exe_result: dict, detection_mode: str) -> dict
 
 @app.get("/")
 async def root() -> dict:
-    return {"message": "Codefender backend is running", "docs": "/docs"}
+    return {"message": "NKAMG-AIDefender backend is running", "docs": "/docs"}
 
 
 @app.get("/health")
