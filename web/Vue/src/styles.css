@@ -177,6 +177,29 @@ body {
   color: #6b7280;
 }
 
+.detection-warning,
+.database-hit {
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  border-radius: 6px;
+  line-height: 1.7;
+}
+
+.detection-warning {
+  color: #92400e;
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+}
+
+.database-hit {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  color: #991b1b;
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+}
+
 .valid-text {
   color: #2f855a;
   font-weight: 600;

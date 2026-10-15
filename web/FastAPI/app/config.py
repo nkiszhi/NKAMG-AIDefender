@@ -44,6 +44,14 @@ class Settings:
         self.docker_container_name = self._get("docker", "container_name", "").strip()
         self.docker_container_upload_dir = self._get("docker", "container_upload_dir", "/codefender_uploads").strip()
 
+        self.mysql_host = self._get("mysql", "host", "").strip()
+        self.mysql_port = self._getint("mysql", "port", 3306)
+        self.mysql_user = self._get("mysql", "user", "").strip()
+        self.mysql_passwd = self._get("mysql", "passwd", "")
+        self.malicious_dbs = self._get_list(
+            "mysql", "malicious_dbs", ["malicious_elf", "malicious_pe", "malicious_others"]
+        )
+
     def _get(self, section: str, option: str, default: str) -> str:
         env_name = f"CODEFENDER_{section}_{option}".upper()
         return os.getenv(env_name, self._config.get(section, option, fallback=default))

@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.codefender_client import DEFAULT_MODEL_NAMES, scan_file
 from app.config import settings
 from app.file_info import save_upload
+from app.sample_repository import SampleRepository
 
 
 logging.basicConfig(
@@ -17,6 +18,7 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger("aidefender")
+sample_repository = SampleRepository(settings)
 
 app = FastAPI(
     title="NKAMG-AIDefender 多模型恶意文件检测",
@@ -50,6 +52,24 @@ def _response_payload(info: dict, exe_result: dict, detection_mode: str) -> dict
         "detection_mode": detection_mode,
         "detection_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }
+
+
+def _payload(info: dict, **extra) -> dict:
+    payload = {
+        "success": True,
+        "original_filename": info["filename"],
+        "filename": info["filename"],
+        "sha256": info["sha256"],
+        "md5": info["md5"],
+        "file_size": info["file_size"],
+        "file_type": info["file_type"],
+        "is_pe": info["is_pe"],
+        "pe_info": info["pe_info"],
+        "query_result": info["query_result"],
+        "detection_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    payload.update(extra)
+    return payload
 
 
 @app.get("/")
@@ -109,14 +129,64 @@ async def detect(file: UploadFile = File(...)) -> dict:
     if not info["is_pe"]:
         file_path.unlink(missing_ok=True)
         reason = info["pe_info"].get("reason") or "不是有效PE样本"
-        raise HTTPException(status_code=400, detail=f"不是有效PE样本 [{info['filename']}]: {reason}")
+        logger.info("非PE文件: filename=%s reason=%s", info["filename"], reason)
+        return _payload(
+            info,
+            detection_status="unsupported",
+            detection_mode="rejected",
+            verdict="检测失败",
+            reason=reason,
+            model_skipped=True,
+            database_hit=False,
+        )
+
+    database_error = None
+    try:
+        sample_record = sample_repository.find_malicious(info["sha256"])
+    except RuntimeError as error:
+        sample_record = None
+        database_error = str(error)
+        logger.warning("样本库查询不可用，继续33模型检测: %s", error)
+
+    if sample_record:
+        public_record = SampleRepository.public_fields(sample_record)
+        logger.info(
+            "样本库命中: sha256=%s 来源=%s.%s",
+            info["sha256"],
+            public_record.get("source_db"),
+            public_record.get("source_table"),
+        )
+        return _payload(
+            info,
+            detection_status="malicious",
+            detection_mode="sample_database",
+            verdict="恶意",
+            reason="命中 NKAMG 恶意样本库，跳过33模型检测",
+            database_hit=True,
+            database_error=None,
+            model_skipped=True,
+            sample_record=public_record,
+            exe_result={},
+            results={},
+        )
 
     try:
         exe_result = await asyncio.to_thread(scan_file, file_path)
     except RuntimeError as error:
         logger.exception("模型服务检测失败")
         raise HTTPException(status_code=502, detail=str(error)) from error
-    return _response_payload(info, exe_result, "file")
+    return _payload(
+        info,
+        detection_status="completed",
+        detection_mode="models",
+        verdict=None,
+        reason=None,
+        database_hit=False,
+        database_error=database_error,
+        model_skipped=False,
+        exe_result=exe_result,
+        results=exe_result,
+    )
 
 
 if __name__ == "__main__":
