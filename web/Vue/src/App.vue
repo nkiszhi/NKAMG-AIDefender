@@ -2,10 +2,14 @@
   <main class="page-shell">
     <section class="header">
       <div>
-        <h1>Codefender 多模型恶意文件检测</h1>
+        <h1>NKAMG-AIDefender 多模型恶意文件检测</h1>
         <p>南开大学反病毒实验室NKAMG - 支持33个检测模型</p>
       </div>
-      <el-tag size="large" type="info">{{ backendLabel }}</el-tag>
+      <div class="status-tags">
+        <el-tag size="large" :type="modelService.ready ? 'success' : modelService.connected ? 'warning' : 'danger'">
+          {{ checkingModels ? '正在检查模型服务' : modelService.ready ? `模型服务已连接（${modelService.model_count}个）` : modelService.connected ? '模型服务未就绪' : '模型服务未连接' }}
+        </el-tag>
+      </div>
     </section>
 
     <section class="workbench">
@@ -18,10 +22,15 @@
       </div>
 
       <el-collapse class="models-collapse">
-        <el-collapse-item :title="`支持模型清单（${modelNames.length}个）`" name="models">
+        <el-collapse-item title="33个模型说明与NKAMG样本库数据" name="models">
+          <h3 class="subhead">支持模型清单（{{ modelNames.length }}个）</h3>
           <div class="model-chip-grid">
             <el-tag v-for="model in modelNames" :key="model" effect="plain">{{ model }}</el-tag>
           </div>
+          <h3 class="subhead">恶意文件样本统计</h3>
+          <p class="muted-text">统计快照暂未配置，检测结果不受影响。</p>
+          <h3 class="subhead">恶意域名统计</h3>
+          <p class="muted-text">统计快照暂未配置。</p>
         </el-collapse-item>
       </el-collapse>
     </section>
@@ -31,7 +40,11 @@
         <div>
           <h2>检测报告如下</h2>
           <div class="tags">
-            <el-tag type="success">PE结构：有效</el-tag>
+            <el-tag :type="uploadResult.is_pe ? 'success' : 'warning'">
+              {{ uploadResult.is_pe ? 'PE结构：有效' : '检测失败：非 PE 文件' }}
+            </el-tag>
+            <el-tag v-if="uploadResult.database_hit" type="danger">恶意：命中 NKAMG 样本库</el-tag>
+            <el-tag v-else-if="uploadResult.is_pe && uploadResult.detection_mode === 'models'" type="info">样本库：未命中</el-tag>
             <el-tag v-if="ensembleResult" :type="ensembleResult.result === '恶意' ? 'danger' : ensembleResult.result === '安全' ? 'success' : 'warning'">
               多模型结果：{{ ensembleResult.result }}
             </el-tag>
@@ -48,6 +61,30 @@
       </div>
 
       <div v-show="showSection === 'fileInfo'" class="panel">
+        <div v-if="!uploadResult.is_pe" class="detection-warning">
+          <strong>检测状态：检测失败</strong>
+          <div>文件类型：非 PE 文件</div>
+          <div>原因：{{ uploadResult.reason || '不是有效PE样本' }}</div>
+          <div>文件头：<span class="mono">{{ uploadResult.file_header || '-' }}</span></div>
+        </div>
+        <div v-else-if="uploadResult.database_hit" class="database-hit">
+          <strong>已命中样本库，跳过 33 模型检测</strong>
+          <span v-if="uploadResult.sample_record?.source_db">来源：{{ uploadResult.sample_record.source_db }}.{{ uploadResult.sample_record.source_table }}</span>
+        </div>
+        <template v-if="uploadResult.database_hit && uploadResult.sample_record">
+          <h3 class="subhead">样本标识</h3>
+          <el-descriptions :column="1" border>
+            <el-descriptions-item v-for="(value, key) in uploadResult.sample_record.identity" :key="key" :label="key">{{ value || '-' }}</el-descriptions-item>
+          </el-descriptions>
+          <h3 class="subhead">哈希信息</h3>
+          <el-descriptions :column="1" border>
+            <el-descriptions-item v-for="(value, key) in uploadResult.sample_record.hashes" :key="key" :label="key">{{ value || '-' }}</el-descriptions-item>
+          </el-descriptions>
+          <h3 class="subhead">样本标签</h3>
+          <el-descriptions :column="2" border>
+            <el-descriptions-item v-for="(value, key) in uploadResult.sample_record.labels" :key="key" :label="key">{{ value || '-' }}</el-descriptions-item>
+          </el-descriptions>
+        </template>
         <el-descriptions :column="1" border>
           <el-descriptions-item label="文件名">{{ uploadResult.filename || '-' }}</el-descriptions-item>
           <el-descriptions-item label="SHA256">
@@ -61,8 +98,8 @@
           <el-descriptions-item label="检测时间">{{ uploadResult.detection_time || '-' }}</el-descriptions-item>
         </el-descriptions>
 
-        <h3 class="subhead">PE结构信息</h3>
-        <el-descriptions :column="2" border>
+        <h3 v-if="uploadResult.is_pe" class="subhead">PE结构信息</h3>
+        <el-descriptions v-if="uploadResult.is_pe" :column="2" border>
           <el-descriptions-item label="PE格式">{{ peInfo.format || '-' }}</el-descriptions-item>
           <el-descriptions-item label="架构">{{ peInfo.architecture || '-' }}</el-descriptions-item>
           <el-descriptions-item label="Machine">{{ peInfo.machine || '-' }}</el-descriptions-item>
@@ -75,8 +112,8 @@
           <el-descriptions-item label="SizeOfHeaders">{{ formatFileSize(peInfo.size_of_headers) }}</el-descriptions-item>
         </el-descriptions>
 
-        <h3 class="subhead">节表</h3>
-        <el-table :data="peInfo.sections || []" border stripe>
+        <h3 v-if="uploadResult.is_pe" class="subhead">节表</h3>
+        <el-table v-if="uploadResult.is_pe" :data="peInfo.sections || []" border stripe>
           <el-table-column prop="name" label="名称" min-width="110" />
           <el-table-column prop="virtual_address" label="VirtualAddress" min-width="140" />
           <el-table-column prop="virtual_size" label="VirtualSize" min-width="120" />
@@ -87,6 +124,9 @@
       </div>
 
       <div v-show="showSection === 'modelDetection'" class="panel">
+        <div v-if="!uploadResult.is_pe" class="detection-warning">本文件不是 PE，未提交 33 模型检测。</div>
+        <div v-else-if="uploadResult.database_hit" class="database-hit">已命中 NKAMG 样本库，已跳过 33 模型检测。</div>
+        <template v-else>
         <div class="summary-row">
           <el-tag size="large" type="info">共 {{ modelCount }} 个检测模型</el-tag>
           <el-tag size="large" type="danger">恶意: {{ maliciousCount }}</el-tag>
@@ -111,6 +151,7 @@
             <template #default="{ row }">{{ row.virus_name || '-' }}</template>
           </el-table-column>
         </el-table>
+        </template>
       </div>
     </section>
   </main>
@@ -118,7 +159,7 @@
 
 <script setup>
 import axios from 'axios'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { UploadFilled } from '@element-plus/icons-vue'
 
@@ -128,6 +169,9 @@ const showSection = ref('fileInfo')
 const loading = ref(false)
 const uploadResult = ref(null)
 const apiBaseUrl = ref('/api-backend')
+const modelService = ref({ connected: false, ready: false, model_count: 0 })
+const checkingModels = ref(true)
+let modelHealthTimer
 const fileInput = ref(null)
 const modelNames = ref([
   'MalConv', 'MalConv2', 'ByteTransformer', 'SaxeBerlinDNN', 'EmberDNN',
@@ -144,7 +188,6 @@ const sectionOptions = [
   { label: '模型检测', value: 'modelDetection' }
 ]
 
-const backendLabel = computed(() => apiBaseUrl.value.replace(/^https?:\/\//, ''))
 const peInfo = computed(() => uploadResult.value?.pe_info || {})
 
 const modelResults = computed(() => {
@@ -170,8 +213,10 @@ const safeCount = computed(() => modelRows.value.filter(row => row.result === '�
 
 onMounted(async () => {
   await loadConfig()
-  await loadModels()
+  await Promise.allSettled([loadModels(), loadModelHealth()])
+  modelHealthTimer = window.setInterval(loadModelHealth, 30000)
 })
+onUnmounted(() => window.clearInterval(modelHealthTimer))
 
 async function loadConfig() {
   try {
@@ -180,6 +225,17 @@ async function loadConfig() {
     apiBaseUrl.value = parsed.codefender?.baseUrl || parsed.api?.baseUrl || apiBaseUrl.value
   } catch (error) {
     console.warn('加载配置文件失败:', error.message)
+  }
+}
+
+async function loadModelHealth() {
+  try {
+    const response = await apiService.get(`${apiBaseUrl.value}/model-health`, { timeout: 15000 })
+    modelService.value = response.data || modelService.value
+  } catch (error) {
+    modelService.value = { connected: false, ready: false, model_count: 0 }
+  } finally {
+    checkingModels.value = false
   }
 }
 
@@ -267,6 +323,7 @@ function normalizeDetectionResponse(data) {
     file_size: data.file_size || queryResult['文件大小'] || 0,
     file_type: data.file_type || queryResult['文件类型'] || queryResult['类型'] || '-',
     detection_time: data.detection_time || new Date().toLocaleString(),
+    file_header: data.file_header || data.pe_info?.header || '',
     exe_result: data.exe_result || data.results || {},
     pe_info: data.pe_info || {}
   }
