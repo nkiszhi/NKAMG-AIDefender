@@ -30,6 +30,9 @@ class Settings:
         self.port = self._getint("server", "port", 5006)
         self.cors_origins = self._get_list("server", "cors_origins", ["*"])
         self.max_upload_size = self._getint("server", "max_upload_size", 100 * 1024 * 1024)
+        self.max_concurrent_scans = max(1, min(2, self._getint("server", "max_concurrent_scans", 1)))
+        self.max_queued_scans = max(1, min(100, self._getint("server", "max_queued_scans", 8)))
+        self.task_ttl_seconds = self._getint("server", "task_ttl_seconds", 3600)
 
         self.upload_dir = _as_path(self._get("paths", "upload_dir", "FastAPI/uploads"), "FastAPI/uploads")
 
@@ -51,6 +54,9 @@ class Settings:
         self.malicious_dbs = self._get_list(
             "mysql", "malicious_dbs", ["malicious_elf", "malicious_pe", "malicious_others"]
         )
+        self.benign_dbs = self._get_list("mysql", "benign_dbs", ["benign_elf", "benign_pe", "benign_others"])
+        self.mysql_stats_db = self._get("mysql", "db_stats", "sample_stats").strip()
+        self.mysql_domain_db = self._get("mysql", "db_domain", "domain").strip()
 
     def _get(self, section: str, option: str, default: str) -> str:
         env_name = f"CODEFENDER_{section}_{option}".upper()

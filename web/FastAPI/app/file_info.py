@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import mimetypes
 import os
@@ -21,6 +22,10 @@ def safe_filename(filename: Optional[str]) -> str:
 
 
 async def save_upload(file: UploadFile) -> Tuple[Path, Dict[str, object]]:
+    return await asyncio.to_thread(_save_upload_sync, file)
+
+
+def _save_upload_sync(file: UploadFile) -> Tuple[Path, Dict[str, object]]:
     settings.upload_dir.mkdir(parents=True, exist_ok=True)
     original_name = safe_filename(file.filename)
     temp_path = settings.upload_dir / f".upload-{os.getpid()}-{uuid.uuid4().hex}"
@@ -29,28 +34,27 @@ async def save_upload(file: UploadFile) -> Tuple[Path, Dict[str, object]]:
     md5 = hashlib.md5(usedforsecurity=False)
     size = 0
 
-    with temp_path.open("wb") as output:
-        while True:
-            chunk = await file.read(CHUNK_SIZE)
-            if not chunk:
-                break
-            size += len(chunk)
-            if size > settings.max_upload_size:
-                temp_path.unlink(missing_ok=True)
-                raise ValueError(f"文件超过大小限制: {settings.max_upload_size} bytes")
-            sha256.update(chunk)
-            md5.update(chunk)
-            output.write(chunk)
-
-    digest = sha256.hexdigest()
-    final_path = settings.upload_dir / digest
-    if final_path.exists():
-        temp_path.unlink(missing_ok=True)
-    else:
+    final_path = None
+    try:
+        with temp_path.open('wb') as output:
+            while chunk := file.file.read(CHUNK_SIZE):
+                size += len(chunk)
+                if size > settings.max_upload_size:
+                    raise ValueError(f'文件超过大小限制: {settings.max_upload_size} bytes')
+                sha256.update(chunk)
+                md5.update(chunk)
+                output.write(chunk)
+        digest = sha256.hexdigest()
+        # Each upload owns its file, even when two users submit identical bytes.
+        final_path = settings.upload_dir / f'{digest}-{uuid.uuid4().hex}'
         temp_path.replace(final_path)
-
-    info = build_file_info(final_path, original_name=original_name, sha256_value=digest, md5_value=md5.hexdigest(), size=size)
-    return final_path, info
+        info = build_file_info(final_path, original_name=original_name, sha256_value=digest, md5_value=md5.hexdigest(), size=size)
+        return final_path, info
+    except BaseException:
+        temp_path.unlink(missing_ok=True)
+        if final_path:
+            final_path.unlink(missing_ok=True)
+        raise
 
 
 def build_file_info(

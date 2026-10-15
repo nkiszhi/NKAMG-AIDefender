@@ -294,16 +294,12 @@ print('   config 解析 OK: HASH_DB_DIR=%s  MODEL_PATH=%s  ENV=%s' % (config.HAS
 EXPOSE 8000
 
 # ── 健康检查 ────────────────────────────────────────────────────────
-#  start-period 给到 300s：首次 /health 会触发 736MB 集成模型加载 + 三族布隆库
-#  装载，CPU 容器上 1~3 分钟很正常；这期间失败不计入 retries。
-#  断言只卡「必须成立」的两项（status=ok 且模型确实装上了），engine_mode 只打印
-#  不判定 —— 免得运维临时用 REQUIRE_HASH_DB=0 做纯模型对照时被误判为不健康。
-HEALTHCHECK --interval=30s --timeout=60s --start-period=300s --retries=5 \
+# Keep the Docker probe cheap. /health may inspect model/signature state and can
+# block while a scan is running; /readyz only checks that the HTTP service accepts.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=300s --retries=5 \
     CMD python3 -c "import json, urllib.request, sys; \
-d = json.load(urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=45)); \
-print('health:', d.get('status'), '| engine_mode =', d.get('engine_mode'), \
-'| models =', d.get('model_count'), '| sig_dir =', d.get('hash_db', {}).get('dir')); \
-sys.exit(0 if d.get('status') == 'ok' and (d.get('model_count') or 0) > 0 else 1)"
+d = json.load(urllib.request.urlopen('http://127.0.0.1:8000/readyz', timeout=3)); \
+sys.exit(0 if d.get('ready') is True else 1)"
 
 # ── 启动 ────────────────────────────────────────────────────────────
 CMD ["/usr/local/bin/supervisord", "-n", "-c", "/etc/supervisord.conf"]

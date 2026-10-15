@@ -1,0 +1,13 @@
+# Build from the already-loaded, working v8 image. No dependency/weight downloads.
+ARG BASE_IMAGE=codefender:latest
+FROM ${BASE_IMAGE}
+COPY engine/scan_runtime.py /app/engine/scan_runtime.py
+COPY docker/patch_runtime.py docker/runtime_endpoints.py /tmp/
+RUN python3 /tmp/patch_runtime.py && \
+    python3 -m py_compile /app/engine/app.py /app/engine/scan_runtime.py && \
+    rm /tmp/patch_runtime.py /tmp/runtime_endpoints.py
+ENV CODEFENDER_MAX_CONCURRENT=1 \
+    CODEFENDER_REQUEST_TIMEOUT=240 \
+    CODEFENDER_HARD_TIMEOUT=300
+HEALTHCHECK --interval=30s --timeout=5s --start-period=300s --retries=5 \
+    CMD python3 -c "import json,urllib.request; d=json.load(urllib.request.urlopen('http://127.0.0.1:8000/readyz',timeout=3)); assert d.get('ready') is True"

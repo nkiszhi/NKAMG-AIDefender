@@ -23,6 +23,10 @@ DEFAULT_MODEL_NAMES = [
 ]
 
 
+class ModelServiceBusy(RuntimeError):
+    pass
+
+
 def scan_file(file_path: Path) -> Dict[str, Dict[str, Any]]:
     path_result = _scan_by_path(file_path)
     if path_result is not None:
@@ -46,8 +50,12 @@ def _scan_by_path(file_path: Path) -> Optional[Dict[str, Dict[str, Any]]]:
         response = requests.post(url, json=payload, timeout=settings.codefender_timeout)
         if response.status_code == 404:
             return None
+        if response.status_code == 429:
+            raise ModelServiceBusy('模型服务忙碌')
         response.raise_for_status()
         return parse_codefender_response(response.json())
+    except ModelServiceBusy:
+        raise
     except Exception as error:
         print(f"CoDefender路径扫描API调用失败: {error}")
         return None
@@ -67,8 +75,12 @@ def _scan_by_upload(file_path: Path) -> Optional[Dict[str, Dict[str, Any]]]:
                 params={"include_de": str(settings.codefender_include_de).lower()},
                 timeout=settings.codefender_timeout,
             )
+        if response.status_code == 429:
+            raise ModelServiceBusy('模型服务忙碌')
         response.raise_for_status()
         return parse_codefender_response(response.json())
+    except ModelServiceBusy:
+        raise
     except Exception as error:
         print(f"CoDefender上传预测API调用失败: {error}")
         return None

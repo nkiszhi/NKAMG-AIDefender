@@ -19,18 +19,42 @@
         <div class="upload-title">上传PE样本进行检测</div>
         <div class="upload-subtitle">后端会先校验PE结构，计算基础信息，再提交给模型分析。</div>
         <el-button type="primary" :loading="loading" @click="selectFile">选择待检PE文件</el-button>
+        <div v-if="loading" class="upload-subtitle" role="status">{{ detectionMessage }}</div>
       </div>
 
       <el-collapse class="models-collapse">
         <el-collapse-item title="33个模型说明与NKAMG样本库数据" name="models">
-          <h3 class="subhead">支持模型清单（{{ modelNames.length }}个）</h3>
-          <div class="model-chip-grid">
-            <el-tag v-for="model in modelNames" :key="model" effect="plain">{{ model }}</el-tag>
-          </div>
+          <h3 class="subhead">支持模型与作用（{{ modelDetails.length }}个）</h3>
+          <el-table :data="modelDetails" border stripe size="small">
+            <el-table-column prop="name" label="模型" min-width="140" />
+            <el-table-column prop="view" label="分析视角" min-width="120" />
+            <el-table-column prop="features" label="使用特征" min-width="160" />
+            <el-table-column prop="source" label="参考来源" min-width="200" />
+            <el-table-column prop="role" label="模型作用" min-width="240" />
+            <el-table-column prop="optimization" label="优化要点" min-width="260" />
+          </el-table>
           <h3 class="subhead">恶意文件样本统计</h3>
-          <p class="muted-text">统计快照暂未配置，检测结果不受影响。</p>
+          <div v-if="stats.available" class="stats-grid">
+            <div class="stat-item"><span>恶意样本总量</span><strong>{{ formatNumber(stats.samples?.malicious_total) }}</strong></div>
+            <div class="stat-item"><span>良性样本总量</span><strong>{{ formatNumber(stats.samples?.benign_total) }}</strong></div>
+            <div v-for="field in sampleTopFields" :key="field.key"><span>{{ field.label }} Top10</span><div v-for="item in stats.samples?.[field.key] || []" :key="item.name">{{ item.name }}：{{ formatNumber(item.count) }}</div></div>
+          </div>
+          <p v-else class="muted-text">{{ stats.reason || '统计数据暂不可用' }}</p>
+          <div v-if="stats.available && stats.samples?.monthly?.length" class="stats-monthly">
+            <span>近 12 个月恶意样本</span>
+            <div v-for="item in stats.samples.monthly" :key="item.name">{{ item.name }}：{{ formatNumber(item.count) }}</div>
+          </div>
           <h3 class="subhead">恶意域名统计</h3>
-          <p class="muted-text">统计快照暂未配置。</p>
+          <div v-if="stats.available" class="stats-grid">
+            <div class="stat-item"><span>域名总量</span><strong>{{ formatNumber(stats.domains?.total) }}</strong></div>
+            <div v-for="field in domainTopFields" :key="field.key"><span>{{ field.label }} Top10</span><div v-for="item in stats.domains?.[field.key] || []" :key="item.name">{{ item.name }}：{{ formatNumber(item.count) }}</div></div>
+          </div>
+          <p v-else class="muted-text">{{ stats.reason || '统计数据暂不可用' }}</p>
+          <div v-if="stats.available && stats.domains?.monthly?.length" class="stats-monthly">
+            <span>近 12 个月恶意域名</span>
+            <div v-for="item in stats.domains.monthly" :key="item.name">{{ item.name }}：{{ formatNumber(item.count) }}</div>
+          </div>
+          <p v-if="stats.available" class="muted-text">数据更新时间：{{ stats.updated_at || '-' }}</p>
         </el-collapse-item>
       </el-collapse>
     </section>
@@ -74,7 +98,7 @@
         <template v-if="uploadResult.database_hit && uploadResult.sample_record">
           <h3 class="subhead">样本标识</h3>
           <el-descriptions :column="1" border>
-            <el-descriptions-item v-for="(value, key) in uploadResult.sample_record.identity" :key="key" :label="key">{{ value || '-' }}</el-descriptions-item>
+            <el-descriptions-item v-for="(value, key) in uploadResult.sample_record.identity" :key="key" :label="key">{{ key === '文件大小' ? formatFileSize(value) : value }}</el-descriptions-item>
           </el-descriptions>
           <h3 class="subhead">哈希信息</h3>
           <el-descriptions :column="1" border>
@@ -86,14 +110,14 @@
           </el-descriptions>
         </template>
         <el-descriptions :column="1" border>
-          <el-descriptions-item label="文件名">{{ uploadResult.filename || '-' }}</el-descriptions-item>
+          <el-descriptions-item v-if="!uploadResult.database_hit" label="文件名">{{ uploadResult.filename || '-' }}</el-descriptions-item>
           <el-descriptions-item label="SHA256">
             <span class="mono break-text">{{ uploadResult.sha256 || '-' }}</span>
           </el-descriptions-item>
           <el-descriptions-item label="MD5">
             <span class="mono break-text">{{ uploadResult.md5 || uploadResult.query_result?.MD5 || '-' }}</span>
           </el-descriptions-item>
-          <el-descriptions-item label="文件大小">{{ formatFileSize(uploadResult.file_size) }}</el-descriptions-item>
+          <el-descriptions-item v-if="!uploadResult.database_hit" label="文件大小">{{ formatFileSize(uploadResult.file_size) }}</el-descriptions-item>
           <el-descriptions-item label="文件类型">{{ uploadResult.file_type || '-' }}</el-descriptions-item>
           <el-descriptions-item label="检测时间">{{ uploadResult.detection_time || '-' }}</el-descriptions-item>
         </el-descriptions>
@@ -167,10 +191,15 @@ const apiService = axios.create({ timeout: 600000 })
 
 const showSection = ref('fileInfo')
 const loading = ref(false)
+const detectionMessage = ref('正在检测，可刷新页面继续等待')
+const detectionAbort = new AbortController()
+const TASK_KEY = 'aidefender_detection_task'
+const TASK_PHASE_KEY = 'aidefender_detection_phase'
 const uploadResult = ref(null)
 const apiBaseUrl = ref('/api-backend')
 const modelService = ref({ connected: false, ready: false, model_count: 0 })
 const checkingModels = ref(true)
+const stats = ref({ available: false, reason: '启动后正在读取统计数据' })
 let modelHealthTimer
 const fileInput = ref(null)
 const modelNames = ref([
@@ -182,6 +211,12 @@ const modelNames = ref([
   'GraphStatNet', 'GrayscaleCNN', 'InceptionV3', 'IMCFN', 'ColorCNN',
   'MarkovCNN', 'EntropyMapCNN', 'HashEmbedNet', 'MetadataNet', 'ResourceNet'
 ])
+const modelDetails = ref(modelNames.value.map(name => ({ name, view: '多视角特征', features: '项目特征', source: 'CoDefenderC3 项目模型实现', role: '参与多模型恶意文件判定', optimization: '参见项目模型资料' })))
+const sampleTopFields = [
+  { key: 'category', label: '类别' }, { key: 'platform', label: '平台' },
+  { key: 'family', label: '家族' }, { key: 'filetype', label: '文件类型' }
+]
+const domainTopFields = [{ key: 'source', label: '来源' }, { key: 'category', label: '类别' }]
 
 const sectionOptions = [
   { label: '基础信息', value: 'fileInfo' },
@@ -212,11 +247,16 @@ const maliciousCount = computed(() => modelRows.value.filter(row => row.result =
 const safeCount = computed(() => modelRows.value.filter(row => row.result === '安全').length)
 
 onMounted(async () => {
+  loading.value = Boolean(localStorage.getItem(TASK_KEY))
   await loadConfig()
-  await Promise.allSettled([loadModels(), loadModelHealth()])
+  void Promise.allSettled([loadModels(), loadModelHealth(), loadStats()])
   modelHealthTimer = window.setInterval(loadModelHealth, 30000)
+  await restoreDetectionTask()
 })
-onUnmounted(() => window.clearInterval(modelHealthTimer))
+onUnmounted(() => {
+  detectionAbort.abort()
+  window.clearInterval(modelHealthTimer)
+})
 
 async function loadConfig() {
   try {
@@ -244,9 +284,21 @@ async function loadModels() {
     const response = await apiService.get(`${apiBaseUrl.value}/models`, { timeout: 5000 })
     if (Array.isArray(response.data?.models)) {
       modelNames.value = response.data.models
+      modelDetails.value = Array.isArray(response.data?.catalog)
+        ? response.data.catalog
+        : modelNames.value.map(name => modelDetails.value.find(item => item.name === name) || ({ name, view: '多视角特征', features: '项目特征', source: 'CoDefenderC3 项目模型实现', role: '参与多模型恶意文件判定', optimization: '参见项目模型资料' }))
     }
   } catch (error) {
     console.warn('加载模型清单失败:', error.message)
+  }
+}
+
+async function loadStats() {
+  try {
+    const response = await apiService.get(`${apiBaseUrl.value}/stats`, { timeout: 15000 })
+    stats.value = response.data || stats.value
+  } catch {
+    stats.value = { available: false, reason: '统计接口暂不可用' }
   }
 }
 
@@ -300,13 +352,97 @@ async function uploadFile(file) {
   loading.value = true
   const formData = new FormData()
   formData.append('file', file)
+  const randomBytes = new Uint8Array(16)
+  window.crypto.getRandomValues(randomBytes)
+  const requestId = Array.from(randomBytes, byte => byte.toString(16).padStart(2, '0')).join('')
+  // Save the request ID before uploading: refreshing after server acceptance
+  // but before the POST response arrives can still recover the existing task.
+  localStorage.setItem(TASK_KEY, requestId)
+  localStorage.setItem(TASK_PHASE_KEY, 'uploading')
+  detectionMessage.value = '正在上传样本'
   try {
     const response = await apiService.post(`${apiBaseUrl.value}/detect`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
+      headers: { 'X-Detection-ID': requestId },
+      signal: detectionAbort.signal
     })
-    uploadResult.value = normalizeDetectionResponse(response.data)
-    ElMessage.success('检测完成')
+    if (response.data?.task_id) {
+      localStorage.setItem(TASK_KEY, response.data.task_id)
+      localStorage.setItem(TASK_PHASE_KEY, 'accepted')
+      await pollDetectionTask(response.data.task_id)
+    } else {
+      clearSavedTask()
+      uploadResult.value = normalizeDetectionResponse(response.data)
+      ElMessage.success('检测完成')
+    }
   } catch (error) {
+    if (detectionAbort.signal.aborted) return
+    if (!error.response) {
+      // A network failure does not prove the server rejected the upload.
+      await pollDetectionTask(requestId)
+      return
+    }
+    clearSavedTask()
+    ElMessage.error('检测失败: ' + (error.response?.data?.detail || error.message))
+  } finally {
+    loading.value = false
+  }
+}
+
+async function restoreDetectionTask() {
+  const taskId = localStorage.getItem(TASK_KEY)
+  if (taskId) await pollDetectionTask(taskId)
+}
+
+function clearSavedTask() {
+  localStorage.removeItem(TASK_KEY)
+  localStorage.removeItem(TASK_PHASE_KEY)
+}
+
+async function pollDetectionTask(taskId) {
+  loading.value = true
+  let missingCount = 0
+  try {
+    while (!detectionAbort.signal.aborted) {
+      let response
+      try {
+        response = await apiService.get(`${apiBaseUrl.value}/detect/tasks/${taskId}`, {
+          timeout: 15000, signal: detectionAbort.signal
+        })
+        missingCount = 0
+      } catch (error) {
+        if (detectionAbort.signal.aborted) return
+        if (error.response?.status === 404) {
+          const uploading = localStorage.getItem(TASK_PHASE_KEY) === 'uploading'
+          if (!uploading || ++missingCount >= 12) {
+            clearSavedTask()
+            throw new Error(uploading ? '上次上传尚未完成，请重新选择文件' : '检测记录已过期，请重新选择文件')
+          }
+        } else if (error.response && error.response.status < 500 && error.response.status !== 429) {
+          throw error
+        }
+        detectionMessage.value = '连接暂时中断，正在恢复检测结果…'
+        await new Promise(resolve => window.setTimeout(resolve, 3000))
+        continue
+      }
+      const task = response.data || {}
+      if (task.status === 'completed') {
+        uploadResult.value = normalizeDetectionResponse(task.result || {})
+        // Keep the ID until a new upload, so refreshing a completed report
+        // also restores it during the server's configured retention period.
+        localStorage.setItem(TASK_PHASE_KEY, 'accepted')
+        ElMessage.success('检测完成')
+        return
+      }
+      if (task.status === 'failed') {
+        clearSavedTask()
+        throw new Error(task.error || '检测任务失败')
+      }
+      localStorage.setItem(TASK_PHASE_KEY, 'accepted')
+      detectionMessage.value = '正在检测，可刷新页面继续等待'
+      await new Promise(resolve => window.setTimeout(resolve, 2500))
+    }
+  } catch (error) {
+    if (detectionAbort.signal.aborted) return
     ElMessage.error('检测失败: ' + (error.response?.data?.detail || error.message))
   } finally {
     loading.value = false
@@ -341,6 +477,10 @@ function formatFileSize(value) {
   const units = ['B', 'KB', 'MB', 'GB']
   const index = Math.min(Math.floor(Math.log(bytes || 1) / Math.log(1024)), units.length - 1)
   return `${Math.round((bytes / Math.pow(1024, index)) * 100) / 100} ${units[index]}`
+}
+
+function formatNumber(value) {
+  return Number(value || 0).toLocaleString('zh-CN')
 }
 
 function getProbabilityPercent(probability) {

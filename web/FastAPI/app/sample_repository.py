@@ -71,18 +71,18 @@ class SampleRepository:
     def public_fields(record: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         if not record:
             return {}
-        identity = ("name", "length", "sha256", "md5")
-        hashes = ("ssdeep", "tlsh", "authentihash", "imphash", "vhash", "rich_header_hash")
-        labels = {"category": "Category", "platform": "Platform", "family": "Family", "filetype": "FileType", "packer": "Packer"}
+        identity = {"name": "文件名", "length": "文件大小", "sha256": "SHA256", "md5": "MD5"}
+        hashes = {"ssdeep": "SSDeep", "tlsh": "TLSH", "authentihash": "Authentihash", "imphash": "Imphash", "vhash": "Vhash", "rich_header_hash": "Rich Header Hash"}
+        labels = {"category": "类别", "platform": "平台", "family": "家族", "filetype": "文件类型", "packer": "Packer"}
 
         def value(key: str) -> Any:
             item = record.get(key)
             return None if item is None or item == "" else item
 
         return {
-            "identity": {key: value(key) for key in identity},
-            "hashes": {key: value(key) for key in hashes},
-            "labels": {output: value(key) for key, output in labels.items()},
+            "identity": {output: value(key) for key, output in identity.items() if value(key) is not None},
+            "hashes": {output: value(key) for key, output in hashes.items() if value(key) is not None},
+            "labels": {output: value(key) for key, output in labels.items() if value(key) is not None},
             "source_db": record.get("_source_db"),
             "source_table": record.get("_source_table"),
         }
