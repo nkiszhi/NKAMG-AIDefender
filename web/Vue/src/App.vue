@@ -15,7 +15,6 @@
           <input v-model.trim="hashQuery" type="search" maxlength="64" spellcheck="false" placeholder="搜索 SHA256" aria-label="搜索 SHA256" />
           <button type="submit" :disabled="searching || !hashQuery">{{ searching ? '查询中' : '查询' }}</button>
         </form>
-        <el-button class="header-upload" type="primary" :loading="loading" @click="selectFile"><el-icon><UploadFilled /></el-icon>上传样本</el-button>
         <div class="status-tags">
         <span class="service-status" :class="modelService.ready ? 'is-ready' : modelService.connected ? 'is-warning' : 'is-offline'">
           <i></i>
@@ -47,7 +46,7 @@
           <div class="section-intro">
             <div>
               <div class="eyebrow">MODEL CATALOG</div>
-              <h2>三十三个视角，共同还原样本风险</h2>
+              <h2>33 个模型，分别观察样本的不同特征</h2>
             </div>
             <p>每个模型从不同的字节、结构、图和元数据视角观察样本。向下浏览可以了解它们各自负责的分析方向。</p>
           </div>
@@ -571,6 +570,42 @@ function topBarWidth(rows, count) {
 }
 
 function modelDescription(item) {
+  const modelDescriptions = {
+    MalConv: '直接读取文件字节序列，用较长的上下文寻找恶意代码、填充区和异常编码留下的整体模式。适合快速判断文件内容是否呈现已知恶意结构。',
+    MalConv2: '在字节级模型基础上强化局部片段与长距离依赖的建模，关注入口附近、节区边界和高风险片段，为最终判定提供内容证据。',
+    ByteTransformer: '使用注意力机制比较不同位置的字节片段，捕捉跨节区关联、混淆片段和重复载荷等序列关系，补充传统统计模型的盲区。',
+    SaxeBerlinDNN: '针对 PE 静态特征进行深度非线性建模，综合文件结构、导入信息和基础属性，识别多种特征共同出现时的风险变化。',
+    EmberDNN: '学习 EMBER 风格的 PE 特征组合，包括头部、节区、导入、字符串和熵等信息，用于评估文件的综合恶意概率。',
+    NatarajKNN: '比较当前文件与特征空间中相近样本的距离，寻找与历史恶意文件相似的结构模式，结果便于解释和追溯近邻样本。',
+    DrebinSVM: '基于可解释的静态特征边界进行分类，重点观察权限、调用、字符串和结构信号的组合，适合作为稳定的基线判断。',
+    DL4MD: '从多类恶意软件静态特征中学习层次化表示，识别常见家族的组合特征和变种漂移，提供面向家族的风险参考。',
+    PEMinerRF: '通过随机森林分析 PE 头、节表、导入和资源等离散特征，利用多棵决策树交叉判断异常结构，结果具有较好的可读性。',
+    DrebinImport: '专门分析导入 API 与库的组合，关注进程注入、持久化、网络通信和系统修改等能力是否同时出现。',
+    ALOHANet: '从多源静态特征中学习恶意软件的非线性关联，关注单个特征不明显但组合后具有辨识度的行为线索。',
+    EmberGBDT_Import: '将 EMBER 特征与导入表统计交给梯度提升树分析，重点识别 API 组合、调用密度和文件结构之间的异常关系。',
+    RaffFeatureNet: '对经过筛选和编码的 PE 特征进行深度表示学习，减少冗余字段影响，突出对恶意判别更有贡献的特征。',
+    DrebinString: '提取 URL、命令行、路径、注册表和脚本等字符串信号，识别下载执行、持久化和远程控制相关内容。',
+    OpcodeLSTM: '按顺序读取反汇编操作码，利用循环网络观察指令之间的先后关系，寻找解码、注入和加载器常见的代码节奏。',
+    OpcodeTransformer: '使用注意力机制分析更长的操作码上下文，比较不同函数和代码区域之间的关联，适合发现复杂的指令组合。',
+    OpcodeStatNet: '统计算术、跳转、调用、内存访问等指令类别及其 n-gram 分布，用代码风格变化发现异常编译或混淆痕迹。',
+    AsmEmbedNet: '把汇编函数编码成向量，比较函数级语义和结构相似性，辅助识别常见加载器、解密例程和恶意功能片段。',
+    MalGraph: '把函数与调用关系组织成图，观察节点连接、调用深度和关键路径，补充单纯字节或统计特征无法表达的结构信息。',
+    CFGGAT: '在控制流图上使用图注意力聚合关键邻居，突出分支、循环和异常跳转等结构，识别复杂函数中的可疑控制逻辑。',
+    CFGGCN: '通过图卷积传播控制流节点信息，学习基本块之间的局部结构模式，评估函数是否具有恶意代码常见的控制流形态。',
+    CFGDGCNN: '对控制流图进行动态卷积式聚合，关注不同规模的子图结构和异常路径，提升对变形代码与复杂分支的识别能力。',
+    CallGraphGNN: '分析函数调用图中的入口、中心节点和调用链，定位网络、进程、文件和注册表能力之间的组合关系。',
+    GraphStatNet: '把图的节点数、边数、深度、度分布等统计量进行联合建模，用整体图形态快速筛查异常程序结构。',
+    GrayscaleCNN: '将文件字节排列为灰度图像，利用纹理、密度和区域边界识别压缩、填充、重复载荷及代码区域的视觉模式。',
+    InceptionV3: '从字节可视化图像中提取多尺度纹理特征，兼顾局部高密度区域与整体布局，为视觉检测链路提供成熟的图像表征。',
+    IMCFN: '融合多通道文件图像信息，比较不同通道中的纹理和边缘变化，识别仅在某一种视觉表示中明显的恶意模式。',
+    ColorCNN: '把字节映射到彩色通道并分析颜色纹理，观察不同数据区域的通道关系，为灰度图难以区分的样本提供补充证据。',
+    MarkovCNN: '根据字节状态转移构造马尔可夫图像，分析相邻状态变化和重复转移路径，寻找编码、解码及混淆带来的规律。',
+    EntropyMapCNN: '把局部熵变化绘制成热度图，定位高熵压缩区、低熵填充区和突变边界，帮助判断打包、加密与载荷分布。',
+    HashEmbedNet: '联合建模文件哈希与相似性摘要，利用内容指纹关联相近样本，为样本库命中之外的变种识别提供线索。',
+    MetadataNet: '分析版本信息、清单、资源、签名和编译元数据，检查声明信息是否缺失、矛盾或与可疑文件行为不一致。',
+    ResourceNet: '专注 PE 资源、图标、清单和嵌入对象，识别异常资源大小、类型组合及隐藏载荷等资源层面的风险。'
+  }
+  if (modelDescriptions[item.name]) return modelDescriptions[item.name]
   const view = String(item.view || '').toLowerCase()
   const descriptions = [
     [/byte-level/, '直接观察文件原始字节序列中的局部模式，为分析提供最接近文件内容本身的证据。'],
