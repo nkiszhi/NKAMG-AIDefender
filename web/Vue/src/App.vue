@@ -197,16 +197,18 @@
         <div v-else-if="uploadResult.database_hit" class="database-hit">已命中 NKAMG 样本库，已跳过 33 模型检测。</div>
         <template v-else>
         <div class="summary-row">
-          <el-tag size="large" type="info">共 {{ modelCount }} 个检测模型</el-tag>
+          <el-tag size="large" type="info">{{ uploadResult.partial ? '检测中 · 已返回部分结果' : '检测结束' }} · 共 {{ modelCount }} 个模型</el-tag>
           <el-tag size="large" type="danger">恶意: {{ maliciousCount }}</el-tag>
           <el-tag size="large" type="success">安全: {{ safeCount }}</el-tag>
+          <el-tag v-if="incompleteCount" size="large" type="warning">未取得有效结果: {{ incompleteCount }}</el-tag>
         </div>
         <el-table :data="modelRows" border stripe class="model-table">
           <el-table-column type="index" label="序号" width="70" />
           <el-table-column prop="model" label="检测模型" min-width="180" />
           <el-table-column label="恶意概率" min-width="180">
             <template #default="{ row }">
-              <el-progress :percentage="getProbabilityPercent(row.probability)" :color="getProbabilityColor(row.probability)" />
+              <span v-if="row.probability === null || row.probability === undefined">—</span>
+              <el-progress v-else :percentage="getProbabilityPercent(row.probability)" :color="getProbabilityColor(row.probability)" />
             </template>
           </el-table-column>
           <el-table-column label="结果" width="120">
@@ -216,8 +218,8 @@
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="virus_name" label="病毒名称" min-width="180">
-            <template #default="{ row }">{{ row.virus_name || '-' }}</template>
+          <el-table-column prop="reason" label="说明" min-width="180">
+            <template #default="{ row }">{{ row.reason || row.virus_name || '-' }}</template>
           </el-table-column>
         </el-table>
         </template>
@@ -327,14 +329,17 @@ const modelRows = computed(() => Object.entries(modelResults.value).map(([model,
   model,
   probability: data.probability,
   result: data.result,
-  virus_name: data.virus_name
+  virus_name: data.virus_name,
+  reason: data.reason
 })))
 
 const modelCount = computed(() => modelRows.value.length)
 const maliciousCount = computed(() => modelRows.value.filter(row => row.result === '恶意').length)
 const safeCount = computed(() => modelRows.value.filter(row => row.result === '安全').length)
+const incompleteCount = computed(() => modelRows.value.filter(row => !['恶意', '安全'].includes(row.result)).length)
 
 onMounted(async () => {
+  window.addEventListener('pagehide', notifyPageLeave)
   loading.value = Boolean(localStorage.getItem(TASK_KEY))
   await loadConfig()
   try {
@@ -346,9 +351,16 @@ onMounted(async () => {
   await restoreDetectionTask()
 })
 onUnmounted(() => {
+  notifyPageLeave()
+  window.removeEventListener('pagehide', notifyPageLeave)
   detectionAbort.abort()
   window.clearInterval(modelHealthTimer)
 })
+
+function notifyPageLeave() {
+  const taskId = localStorage.getItem(TASK_KEY)
+  if (loading.value && taskId) navigator.sendBeacon(apiBaseUrl.value + '/detect/tasks/' + taskId + '/leave', '')
+}
 
 async function loadConfig() {
   try {
@@ -550,11 +562,22 @@ async function pollDetectionTask(taskId) {
         ElMessage.success('检测完成')
         return
       }
-      if (task.status === 'failed') {
+      if (task.status === 'failed' || task.status === 'cancelled') {
         clearSavedTask()
         throw new Error(task.error || '检测任务失败')
       }
       localStorage.setItem(TASK_PHASE_KEY, 'accepted')
+      if (task.progress?.models) {
+        const labels = { waiting: '等待中', running: '正在检测', timeout: '超时', error: '失败', unavailable: '不可用', skipped: '已跳过' }
+        const results = Object.fromEntries(task.progress.models.map(item => [item.model, {
+          probability: item.status === 'ok' ? item.score : null,
+          result: item.status === 'ok' ? (item.prediction === 1 ? '恶意' : '安全') : (labels[item.status] || '等待中'),
+          reason: item.reason || ''
+        }]))
+        const firstProgress = !uploadResult.value
+        uploadResult.value = normalizeDetectionResponse({ ...task.progress.file_info, partial: true, exe_result: results })
+        if (firstProgress) showSection.value = 'modelDetection'
+      }
       detectionMessage.value = task.status === 'queued'
         ? (Number(task.tasks_ahead) > 0 ? `正在排队，前方还有 ${task.tasks_ahead} 个任务` : '任务已接收，即将开始检测')
         : '正在检测，可刷新页面继续等待'

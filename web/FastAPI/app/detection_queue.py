@@ -27,6 +27,11 @@ class DetectionTaskStore:
                 result_json TEXT, error TEXT,
                 created_at TEXT NOT NULL, updated_at TEXT NOT NULL)''')
             connection.execute('CREATE INDEX IF NOT EXISTS task_status ON detection_tasks(status,created_at)')
+            columns = {row['name'] for row in connection.execute('PRAGMA table_info(detection_tasks)')}
+            for name in ('client_seen_at', 'client_left_at', 'progress_json'):
+                if name not in columns:
+                    connection.execute(f'ALTER TABLE detection_tasks ADD COLUMN {name} TEXT')
+            connection.execute("UPDATE detection_tasks SET client_seen_at=created_at WHERE client_seen_at IS NULL")
 
     @contextmanager
     def _connect(self):
@@ -41,7 +46,7 @@ class DetectionTaskStore:
     def recover(self):
         # Call only after acquiring the process lease, never during import.
         with self._lock, self._connect() as connection:
-            connection.execute("UPDATE detection_tasks SET status='queued' WHERE status='running'")
+            connection.execute("UPDATE detection_tasks SET status='queued',progress_json=NULL WHERE status='running'")
 
     def create(self, task_id, filename, file_path, capacity):
         now = datetime.now().isoformat(timespec='microseconds')
@@ -55,6 +60,7 @@ class DetectionTaskStore:
                 raise QueueFull()
             connection.execute('INSERT INTO detection_tasks(task_id,status,filename,file_path,created_at,updated_at) VALUES(?,?,?,?,?,?)',
                                (task_id, 'queued', filename, str(file_path), now, now))
+            connection.execute('UPDATE detection_tasks SET client_seen_at=? WHERE task_id=?', (now, task_id))
             return dict(connection.execute('SELECT * FROM detection_tasks WHERE task_id=?', (task_id,)).fetchone())
 
     def get(self, task_id):
@@ -72,15 +78,45 @@ class DetectionTaskStore:
         if result['status'] == 'queued':
             result['tasks_ahead'] = ahead
             result['queue_position'] = ahead + 1
-        if result['status'] in {'completed', 'failed'}:
+        if result['status'] in {'completed', 'failed', 'cancelled'}:
             if (datetime.now() - datetime.fromisoformat(result['updated_at'])).total_seconds() > self.ttl_seconds:
                 return None
         return result
 
+    def heartbeat(self, task_id):
+        with self._lock, self._connect() as connection:
+            connection.execute("UPDATE detection_tasks SET client_seen_at=?,client_left_at=NULL WHERE task_id=?",
+                               (datetime.now().isoformat(), task_id))
+
+    def leave(self, task_id):
+        with self._lock, self._connect() as connection:
+            connection.execute("UPDATE detection_tasks SET client_left_at=? WHERE task_id=? AND status IN ('queued','running')",
+                               (datetime.now().isoformat(), task_id))
+
+    def cancel_abandoned(self, heartbeat_seconds=120, leave_seconds=30):
+        now = datetime.now()
+        with self._lock, self._connect() as connection:
+            connection.execute('BEGIN IMMEDIATE')
+            rows = connection.execute("""SELECT task_id,file_path FROM detection_tasks WHERE status='queued' AND
+                ((client_left_at IS NOT NULL AND client_left_at<?) OR
+                 (client_left_at IS NULL AND client_seen_at<?))""",
+                ((now-timedelta(seconds=leave_seconds)).isoformat(),
+                 (now-timedelta(seconds=heartbeat_seconds)).isoformat())).fetchall()
+            for row in rows:
+                connection.execute("UPDATE detection_tasks SET status='cancelled',error=?,updated_at=? WHERE task_id=? AND status='queued'",
+                                   ('页面已离开，排队任务已取消', now.isoformat(), row['task_id']))
+            return [row['file_path'] for row in rows]
+
+    def update_progress(self, task_id, progress):
+        with self._lock, self._connect() as connection:
+            connection.execute("UPDATE detection_tasks SET progress_json=? WHERE task_id=? AND status='running'",
+                               (json.dumps(progress, ensure_ascii=False), task_id))
+
     def claim_next(self):
         with self._lock, self._connect() as connection:
             connection.execute('BEGIN IMMEDIATE')
-            row = connection.execute("SELECT * FROM detection_tasks WHERE status='queued' ORDER BY rowid LIMIT 1").fetchone()
+            row = connection.execute("SELECT * FROM detection_tasks WHERE status='queued' AND client_left_at IS NULL AND client_seen_at>=? ORDER BY rowid LIMIT 1",
+                                     ((datetime.now()-timedelta(seconds=120)).isoformat(),)).fetchone()
             if not row:
                 return None
             connection.execute("UPDATE detection_tasks SET status='running',updated_at=? WHERE task_id=?",
@@ -100,8 +136,8 @@ class DetectionTaskStore:
     def cleanup(self):
         cutoff = (datetime.now() - timedelta(seconds=self.ttl_seconds)).isoformat()
         with self._lock, self._connect() as connection:
-            rows = connection.execute("SELECT file_path FROM detection_tasks WHERE status IN ('completed','failed') AND updated_at<?", (cutoff,)).fetchall()
-            connection.execute("DELETE FROM detection_tasks WHERE status IN ('completed','failed') AND updated_at<?", (cutoff,))
+            rows = connection.execute("SELECT file_path FROM detection_tasks WHERE status IN ('completed','failed','cancelled') AND updated_at<?", (cutoff,)).fetchall()
+            connection.execute("DELETE FROM detection_tasks WHERE status IN ('completed','failed','cancelled') AND updated_at<?", (cutoff,))
         return [row['file_path'] for row in rows]
 
     def orphan_paths(self, upload_dir, cutoff_timestamp):
@@ -131,6 +167,10 @@ class DetectionTaskStore:
             response['result'] = json.loads(row['result_json'])
         if row['status'] == 'failed':
             response['error'] = row.get('error') or '检测任务失败'
+        if row['status'] == 'cancelled':
+            response['error'] = row.get('error') or '排队任务已取消'
+        if row.get('progress_json') and row['status'] in ('running', 'failed'):
+            response['progress'] = json.loads(row['progress_json'])
         return response
 
 

@@ -1,14 +1,46 @@
 import threading
+import json
+import tempfile
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest.mock import patch
 
 from app.config import settings
-from app.codefender_client import ModelEndpointPool, ModelServiceBusy, scan_file
+from app.codefender_client import ModelEndpointPool, ModelServiceBusy, scan_file, _scan_by_stream
 
 
 class EndpointPoolTests(unittest.TestCase):
+    def test_stream_persists_progress_then_returns_one_final_result(self):
+        from unittest.mock import MagicMock
+        updates = []
+        response = MagicMock()
+        response.__enter__.return_value = response
+        response.status_code = 200
+        response.iter_lines.return_value = [json.dumps(item).encode() for item in [
+            {'event': 'heartbeat'}, {'event': 'progress', 'data': {'models': [{'model': 'fast', 'status': 'ok'}]}},
+            {'event': 'result', 'data': {'final': True}}]]
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'sample'
+            path.write_bytes(b'pe')
+            with patch('app.codefender_client.requests.post', return_value=response) as post, patch('app.codefender_client.parse_codefender_response', return_value={'ok': True}):
+                self.assertEqual(_scan_by_stream(path, 'http://worker', updates.append), {'ok': True})
+                self.assertEqual(post.call_count, 1)
+        self.assertEqual(updates[0]['models'][0]['model'], 'fast')
+
+    def test_stream_unknown_error_never_falls_back_to_full_scan(self):
+        from unittest.mock import MagicMock
+        response = MagicMock()
+        response.__enter__.return_value = response
+        response.status_code = 200
+        response.iter_lines.return_value = [b'{"event":"error","detail":"analysis failure"}']
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'sample'
+            path.write_bytes(b'pe')
+            with patch('app.codefender_client.requests.post', return_value=response), patch('app.codefender_client._scan_by_upload') as fallback:
+                with self.assertRaises(RuntimeError):
+                    _scan_by_stream(path, 'http://worker', lambda value: None)
+                fallback.assert_not_called()
     def test_concurrent_requests_use_distinct_workers(self):
         barrier = threading.Barrier(2)
         urls = ['http://127.0.0.1:8001', 'http://127.0.0.1:8002']

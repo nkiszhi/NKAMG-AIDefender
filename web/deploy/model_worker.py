@@ -103,12 +103,35 @@ def enable_pool(config_path):
     print('Restart the existing Web backend after current tasks finish.')
 
 
+def install_progress(source, target):
+    root = Path(__file__).resolve().parents[2]
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('progress_upgrade', root / 'CoDefenderC3/docker/patch_progress.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    with tempfile.TemporaryDirectory(prefix='aidefender-engine-') as directory:
+        app_path = Path(directory) / 'app.py'
+        docker('cp', f'{source}:/app/engine/app.py', str(app_path))
+        updated = module.upgrade_source(app_path.read_text(encoding='utf-8'),
+                                        (root / 'CoDefenderC3/docker/runtime_endpoints.py').read_text(encoding='utf-8'))
+        if source == target:
+            docker('exec', source, 'cp', '/app/engine/app.py', f'/app/engine/app.before-progress-{time.time_ns()}.py')
+            docker('exec', source, 'cp', '/app/models/MalGraph_2022/utils.py', f'/app/models/MalGraph_2022/utils.before-progress-{time.time_ns()}.py')
+        app_path.write_text(updated, encoding='utf-8')
+        docker('cp', str(app_path), f'{target}:/app/engine/app.py')
+        for filename in ('scan_runtime.py', 'staged_scan.py', 'analysis_worker.py'):
+            docker('cp', str(root / 'CoDefenderC3/engine' / filename), f'{target}:/app/engine/{filename}')
+        docker('cp', str(root / 'CoDefenderC3/models/MalGraph_2022/utils.py'),
+               f'{target}:/app/models/MalGraph_2022/utils.py')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--source', default='codefender-c3-v8')
     parser.add_argument('--target', default='codefender-c3-v8-worker2')
     parser.add_argument('--apply', action='store_true')
     parser.add_argument('--enable-pool', action='store_true')
+    parser.add_argument('--upgrade-source', action='store_true')
     parser.add_argument('--config', default='web/config.ini')
     args = parser.parse_args()
     if args.enable_pool:
@@ -117,12 +140,18 @@ def main():
     source = json.loads(docker('inspect', '--type', 'container', args.source))[0]
     if not source['State']['Running']:
         raise ValueError('Source worker must be running')
+    if args.upgrade_source:
+        install_progress(args.source, args.source)
+        docker('exec', args.source, 'python3', '-m', 'py_compile', '/app/engine/app.py', '/app/engine/staged_scan.py', '/app/engine/analysis_worker.py')
+        docker('exec', args.source, 'supervisorctl', 'restart', 'codefender')
+        print('Source upgraded; validate readyz and real PE before enabling traffic.')
+        return
     command = build_args(source, args.target)
     print('Source: ' + args.source + '; target: ' + args.target)
     print('Image ID: ' + source['Image'])
     print('Second worker: 127.0.0.1:8002, 3 CPU budget, 10 GiB cap, single scan.')
     print('Inherits environment and supported mounts; environment values are hidden.')
-    print('Copies current engine app/runtime patches before start; other container-layer changes are NOT copied.')
+    print('Upgrades engine with staged progress and disposable analysis; other container-layer changes are NOT copied.')
     print('Validate model/license readiness before enabling the pool.')
     if not args.apply:
         print('Preview only. Use --apply to create and start. Existing objects are never removed.')
@@ -144,11 +173,7 @@ def main():
                 output.write(f'{key}={value}\n')
         command[1:1] = ['--env-file', env_path]
         docker(*command)
-        with tempfile.TemporaryDirectory(prefix='aidefender-engine-') as directory:
-            for filename in ('app.py', 'scan_runtime.py'):
-                local = str(Path(directory) / filename)
-                docker('cp', f'{args.source}:/app/engine/{filename}', local)
-                docker('cp', local, f'{args.target}:/app/engine/{filename}')
+        install_progress(args.source, args.target)
         docker('start', args.target)
     finally:
         if env_path:

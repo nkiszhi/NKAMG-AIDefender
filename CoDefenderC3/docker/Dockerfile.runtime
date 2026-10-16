@@ -2,10 +2,12 @@
 ARG BASE_IMAGE=codefender:latest
 FROM ${BASE_IMAGE}
 COPY engine/scan_runtime.py /app/engine/scan_runtime.py
-COPY docker/patch_runtime.py docker/runtime_endpoints.py /tmp/
-RUN python3 /tmp/patch_runtime.py && \
+COPY engine/staged_scan.py engine/analysis_worker.py /app/engine/
+COPY models/MalGraph_2022/utils.py /app/models/MalGraph_2022/utils.py
+COPY docker/patch_progress.py docker/runtime_endpoints.py /tmp/
+RUN python3 /tmp/patch_progress.py && \
     python3 -m py_compile /app/engine/app.py /app/engine/scan_runtime.py && \
-    rm /tmp/patch_runtime.py /tmp/runtime_endpoints.py
+    rm /tmp/patch_progress.py /tmp/runtime_endpoints.py
 ENV CODEFENDER_MAX_CONCURRENT=1 \
     CODEFENDER_REQUEST_TIMEOUT=240 \
     CODEFENDER_HARD_TIMEOUT=300

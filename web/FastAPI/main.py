@@ -293,7 +293,7 @@ async def sample_by_sha256(sha256: str) -> dict:
     }
 
 
-async def _run_detection(file_path: Path, info: dict) -> dict:
+async def _run_detection(file_path: Path, info: dict, on_progress=None) -> dict:
     database_error = None
     try:
         sample_record = await asyncio.to_thread(sample_repository.find_malicious, info["sha256"])
@@ -320,7 +320,7 @@ async def _run_detection(file_path: Path, info: dict) -> dict:
 
     for attempt in range(21):
         try:
-            exe_result = await asyncio.to_thread(scan_file, file_path)
+            exe_result = await asyncio.to_thread(scan_file, file_path, on_progress=on_progress)
             break
         except ModelServiceBusy:
             if attempt == 20:
@@ -342,6 +342,12 @@ async def _run_detection(file_path: Path, info: dict) -> dict:
 
 async def _detection_worker() -> None:
     while True:
+        abandoned = await asyncio.to_thread(task_store.cancel_abandoned)
+        for path in abandoned:
+            try:
+                await asyncio.to_thread(Path(path).unlink, missing_ok=True)
+            except OSError:
+                logger.warning('取消任务样本暂未删除，交由定期清理: %s', path, exc_info=True)
         task_wakeup.clear()
         row = await asyncio.to_thread(task_store.claim_next)
         if not row:
@@ -370,7 +376,9 @@ async def _process_detection_task(task_id: str, file_path: Path, row: dict) -> N
             raise FileNotFoundError('上传样本文件已不存在')
         from app.file_info import build_file_info
         info = await asyncio.to_thread(build_file_info, file_path, row['filename'])
-        result = await _run_detection(file_path, info)
+        def progress(payload):
+            task_store.update_progress(task_id, {'file_info': info, **payload})
+        result = await _run_detection(file_path, info, on_progress=progress)
         result['timing'] = {'queue_seconds': round(queued_seconds, 3),
                             'processing_seconds': round(monotonic_time.monotonic() - started, 3)}
         await asyncio.to_thread(task_store.complete, task_id, result)
@@ -388,6 +396,9 @@ async def _process_detection_task(task_id: str, file_path: Path, row: dict) -> N
 async def _cleanup_loop() -> None:
     while True:
         try:
+            abandoned = await asyncio.to_thread(task_store.cancel_abandoned)
+            for path in abandoned:
+                await asyncio.to_thread(Path(path).unlink, missing_ok=True)
             paths = await asyncio.to_thread(task_store.cleanup)
             for path in paths:
                 await asyncio.to_thread(Path(path).unlink, missing_ok=True)
@@ -399,7 +410,7 @@ async def _cleanup_loop() -> None:
                     await asyncio.to_thread(path.unlink, missing_ok=True)
         except Exception:
             logger.exception('过期任务清理失败')
-        await asyncio.sleep(60)
+        await asyncio.sleep(5)
 
 
 @app.post("/detect")
@@ -474,10 +485,19 @@ async def detect(response: Response, file: UploadFile = File(...), x_detection_i
 
 @app.get("/detect/tasks/{task_id}")
 async def detection_task_status(task_id: str) -> dict:
+    await asyncio.to_thread(task_store.heartbeat, task_id)
     row = await asyncio.to_thread(task_store.get, task_id)
     if not row:
         raise HTTPException(status_code=404, detail="检测任务不存在或已过期")
     return task_store.public_status(row)
+
+
+@app.post('/detect/tasks/{task_id}/leave', status_code=202)
+async def detection_task_leave(task_id: str) -> dict:
+    if not re.fullmatch(r'[a-f0-9]{32}', task_id):
+        raise HTTPException(status_code=400, detail='检测请求标识无效')
+    await asyncio.to_thread(task_store.leave, task_id)
+    return {'accepted': True}
 
 
 if __name__ == "__main__":

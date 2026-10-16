@@ -1,6 +1,8 @@
 # This fragment is installed into engine/app.py by patch_runtime.py.
 # It deliberately uses the base image's existing feature/model functions.
 from engine.scan_runtime import ScanRuntime, ScanBusy, ScanTimeout
+from engine.staged_scan import run_staged
+from starlette.responses import StreamingResponse
 
 _SCAN_RUNTIME = ScanRuntime(
     concurrency=int(os.environ.get('CODEFENDER_MAX_CONCURRENT', '1')),
@@ -9,7 +11,7 @@ _SCAN_RUNTIME = ScanRuntime(
 )
 
 
-def _scan_uploaded_sync(content, filename, include_de):
+def _scan_uploaded_sync(content, filename, include_de, on_progress=None):
     # Older v8 images have no signature precheck. Preserve whichever pipeline
     # the base image actually provides instead of importing newer dependencies.
     precheck = globals().get('_hash_precheck')
@@ -25,7 +27,7 @@ def _scan_uploaded_sync(content, filename, include_de):
         path = os.path.join(directory, 'sample.bin')
         with open(path, 'wb') as handle:
             handle.write(content)
-        return _scan_single_pe(path, filename, len(content), ens, expected, include_de)
+        return run_staged(globals(), path, filename, len(content), ens, expected, include_de, on_progress)
 
 
 async def _run_guarded(operation, *args):
@@ -63,6 +65,54 @@ async def predict_single(
         raise HTTPException(400, detail=str(error)) from error
     finally:
         await file.close()
+
+
+@app.post('/predict-stream')
+async def predict_stream(file: UploadFile = File(...), include_de: bool = Query(default=DEFAULT_INCLUDE_DE)):
+    if _SCAN_RUNTIME.active >= _SCAN_RUNTIME.concurrency:
+        await file.close()
+        raise HTTPException(429, detail='model service is busy; retry later', headers={'Retry-After': '3'})
+    try:
+        content = await file.read(MAX_UPLOAD_BYTES + 1)
+        if not content or not file.filename:
+            raise HTTPException(400, detail='empty file')
+        if len(content) > MAX_UPLOAD_BYTES:
+            raise HTTPException(413, detail='file too large')
+    finally:
+        await file.close()
+    loop = asyncio.get_running_loop()
+    events = asyncio.Queue()
+
+    def progress(payload):
+        loop.call_soon_threadsafe(events.put_nowait, {'event': 'progress', 'data': payload})
+
+    async def produce():
+        try:
+            result = await _run_guarded(_scan_uploaded_sync, content, file.filename, include_de, progress)
+            await events.put({'event': 'result', 'data': result})
+        except Exception as error:
+            await events.put({'event': 'error', 'detail': str(getattr(error, 'detail', error))})
+
+    async def stream():
+        # The runtime reserves the slot before starting the real operation.
+        # Disconnecting the reader must not release it while inference still runs.
+        producer = asyncio.create_task(produce())
+        try:
+            while True:
+                try:
+                    event = await asyncio.wait_for(events.get(), timeout=5)
+                except asyncio.TimeoutError:
+                    yield json.dumps({'event': 'heartbeat'}) + '\n'
+                    continue
+                yield json.dumps(event, ensure_ascii=False) + '\n'
+                if event['event'] in ('result', 'error'):
+                    break
+        finally:
+            if not producer.done():
+                producer.cancel()
+            await asyncio.gather(producer, return_exceptions=True)
+
+    return StreamingResponse(stream(), media_type='application/x-ndjson', headers={'X-Accel-Buffering': 'no'})
 
 
 def _directory_in_thread(directory, recursive, include_de):

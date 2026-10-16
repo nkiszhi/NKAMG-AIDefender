@@ -15,6 +15,44 @@ from app.file_info import save_upload, UploadStorageFull
 
 
 class QueuePolicyTests(unittest.TestCase):
+    def test_leaving_task_is_not_claimed_and_refresh_restores_it(self):
+        with tempfile.TemporaryDirectory() as folder:
+            store = DetectionTaskStore(Path(folder) / 'tasks.sqlite3', 3600)
+            store.create('a', 'a', Path(folder) / 'a', 2)
+            store.leave('a')
+            self.assertIsNone(store.claim_next())
+            self.assertEqual(store.cancel_abandoned(), [])
+            store.heartbeat('a')
+            self.assertEqual(store.claim_next()['task_id'], 'a')
+
+    def test_abandoned_queue_cancels_but_running_job_keeps_its_file(self):
+        with tempfile.TemporaryDirectory() as folder:
+            store = DetectionTaskStore(Path(folder) / 'tasks.sqlite3', 3600)
+            for task in ('a', 'b', 'c'):
+                store.create(task, task, Path(folder) / task, 3)
+            store.claim_next()
+            store.leave('a')
+            store.leave('b')
+            with store._connect() as connection:
+                connection.execute("UPDATE detection_tasks SET client_left_at='2000-01-01' WHERE task_id IN ('a','b')")
+                connection.execute("UPDATE detection_tasks SET client_seen_at='2000-01-01' WHERE task_id='c'")
+            self.assertEqual(set(store.cancel_abandoned()), {str(Path(folder) / 'b'), str(Path(folder) / 'c')})
+            self.assertEqual(store.get('a')['status'], 'running')
+            self.assertEqual(store.get('b')['status'], 'cancelled')
+            store.heartbeat('b')
+            self.assertIsNone(store.claim_next())
+            self.assertEqual(store.public_status(store.get('b'))['status'], 'cancelled')
+
+    def test_progress_survives_store_reopen(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'tasks.sqlite3'
+            store = DetectionTaskStore(path, 3600)
+            store.create('a', 'a', Path(folder) / 'a', 1)
+            store.claim_next()
+            store.update_progress('a', {'models': [{'model': 'fast', 'status': 'ok', 'score': .8}]})
+            reopened = DetectionTaskStore(path, 3600)
+            self.assertEqual(reopened.public_status(reopened.get('a'))['progress']['models'][0]['score'], .8)
+
     def test_queue_moves_after_completion(self):
         with tempfile.TemporaryDirectory() as folder:
             store = DetectionTaskStore(Path(folder) / 'tasks.sqlite3', 3600)

@@ -90,15 +90,17 @@ class ModelWorkerTests(unittest.TestCase):
 
         def docker(*args):
             calls.append(args)
+            if args[0] == 'cp' and args[1].endswith(':/app/engine/app.py'):
+                Path(args[2]).write_text((Path(__file__).resolve().parents[3] / 'CoDefenderC3/engine/app.py').read_text(encoding='utf-8'), encoding='utf-8')
             return json.dumps([self.source]) if args[0] == 'inspect' else ''
 
         with patch.object(worker, 'docker', side_effect=docker), patch('builtins.print'), patch('sys.argv', ['model_worker.py', '--apply']):
             worker.main()
         self.assertEqual(calls[-1], ('start', 'codefender-c3-v8-worker2'))
         copies = [call for call in calls if call[0] == 'cp']
-        self.assertEqual(len(copies), 4)
+        self.assertEqual(len(copies), 6)
         self.assertEqual(copies[0][1], 'codefender-c3-v8:/app/engine/app.py')
-        self.assertEqual(copies[-1][-1], 'codefender-c3-v8-worker2:/app/engine/scan_runtime.py')
+        self.assertEqual(copies[-1][-1], 'codefender-c3-v8-worker2:/app/models/MalGraph_2022/utils.py')
         creation = next(call for call in calls if call[0] == 'create')
         self.assertNotIn('PRIVATE_VALUE=secret', creation)
         self.assertFalse(Path(creation[creation.index('--env-file') + 1]).exists())
