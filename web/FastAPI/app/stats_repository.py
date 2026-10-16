@@ -25,7 +25,17 @@ class StatsRepository:
 
     @staticmethod
     def _top(rows: list[dict[str, Any]], key: str) -> list[dict[str, Any]]:
-        return [{"name": row.get(key), "count": int(row.get("count") or 0)} for row in rows if row.get(key)]
+        result = []
+        seen = set()
+        for row in rows:
+            raw_name = row.get(key)
+            name = " ".join(str(raw_name or "").strip().split())
+            name = name.replace('"', '').replace("'", '').strip()
+            if not name or name.upper() in {"UNKNOWN", "UN知", "N/A", "NA", "NULL", "NONE", "-"} or name in seen:
+                continue
+            seen.add(name)
+            result.append({"name": name, "count": int(row.get("count") or 0)})
+        return result
 
     def refresh(self) -> dict[str, Any]:
         if not (self.settings.mysql_host and self.settings.mysql_user and self.settings.mysql_passwd):

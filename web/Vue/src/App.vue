@@ -2,18 +2,26 @@
   <main class="page-shell">
     <section class="header">
       <div class="brand-lockup">
-        <div class="brand-mark" aria-hidden="true">N</div>
+        <div class="brand-mark" aria-hidden="true"><img src="/nkamg-logo.png" alt="NKAMG-AIDefender" /></div>
         <div>
           <div class="eyebrow">NKAMG · MALWARE INTELLIGENCE</div>
           <h1>NKAMG-AIDefender</h1>
           <p>面向 PE 样本的多模型威胁分析工作台</p>
         </div>
       </div>
-      <div class="status-tags">
+      <div class="header-tools">
+        <form class="hash-search" @submit.prevent="searchSample">
+          <el-icon aria-hidden="true"><Search /></el-icon>
+          <input v-model.trim="hashQuery" type="search" maxlength="64" spellcheck="false" placeholder="搜索 SHA256" aria-label="搜索 SHA256" />
+          <button type="submit" :disabled="searching || !hashQuery">{{ searching ? '查询中' : '查询' }}</button>
+        </form>
+        <el-button class="header-upload" type="primary" :loading="loading" @click="selectFile"><el-icon><UploadFilled /></el-icon>上传样本</el-button>
+        <div class="status-tags">
         <span class="service-status" :class="modelService.ready ? 'is-ready' : modelService.connected ? 'is-warning' : 'is-offline'">
           <i></i>
           {{ checkingModels ? '正在检查模型服务' : modelService.ready ? `模型服务已连接 · ${modelService.model_count} 个模型` : modelService.connected ? '模型服务未就绪' : '模型服务未连接' }}
         </span>
+        </div>
       </div>
     </section>
 
@@ -32,9 +40,9 @@
       </div>
 
       <el-collapse v-model="modelsOpen" class="models-collapse">
-        <el-collapse-item name="models">
+        <el-collapse-item name="modelCatalog">
           <template #title>
-            <div class="collapse-title"><span class="collapse-title-mark">01</span><span>检测引擎与样本库</span><small>33 个模型 · 数据概览</small></div>
+            <div class="collapse-title"><span class="collapse-title-mark">01</span><span>检测引擎 · 33 模型介绍</span><small>模型目录</small></div>
           </template>
           <div class="section-intro">
             <div>
@@ -57,7 +65,11 @@
               </div>
             </article>
           </div>
-
+        </el-collapse-item>
+        <el-collapse-item name="sampleLibrary">
+          <template #title>
+            <div class="collapse-title"><span class="collapse-title-mark">02</span><span>样本库</span><small>样本与域名统计</small></div>
+          </template>
           <div class="catalog-divider"><span>DATA INSIGHTS</span></div>
           <div v-if="stats.available" class="stats-dashboard">
             <div class="stats-kpis">
@@ -86,8 +98,8 @@
               </article>
             </div>
             <div class="top-lists-grid">
-              <article v-for="field in sampleTopFields" :key="field.key" class="top-list-card"><div class="chart-heading"><div><span class="eyebrow">SAMPLE INDEX</span><h3>{{ field.label }}分布</h3></div></div><div v-if="stats.samples?.[field.key]?.length" class="bar-list"><div v-for="item in stats.samples[field.key].slice(0, 5)" :key="item.name" class="bar-row"><div><span>{{ item.name }}</span><b>{{ formatNumber(item.count) }}</b></div><i><em :style="{ width: `${topBarWidth(stats.samples[field.key], item.count)}%` }"></em></i></div></div><div v-else class="chart-empty compact">暂无数据</div></article>
-              <article v-for="field in domainTopFields" :key="`domain-${field.key}`" class="top-list-card"><div class="chart-heading"><div><span class="eyebrow">DOMAIN INTEL</span><h3>域名{{ field.label }}分布</h3></div></div><div v-if="stats.domains?.[field.key]?.length" class="bar-list"><div v-for="item in stats.domains[field.key].slice(0, 5)" :key="item.name" class="bar-row"><div><span>{{ item.name }}</span><b>{{ formatNumber(item.count) }}</b></div><i><em :style="{ width: `${topBarWidth(stats.domains[field.key], item.count)}%` }"></em></i></div></div><div v-else class="chart-empty compact">暂无数据</div></article>
+              <article v-for="field in sampleTopFields" :key="field.key" class="top-list-card"><div class="chart-heading"><div><span class="eyebrow">样本分类</span><h3>{{ field.label }}分布</h3></div></div><div v-if="stats.samples?.[field.key]?.length" class="bar-list"><div v-for="item in stats.samples[field.key].slice(0, 5)" :key="item.name" class="bar-row"><div><span>{{ item.name }}</span><b>{{ formatNumber(item.count) }}</b></div><i><em :style="{ width: `${topBarWidth(stats.samples[field.key], item.count)}%` }"></em></i></div></div><div v-else class="chart-empty compact">暂无数据</div></article>
+              <article v-for="field in domainTopFields" :key="`domain-${field.key}`" class="top-list-card"><div class="chart-heading"><div><span class="eyebrow">域名情报</span><h3>域名{{ field.label }}分布</h3></div></div><div v-if="stats.domains?.[field.key]?.length" class="bar-list"><div v-for="item in stats.domains[field.key].slice(0, 5)" :key="item.name" class="bar-row"><div><span>{{ item.name }}</span><b>{{ formatNumber(item.count) }}</b></div><i><em :style="{ width: `${topBarWidth(stats.domains[field.key], item.count)}%` }"></em></i></div></div><div v-else class="chart-empty compact">暂无数据</div></article>
             </div>
             <p class="muted-text stats-updated">数据更新时间：{{ stats.updated_at || '-' }}</p>
           </div>
@@ -99,6 +111,7 @@
     <section v-if="uploadResult" ref="resultSection" class="results">
       <div class="result-head">
         <div>
+          <button class="back-button" type="button" @click="resetResult">返回工作台</button>
           <h2>检测报告如下</h2>
           <div class="tags">
             <el-tag :type="uploadResult.is_pe ? 'success' : 'warning'">
@@ -218,12 +231,12 @@
 import axios from 'axios'
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { UploadFilled } from '@element-plus/icons-vue'
+import { Search, UploadFilled } from '@element-plus/icons-vue'
 
 const apiService = axios.create({ timeout: 600000 })
 
 const showSection = ref('fileInfo')
-const modelsOpen = ref([])
+const modelsOpen = ref(['modelCatalog', 'sampleLibrary'])
 const loading = ref(false)
 const detectionMessage = ref('正在检测，可刷新页面继续等待')
 const detectionAbort = new AbortController()
@@ -237,6 +250,8 @@ const stats = ref({ available: false, reason: '启动后正在读取统计数据
 let modelHealthTimer
 const fileInput = ref(null)
 const resultSection = ref(null)
+const hashQuery = ref('')
+const searching = ref(false)
 const modelNames = ref([
   'MalConv', 'MalConv2', 'ByteTransformer', 'SaxeBerlinDNN', 'EmberDNN',
   'NatarajKNN', 'DrebinSVM', 'DL4MD', 'PEMinerRF', 'DrebinImport',
@@ -398,6 +413,24 @@ function resetResult() {
   uploadResult.value = null
   showSection.value = 'fileInfo'
   modelsOpen.value = []
+}
+
+async function searchSample() {
+  if (!/^[0-9a-f]{64}$/i.test(hashQuery.value)) {
+    ElMessage.warning('请输入 64 位 SHA256')
+    return
+  }
+  searching.value = true
+  try {
+    const response = await apiService.get(`${apiBaseUrl.value}/samples/${hashQuery.value}`, { timeout: 15000 })
+    setDetectionResult(response.data)
+    ElMessage.success('已找到样本库记录')
+  } catch (error) {
+    const status = error.response?.status
+    ElMessage.error(status === 404 ? '样本库中未找到该 SHA256' : (error.response?.data?.detail || '样本库查询失败'))
+  } finally {
+    searching.value = false
+  }
 }
 
 function selectFile() {

@@ -160,6 +160,8 @@ async def limit_uploads(request: Request, call_next):
 
 
 def _response_payload(info: dict, exe_result: dict, detection_mode: str) -> dict:
+    public_record = SampleRepository.public_fields(record)
+    identity = public_record.get("identity", {})
     return {
         "success": True,
         "original_filename": info["filename"],
@@ -241,6 +243,34 @@ async def _fetch_model_health() -> dict:
 @app.get("/stats")
 async def stats() -> dict:
     return stats_cache
+
+
+@app.get("/samples/{sha256}")
+async def sample_by_sha256(sha256: str) -> dict:
+    """Look up a malicious sample by its content hash for the web search bar."""
+    if not re.fullmatch(r"[0-9a-fA-F]{64}", sha256 or ""):
+        raise HTTPException(status_code=422, detail="请输入有效的 SHA256")
+    try:
+        record = await asyncio.to_thread(sample_repository.find_malicious, sha256)
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail="样本库暂不可用") from error
+    if not record:
+        raise HTTPException(status_code=404, detail="样本库中未找到该 SHA256")
+    return {
+        "success": True,
+        "database_hit": True,
+        "detection_mode": "sample_database",
+        "detection_status": "malicious",
+        "verdict": "恶意",
+        "reason": "命中 NKAMG 恶意样本库",
+        "is_pe": True,
+        "filename": identity.get("文件名", "-"),
+        "file_size": identity.get("文件大小", 0),
+        "md5": identity.get("MD5", ""),
+        "sha256": sha256.lower(),
+        "sample_record": public_record,
+        "detection_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    }
 
 
 async def _run_detection(file_path: Path, info: dict) -> dict:
