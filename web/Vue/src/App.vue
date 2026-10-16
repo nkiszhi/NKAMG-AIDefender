@@ -1,65 +1,102 @@
 <template>
   <main class="page-shell">
     <section class="header">
-      <div>
-        <h1>NKAMG-AIDefender 多模型恶意文件检测</h1>
-        <p>南开大学反病毒实验室NKAMG - 支持33个检测模型</p>
+      <div class="brand-lockup">
+        <div class="brand-mark" aria-hidden="true">N</div>
+        <div>
+          <div class="eyebrow">NKAMG · MALWARE INTELLIGENCE</div>
+          <h1>NKAMG-AIDefender</h1>
+          <p>面向 PE 样本的多模型威胁分析工作台</p>
+        </div>
       </div>
       <div class="status-tags">
-        <el-tag size="large" :type="modelService.ready ? 'success' : modelService.connected ? 'warning' : 'danger'">
-          {{ checkingModels ? '正在检查模型服务' : modelService.ready ? `模型服务已连接（${modelService.model_count}个）` : modelService.connected ? '模型服务未就绪' : '模型服务未连接' }}
-        </el-tag>
+        <span class="service-status" :class="modelService.ready ? 'is-ready' : modelService.connected ? 'is-warning' : 'is-offline'">
+          <i></i>
+          {{ checkingModels ? '正在检查模型服务' : modelService.ready ? `模型服务已连接 · ${modelService.model_count} 个模型` : modelService.connected ? '模型服务未就绪' : '模型服务未连接' }}
+        </span>
       </div>
     </section>
 
     <section class="workbench">
       <div class="upload-zone" @drop="handleDrop" @dragover.prevent>
         <input ref="fileInput" class="hidden-input" type="file" @change="handleFileChange" />
-        <el-icon class="upload-icon"><UploadFilled /></el-icon>
-        <div class="upload-title">上传PE样本进行检测</div>
-        <div class="upload-subtitle">后端会先校验PE结构，计算基础信息，再提交给模型分析。</div>
-        <el-button type="primary" :loading="loading" @click="selectFile">选择待检PE文件</el-button>
-        <div v-if="loading" class="upload-subtitle" role="status">{{ detectionMessage }}</div>
+        <div class="upload-orbit" aria-hidden="true"><el-icon class="upload-icon"><UploadFilled /></el-icon></div>
+        <div class="eyebrow">STATIC FILE ANALYSIS</div>
+        <div class="upload-title">上传样本，开始安全分析</div>
+        <div class="upload-subtitle">支持拖拽或选择文件。系统会先校验 PE 结构，再交给多模型引擎分析。</div>
+        <div class="upload-actions">
+          <el-button type="primary" :loading="loading" @click="selectFile">选择待检文件</el-button>
+          <span>单次分析仅上传一个文件</span>
+        </div>
+        <div v-if="loading" class="upload-progress" role="status"><span class="pulse-dot"></span>{{ detectionMessage }}</div>
       </div>
 
-      <el-collapse class="models-collapse">
-        <el-collapse-item title="33个模型说明与NKAMG样本库数据" name="models">
-          <h3 class="subhead">支持模型与作用（{{ modelDetails.length }}个）</h3>
-          <el-table :data="modelDetails" border stripe size="small">
-            <el-table-column prop="name" label="模型" min-width="140" />
-            <el-table-column prop="view" label="分析视角" min-width="120" />
-            <el-table-column prop="features" label="使用特征" min-width="160" />
-            <el-table-column prop="source" label="参考来源" min-width="200" />
-            <el-table-column prop="role" label="模型作用" min-width="240" />
-            <el-table-column prop="optimization" label="优化要点" min-width="260" />
-          </el-table>
-          <h3 class="subhead">恶意文件样本统计</h3>
-          <div v-if="stats.available" class="stats-grid">
-            <div class="stat-item"><span>恶意样本总量</span><strong>{{ formatNumber(stats.samples?.malicious_total) }}</strong></div>
-            <div class="stat-item"><span>良性样本总量</span><strong>{{ formatNumber(stats.samples?.benign_total) }}</strong></div>
-            <div v-for="field in sampleTopFields" :key="field.key"><span>{{ field.label }} Top10</span><div v-for="item in stats.samples?.[field.key] || []" :key="item.name">{{ item.name }}：{{ formatNumber(item.count) }}</div></div>
+      <el-collapse v-model="modelsOpen" class="models-collapse">
+        <el-collapse-item name="models">
+          <template #title>
+            <div class="collapse-title"><span class="collapse-title-mark">01</span><span>检测引擎与样本库</span><small>33 个模型 · 数据概览</small></div>
+          </template>
+          <div class="section-intro">
+            <div>
+              <div class="eyebrow">MODEL CATALOG</div>
+              <h2>三十三个视角，共同还原样本风险</h2>
+            </div>
+            <p>每个模型从不同的字节、结构、图和元数据视角观察样本。向下浏览可以了解它们各自负责的分析方向。</p>
           </div>
-          <p v-else class="muted-text">{{ stats.reason || '统计数据暂不可用' }}</p>
-          <div v-if="stats.available && stats.samples?.monthly?.length" class="stats-monthly">
-            <span>近 12 个月恶意样本</span>
-            <div v-for="item in stats.samples.monthly" :key="item.name">{{ item.name }}：{{ formatNumber(item.count) }}</div>
+          <div class="model-story">
+            <article v-for="(item, index) in modelDetails" :key="item.name" class="model-story-card">
+              <div class="model-story-index">{{ String(index + 1).padStart(2, '0') }}</div>
+              <div class="model-story-body">
+                <div class="model-story-meta"><span>{{ item.view || '多视角特征' }}</span><b>{{ item.source || 'CoDefenderC3' }}</b></div>
+                <h3>{{ item.name }}</h3>
+                <p>{{ modelDescription(item) }}</p>
+                <div class="model-story-details">
+                  <span><b>特征</b>{{ item.features || '项目特征' }}</span>
+                  <span><b>用途</b>{{ item.role || '参与多模型恶意文件判定' }}</span>
+                </div>
+              </div>
+            </article>
           </div>
-          <h3 class="subhead">恶意域名统计</h3>
-          <div v-if="stats.available" class="stats-grid">
-            <div class="stat-item"><span>域名总量</span><strong>{{ formatNumber(stats.domains?.total) }}</strong></div>
-            <div v-for="field in domainTopFields" :key="field.key"><span>{{ field.label }} Top10</span><div v-for="item in stats.domains?.[field.key] || []" :key="item.name">{{ item.name }}：{{ formatNumber(item.count) }}</div></div>
+
+          <div class="catalog-divider"><span>DATA INSIGHTS</span></div>
+          <div v-if="stats.available" class="stats-dashboard">
+            <div class="stats-kpis">
+              <div class="kpi-card kpi-danger"><span>恶意样本</span><strong>{{ formatNumber(stats.samples?.malicious_total) }}</strong><small>已收录样本</small></div>
+              <div class="kpi-card kpi-safe"><span>良性样本</span><strong>{{ formatNumber(stats.samples?.benign_total) }}</strong><small>对照样本</small></div>
+              <div class="kpi-card kpi-blue"><span>恶意域名</span><strong>{{ formatNumber(stats.domains?.total) }}</strong><small>情报记录</small></div>
+            </div>
+            <div class="charts-grid">
+              <article class="chart-card chart-wide">
+                <div class="chart-heading"><div><span class="eyebrow">TREND</span><h3>近 12 个月情报增长</h3></div><div class="chart-legend"><span><i class="legend-dot samples"></i>恶意样本</span><span><i class="legend-dot domains"></i>恶意域名</span></div></div>
+                <div v-if="monthlyChart.labels.length" class="line-chart-wrap">
+                  <svg class="line-chart" viewBox="0 0 720 280" role="img" aria-label="近十二个月情报增长折线图">
+                    <g class="chart-grid-lines"><line v-for="y in chartGridY" :key="y" x1="46" :y1="y" x2="700" :y2="y" /></g>
+                    <polyline class="chart-line chart-line-samples" :points="monthlyChart.samplePoints" />
+                    <polyline class="chart-line chart-line-domains" :points="monthlyChart.domainPoints" />
+                    <g v-for="point in monthlyChart.sampleDots" :key="`s-${point.x}`"><circle class="chart-dot chart-dot-samples" :cx="point.x" :cy="point.y" r="4" /><title>{{ point.label }}：{{ formatNumber(point.value) }}</title></g>
+                    <g v-for="point in monthlyChart.domainDots" :key="`d-${point.x}`"><circle class="chart-dot chart-dot-domains" :cx="point.x" :cy="point.y" r="4" /><title>{{ point.label }}：{{ formatNumber(point.value) }}</title></g>
+                    <text v-for="point in monthlyChart.sampleDots" :key="`l-${point.x}`" class="chart-axis-label" :x="point.x" y="266" text-anchor="middle">{{ point.label.slice(5) }}</text>
+                  </svg>
+                </div>
+                <div v-else class="chart-empty">暂无月度数据</div>
+              </article>
+              <article class="chart-card chart-donut-card">
+                <div class="chart-heading"><div><span class="eyebrow">COLLECTION MIX</span><h3>样本库构成</h3></div></div>
+                <div class="donut-layout"><div class="donut-chart" :style="sampleDonutStyle"><div><strong>{{ formatNumber(sampleTotal) }}</strong><span>样本总量</span></div></div><div class="donut-legend"><span><i class="legend-dot malicious"></i>恶意样本 <b>{{ formatNumber(stats.samples?.malicious_total) }}</b></span><span><i class="legend-dot benign"></i>良性样本 <b>{{ formatNumber(stats.samples?.benign_total) }}</b></span></div></div>
+              </article>
+            </div>
+            <div class="top-lists-grid">
+              <article v-for="field in sampleTopFields" :key="field.key" class="top-list-card"><div class="chart-heading"><div><span class="eyebrow">SAMPLE INDEX</span><h3>{{ field.label }}分布</h3></div></div><div v-if="stats.samples?.[field.key]?.length" class="bar-list"><div v-for="item in stats.samples[field.key].slice(0, 5)" :key="item.name" class="bar-row"><div><span>{{ item.name }}</span><b>{{ formatNumber(item.count) }}</b></div><i><em :style="{ width: `${topBarWidth(stats.samples[field.key], item.count)}%` }"></em></i></div></div><div v-else class="chart-empty compact">暂无数据</div></article>
+              <article v-for="field in domainTopFields" :key="`domain-${field.key}`" class="top-list-card"><div class="chart-heading"><div><span class="eyebrow">DOMAIN INTEL</span><h3>域名{{ field.label }}分布</h3></div></div><div v-if="stats.domains?.[field.key]?.length" class="bar-list"><div v-for="item in stats.domains[field.key].slice(0, 5)" :key="item.name" class="bar-row"><div><span>{{ item.name }}</span><b>{{ formatNumber(item.count) }}</b></div><i><em :style="{ width: `${topBarWidth(stats.domains[field.key], item.count)}%` }"></em></i></div></div><div v-else class="chart-empty compact">暂无数据</div></article>
+            </div>
+            <p class="muted-text stats-updated">数据更新时间：{{ stats.updated_at || '-' }}</p>
           </div>
-          <p v-else class="muted-text">{{ stats.reason || '统计数据暂不可用' }}</p>
-          <div v-if="stats.available && stats.domains?.monthly?.length" class="stats-monthly">
-            <span>近 12 个月恶意域名</span>
-            <div v-for="item in stats.domains.monthly" :key="item.name">{{ item.name }}：{{ formatNumber(item.count) }}</div>
-          </div>
-          <p v-if="stats.available" class="muted-text">数据更新时间：{{ stats.updated_at || '-' }}</p>
+          <div v-else class="stats-unavailable"><span class="pulse-dot"></span>{{ stats.reason || '统计数据暂不可用' }}</div>
         </el-collapse-item>
       </el-collapse>
     </section>
 
-    <section v-if="uploadResult" class="results">
+    <section v-if="uploadResult" ref="resultSection" class="results">
       <div class="result-head">
         <div>
           <h2>检测报告如下</h2>
@@ -96,13 +133,9 @@
           <span v-if="uploadResult.sample_record?.source_db">来源：{{ uploadResult.sample_record.source_db }}.{{ uploadResult.sample_record.source_table }}</span>
         </div>
         <template v-if="uploadResult.database_hit && uploadResult.sample_record">
-          <h3 class="subhead">样本标识</h3>
-          <el-descriptions :column="1" border>
-            <el-descriptions-item v-for="(value, key) in uploadResult.sample_record.identity" :key="key" :label="key">{{ key === '文件大小' ? formatFileSize(value) : value }}</el-descriptions-item>
-          </el-descriptions>
-          <h3 class="subhead">哈希信息</h3>
-          <el-descriptions :column="1" border>
-            <el-descriptions-item v-for="(value, key) in uploadResult.sample_record.hashes" :key="key" :label="key">{{ value || '-' }}</el-descriptions-item>
+          <h3 class="subhead">样本基础信息</h3>
+          <el-descriptions :column="2" border class="sample-description">
+            <el-descriptions-item v-for="(value, key) in sampleBaseFields" :key="key" :label="key">{{ key === '文件大小' ? formatFileSize(value) : value }}</el-descriptions-item>
           </el-descriptions>
           <h3 class="subhead">样本标签</h3>
           <el-descriptions :column="2" border>
@@ -111,14 +144,14 @@
         </template>
         <el-descriptions :column="1" border>
           <el-descriptions-item v-if="!uploadResult.database_hit" label="文件名">{{ uploadResult.filename || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="SHA256">
+          <el-descriptions-item v-if="!uploadResult.database_hit" label="SHA256">
             <span class="mono break-text">{{ uploadResult.sha256 || '-' }}</span>
           </el-descriptions-item>
-          <el-descriptions-item label="MD5">
+          <el-descriptions-item v-if="!uploadResult.database_hit" label="MD5">
             <span class="mono break-text">{{ uploadResult.md5 || uploadResult.query_result?.MD5 || '-' }}</span>
           </el-descriptions-item>
           <el-descriptions-item v-if="!uploadResult.database_hit" label="文件大小">{{ formatFileSize(uploadResult.file_size) }}</el-descriptions-item>
-          <el-descriptions-item label="文件类型">{{ uploadResult.file_type || '-' }}</el-descriptions-item>
+          <el-descriptions-item v-if="!uploadResult.database_hit" label="文件类型">{{ uploadResult.file_type || '-' }}</el-descriptions-item>
           <el-descriptions-item label="检测时间">{{ uploadResult.detection_time || '-' }}</el-descriptions-item>
         </el-descriptions>
 
@@ -183,13 +216,14 @@
 
 <script setup>
 import axios from 'axios'
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { UploadFilled } from '@element-plus/icons-vue'
 
 const apiService = axios.create({ timeout: 600000 })
 
 const showSection = ref('fileInfo')
+const modelsOpen = ref([])
 const loading = ref(false)
 const detectionMessage = ref('正在检测，可刷新页面继续等待')
 const detectionAbort = new AbortController()
@@ -202,6 +236,7 @@ const checkingModels = ref(true)
 const stats = ref({ available: false, reason: '启动后正在读取统计数据' })
 let modelHealthTimer
 const fileInput = ref(null)
+const resultSection = ref(null)
 const modelNames = ref([
   'MalConv', 'MalConv2', 'ByteTransformer', 'SaxeBerlinDNN', 'EmberDNN',
   'NatarajKNN', 'DrebinSVM', 'DL4MD', 'PEMinerRF', 'DrebinImport',
@@ -217,6 +252,7 @@ const sampleTopFields = [
   { key: 'family', label: '家族' }, { key: 'filetype', label: '文件类型' }
 ]
 const domainTopFields = [{ key: 'source', label: '来源' }, { key: 'category', label: '类别' }]
+const chartGridY = [52, 100, 148, 196, 244]
 
 const sectionOptions = [
   { label: '基础信息', value: 'fileInfo' },
@@ -224,6 +260,43 @@ const sectionOptions = [
 ]
 
 const peInfo = computed(() => uploadResult.value?.pe_info || {})
+const sampleBaseFields = computed(() => ({
+  ...(uploadResult.value?.sample_record?.identity || {}),
+  ...(uploadResult.value?.sample_record?.hashes || {})
+}))
+
+const sampleTotal = computed(() => Number(stats.value.samples?.malicious_total || 0) + Number(stats.value.samples?.benign_total || 0))
+
+const sampleDonutStyle = computed(() => {
+  const total = sampleTotal.value
+  const maliciousPercent = total > 0 ? (Number(stats.value.samples?.malicious_total || 0) / total) * 100 : 0
+  const benignEnd = total > 0 ? 100 : 0
+  return { background: `conic-gradient(#ff596d 0% ${maliciousPercent}%, #35c89b ${maliciousPercent}% ${benignEnd}%, #27354b ${benignEnd}% 100%)` }
+})
+
+const monthlyChart = computed(() => {
+  const sampleRows = stats.value.samples?.monthly || []
+  const domainRows = stats.value.domains?.monthly || []
+  const sampleMap = new Map(sampleRows.map(item => [item.name, Number(item.count || 0)]))
+  const domainMap = new Map(domainRows.map(item => [item.name, Number(item.count || 0)]))
+  const labels = [...new Set([...sampleMap.keys(), ...domainMap.keys()])].sort().slice(-12)
+  if (!labels.length) return { labels: [], samplePoints: '', domainPoints: '', sampleDots: [], domainDots: [] }
+  const sampleMax = Math.max(1, ...labels.map(label => sampleMap.get(label) || 0))
+  const domainMax = Math.max(1, ...labels.map(label => domainMap.get(label) || 0))
+  const x = index => labels.length === 1 ? 373 : 52 + (index * 642) / (labels.length - 1)
+  const dotsFor = (values, max) => values.map((value, index) => ({
+    x: x(index), y: 238 - (value / max) * 184, value, label: labels[index]
+  }))
+  const sampleDots = dotsFor(labels.map(label => sampleMap.get(label) || 0), sampleMax)
+  const domainDots = dotsFor(labels.map(label => domainMap.get(label) || 0), domainMax)
+  return {
+    labels,
+    sampleDots,
+    domainDots,
+    samplePoints: sampleDots.map(point => `${point.x},${point.y}`).join(' '),
+    domainPoints: domainDots.map(point => `${point.x},${point.y}`).join(' ')
+  }
+})
 
 const modelResults = computed(() => {
   const results = uploadResult.value?.exe_result || uploadResult.value?.results || {}
@@ -324,6 +397,7 @@ function parseIni(text) {
 function resetResult() {
   uploadResult.value = null
   showSection.value = 'fileInfo'
+  modelsOpen.value = []
 }
 
 function selectFile() {
@@ -349,6 +423,7 @@ function handleDrop(event) {
 
 async function uploadFile(file) {
   resetResult()
+  modelsOpen.value = []
   loading.value = true
   const formData = new FormData()
   formData.append('file', file)
@@ -371,7 +446,7 @@ async function uploadFile(file) {
       await pollDetectionTask(response.data.task_id)
     } else {
       clearSavedTask()
-      uploadResult.value = normalizeDetectionResponse(response.data)
+      setDetectionResult(response.data)
       ElMessage.success('检测完成')
     }
   } catch (error) {
@@ -426,7 +501,7 @@ async function pollDetectionTask(taskId) {
       }
       const task = response.data || {}
       if (task.status === 'completed') {
-        uploadResult.value = normalizeDetectionResponse(task.result || {})
+        setDetectionResult(task.result || {})
         // Keep the ID until a new upload, so refreshing a completed report
         // also restores it during the server's configured retention period.
         localStorage.setItem(TASK_PHASE_KEY, 'accepted')
@@ -447,6 +522,42 @@ async function pollDetectionTask(taskId) {
   } finally {
     loading.value = false
   }
+}
+
+function setDetectionResult(data) {
+  const normalized = normalizeDetectionResponse(data)
+  uploadResult.value = normalized
+  showSection.value = normalized.is_pe && !normalized.database_hit ? 'modelDetection' : 'fileInfo'
+  modelsOpen.value = []
+  nextTick(() => resultSection.value?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+}
+
+function topBarWidth(rows, count) {
+  const max = Math.max(1, ...(rows || []).map(item => Number(item.count || 0)))
+  return Math.max(4, Math.min(100, (Number(count || 0) / max) * 100))
+}
+
+function modelDescription(item) {
+  const view = String(item.view || '').toLowerCase()
+  const descriptions = [
+    [/byte-level/, '直接观察文件原始字节序列中的局部模式，为分析提供最接近文件内容本身的证据。'],
+    [/bytestat/, '统计字节分布与熵特征，寻找可疑编码、压缩或打包行为留下的结构痕迹。'],
+    [/pe-struct/, '读取 PE 头部与节区等静态结构，评估文件布局和关键字段是否呈现异常模式。'],
+    [/import/, '分析导入表中的 API 与依赖组合，观察程序声明需要调用的系统能力。'],
+    [/string/, '从文件中提取可读字符串及其统计信息，辅助发现命令、路径和可疑配置线索。'],
+    [/opcodeseq/, '读取反汇编后的指令序列，学习操作码的先后关系与代码行为模式。'],
+    [/opcodestat/, '统计指令类别与 n-gram 分布，以紧凑特征描述代码的整体风格。'],
+    [/funcembed/, '把汇编函数映射为向量表示，比较函数级代码结构和行为特征。'],
+    [/graph/, '从控制流或函数调用关系观察代码连接方式，补充单纯统计特征看不到的结构信息。'],
+    [/grayvis/, '将文件字节映射为灰度图像，通过纹理和区域变化识别具有区分度的视觉模式。'],
+    [/colorvis/, '将字节内容映射为彩色图像，利用颜色通道间的纹理差异补充视觉分析线索。'],
+    [/markovvis/, '以字节状态转移关系构造图像，观察文件内容在状态之间的变化规律。'],
+    [/entropyvis/, '把局部熵变化绘制为热度分布，定位数据密度和编码规律显著变化的区域。'],
+    [/hash/, '对多种文件哈希与相似性摘要进行联合表示，提供基于内容指纹的风险线索。'],
+    [/metadata/, '分析版本信息、资源、清单等元数据，检查文件声明和资源布局中的异常信号。']
+  ]
+  return descriptions.find(([pattern]) => pattern.test(view))?.[1]
+    || `基于 ${item.view || '多视角特征'} 提取的 ${item.features || '项目特征'} 进行独立判别，为综合结果提供补充证据。`
 }
 
 function normalizeDetectionResponse(data) {
