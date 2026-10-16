@@ -3,6 +3,9 @@ import re
 import shutil
 # Docker CLI is used as an optional local integration, without shell=True.
 import subprocess  # nosec B404
+import threading
+import logging
+import time
 from collections import OrderedDict
 from pathlib import Path
 from typing import Any, Dict, Iterable, Optional, Tuple
@@ -27,7 +30,55 @@ class ModelServiceBusy(RuntimeError):
     pass
 
 
+class ModelEndpointPool:
+    """One in-flight Web request per isolated model endpoint, no hidden waiters."""
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._active = set()
+        self._cursor = 0
+
+    def acquire(self, urls, excluded=()):
+        with self._lock:
+            for offset in range(len(urls)):
+                index = (self._cursor + offset) % len(urls)
+                url = urls[index]
+                if url not in self._active and url not in excluded:
+                    self._active.add(url)
+                    self._cursor = (index + 1) % len(urls)
+                    return url
+        return None
+
+    def release(self, url):
+        with self._lock:
+            self._active.discard(url)
+
+
+_endpoint_pool = ModelEndpointPool()
+logger = logging.getLogger('aidefender.model_client')
+
+
 def scan_file(file_path: Path) -> Dict[str, Dict[str, Any]]:
+    urls = settings.codefender_api_bases
+    if len(urls) > 1:
+        attempted = set()
+        while len(attempted) < len(urls):
+            url = _endpoint_pool.acquire(urls, attempted)
+            if url is None:
+                break
+            attempted.add(url)
+            started = time.monotonic()
+            try:
+                result = _scan_by_upload(file_path, api_base=url)
+                if result is not None:
+                    return result
+                # Unknown failures/timeouts must not resubmit the same sample.
+                raise RuntimeError('模型服务检测失败，请检查容器日志和模型服务连接')
+            except ModelServiceBusy:
+                continue  # A 429 explicitly means this request was not accepted.
+            finally:
+                _endpoint_pool.release(url)
+                logger.info('模型请求结束 endpoint=%s elapsed_seconds=%.3f', url, time.monotonic() - started)
+        raise ModelServiceBusy('所有模型服务正在忙碌')
     path_result = _scan_by_path(file_path)
     if path_result is not None:
         return path_result
@@ -61,12 +112,12 @@ def _scan_by_path(file_path: Path) -> Optional[Dict[str, Dict[str, Any]]]:
         return None
 
 
-def _scan_by_upload(file_path: Path) -> Optional[Dict[str, Dict[str, Any]]]:
+def _scan_by_upload(file_path: Path, api_base=None) -> Optional[Dict[str, Dict[str, Any]]]:
     endpoint = _normalize_endpoint(settings.codefender_predict_endpoint)
     if not endpoint:
         return None
 
-    url = f"{settings.codefender_api_base}{endpoint}"
+    url = f"{api_base or settings.codefender_api_base}{endpoint}"
     try:
         with Path(file_path).open("rb") as handle:
             response = requests.post(

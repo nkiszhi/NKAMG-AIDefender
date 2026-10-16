@@ -30,7 +30,12 @@ class Settings:
         self.host = self._get("server", "host", "127.0.0.1")
         self.port = self._getint("server", "port", 5006)
         self.cors_origins = self._get_list("server", "cors_origins", ["*"])
-        self.max_upload_size = self._getint("server", "max_upload_size", 100 * 1024 * 1024)
+        self.max_upload_size = max(1, min(
+            self._getint("server", "max_upload_size", 20 * 1024 * 1024),
+            self._getint("uploads", "max_file_size", 20 * 1024 * 1024),
+        ))
+        self.min_free_disk_bytes = max(0, self._getint("uploads", "min_free_disk_bytes", 512 * 1024 * 1024))
+        self.orphan_ttl_seconds = max(600, self._getint("uploads", "orphan_ttl_seconds", 3600))
         self.max_concurrent_scans = max(1, min(2, self._getint("server", "max_concurrent_scans", 1)))
         self.max_queued_scans = max(1, min(100, self._getint("server", "max_queued_scans", 8)))
         self.task_ttl_seconds = self._getint("server", "task_ttl_seconds", 3600)
@@ -38,6 +43,10 @@ class Settings:
         self.upload_dir = _as_path(self._get("paths", "upload_dir", "FastAPI/uploads"), "FastAPI/uploads")
 
         self.codefender_api_base = self._get("codefender", "api_base", "http://127.0.0.1:8001").rstrip("/")
+        self.codefender_api_bases = list(dict.fromkeys(
+            url.strip().rstrip('/') for url in self._get('codefender', 'api_bases', '').split(',') if url.strip()
+        )) or [self.codefender_api_base]
+        self.codefender_api_base = self.codefender_api_bases[0]
         self.codefender_scan_endpoint = self._get("codefender", "scan_endpoint", "")
         self.codefender_predict_endpoint = self._get("codefender", "predict_endpoint", "/predict-single")
         self.codefender_include_de = self._get("codefender", "include_de", "true").strip().lower() in ("true", "1", "yes", "on")
@@ -47,6 +56,10 @@ class Settings:
         self.container_path_prefix = self._get("codefender", "container_path_prefix", "").strip()
         self.docker_container_name = self._get("docker", "container_name", "").strip()
         self.docker_container_upload_dir = self._get("docker", "container_upload_dir", "/codefender_uploads").strip()
+        if self.max_concurrent_scans > len(self.codefender_api_bases):
+            raise ValueError('并行检测需要独立模型服务地址：请为每个运行槽配置一个 codefender.api_bases 地址')
+        if len(self.codefender_api_bases) > 1 and self.codefender_scan_endpoint:
+            raise ValueError('多模型容器仅支持上传接口，请将 codefender.scan_endpoint 留空')
 
         self.mysql_host = self._get("mysql", "host", "").strip()
         self.mysql_port = self._getint("mysql", "port", 3306)

@@ -33,7 +33,7 @@
         <div class="upload-subtitle">支持拖拽或选择文件。系统会先校验 PE 结构，再交给多模型引擎分析。</div>
         <div class="upload-actions">
           <el-button type="primary" :loading="loading" @click="selectFile">选择待检文件</el-button>
-          <span>单次分析仅上传一个文件</span>
+          <span>单文件不超过 {{ formatFileSize(maxUploadSize) }} · 检测结束后删除样本</span>
         </div>
         <div v-if="loading" class="upload-progress" role="status"><span class="pulse-dot"></span>{{ detectionMessage }}</div>
       </div>
@@ -237,6 +237,7 @@ const apiService = axios.create({ timeout: 600000 })
 const showSection = ref('fileInfo')
 const modelsOpen = ref(['modelCatalog', 'sampleLibrary'])
 const loading = ref(false)
+const maxUploadSize = ref(20 * 1024 * 1024)
 const detectionMessage = ref('正在检测，可刷新页面继续等待')
 const detectionAbort = new AbortController()
 const TASK_KEY = 'aidefender_detection_task'
@@ -336,6 +337,10 @@ const safeCount = computed(() => modelRows.value.filter(row => row.result === '�
 onMounted(async () => {
   loading.value = Boolean(localStorage.getItem(TASK_KEY))
   await loadConfig()
+  try {
+    const { data } = await apiService.get(`${apiBaseUrl.value}/upload-policy`, { timeout: 5000 })
+    if (Number(data.max_upload_size) > 0) maxUploadSize.value = Number(data.max_upload_size)
+  } catch { /* Older servers keep the conservative client limit. */ }
   void Promise.allSettled([loadModels(), loadModelHealth(), loadStats()])
   modelHealthTimer = window.setInterval(loadModelHealth, 30000)
   await restoreDetectionTask()
@@ -454,6 +459,11 @@ function handleDrop(event) {
 }
 
 async function uploadFile(file) {
+  if (loading.value) return
+  if (file.size > maxUploadSize.value) {
+    ElMessage.warning(`文件超过大小限制：${formatFileSize(maxUploadSize.value)}`)
+    return
+  }
   resetResult()
   modelsOpen.value = []
   loading.value = true
@@ -545,7 +555,9 @@ async function pollDetectionTask(taskId) {
         throw new Error(task.error || '检测任务失败')
       }
       localStorage.setItem(TASK_PHASE_KEY, 'accepted')
-      detectionMessage.value = '正在检测，可刷新页面继续等待'
+      detectionMessage.value = task.status === 'queued'
+        ? (Number(task.tasks_ahead) > 0 ? `正在排队，前方还有 ${task.tasks_ahead} 个任务` : '任务已接收，即将开始检测')
+        : '正在检测，可刷新页面继续等待'
       await new Promise(resolve => window.setTimeout(resolve, 2500))
     }
   } catch (error) {

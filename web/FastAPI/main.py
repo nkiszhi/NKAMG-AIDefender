@@ -18,7 +18,7 @@ from starlette.responses import JSONResponse
 
 from app.codefender_client import DEFAULT_MODEL_NAMES, ModelServiceBusy, scan_file
 from app.config import settings
-from app.file_info import save_upload
+from app.file_info import save_upload, UploadStorageFull
 from app.sample_repository import SampleRepository
 from app.stats_repository import StatsRepository
 from app.detection_queue import DetectionTaskStore, ProcessLease, QueueFull
@@ -160,8 +160,6 @@ async def limit_uploads(request: Request, call_next):
 
 
 def _response_payload(info: dict, exe_result: dict, detection_mode: str) -> dict:
-    public_record = SampleRepository.public_fields(record)
-    identity = public_record.get("identity", {})
     return {
         "success": True,
         "original_filename": info["filename"],
@@ -208,6 +206,13 @@ async def health_check() -> dict:
     return {"status": "healthy"}
 
 
+@app.get("/upload-policy")
+async def upload_policy() -> dict:
+    return {"max_upload_size": settings.max_upload_size,
+            "report_ttl_seconds": settings.task_ttl_seconds,
+            "sample_retention": "until_task_finishes"}
+
+
 @app.get("/models")
 async def models() -> dict:
     return {"count": len(DEFAULT_MODEL_NAMES), "models": DEFAULT_MODEL_NAMES, "catalog": _model_catalog()}
@@ -228,7 +233,20 @@ _model_health_cache = {'at': float('-inf'), 'data': {}}
 
 
 async def _fetch_model_health() -> dict:
-    url = f"{settings.codefender_api_base}/readyz"
+    services = await asyncio.gather(*(_fetch_endpoint_health(base) for base in settings.codefender_api_bases))
+    ready = [service for service in services if service.get('ready')]
+    return {
+        'connected': any(service.get('connected') for service in services),
+        'ready': bool(ready),
+        'model_count': max((service.get('model_count', 0) for service in ready), default=0),
+        'ready_workers': len(ready),
+        'total_workers': len(services),
+        'service': {'workers': services},
+    }
+
+
+async def _fetch_endpoint_health(base) -> dict:
+    url = f"{base}/readyz"
     try:
         response = await asyncio.to_thread(requests.get, url, timeout=(2, 3))
         if response.status_code != 503:
@@ -256,6 +274,8 @@ async def sample_by_sha256(sha256: str) -> dict:
         raise HTTPException(status_code=503, detail="样本库暂不可用") from error
     if not record:
         raise HTTPException(status_code=404, detail="样本库中未找到该 SHA256")
+    public_record = SampleRepository.public_fields(record)
+    identity = public_record.get("identity", {})
     return {
         "success": True,
         "database_hit": True,
@@ -342,14 +362,19 @@ async def _detection_worker() -> None:
 
 
 async def _process_detection_task(task_id: str, file_path: Path, row: dict) -> None:
+    started = monotonic_time.monotonic()
+    queued_seconds = max(0, (datetime.now() - datetime.fromisoformat(row['created_at'])).total_seconds())
+    logger.info('检测任务开始 task_id=%s queued_seconds=%.3f', task_id, queued_seconds)
     try:
         if not file_path.is_file():
             raise FileNotFoundError('上传样本文件已不存在')
         from app.file_info import build_file_info
         info = await asyncio.to_thread(build_file_info, file_path, row['filename'])
         result = await _run_detection(file_path, info)
+        result['timing'] = {'queue_seconds': round(queued_seconds, 3),
+                            'processing_seconds': round(monotonic_time.monotonic() - started, 3)}
         await asyncio.to_thread(task_store.complete, task_id, result)
-        logger.info('检测任务完成 task_id=%s', task_id)
+        logger.info('检测任务完成 task_id=%s processing_seconds=%.3f', task_id, monotonic_time.monotonic() - started)
     except Exception as error:
         logger.exception('检测任务失败 task_id=%s', task_id)
         await asyncio.to_thread(task_store.set_status, task_id, 'failed', str(error))
@@ -366,6 +391,12 @@ async def _cleanup_loop() -> None:
             paths = await asyncio.to_thread(task_store.cleanup)
             for path in paths:
                 await asyncio.to_thread(Path(path).unlink, missing_ok=True)
+            if settings.upload_dir.exists():
+                orphan_paths = await asyncio.to_thread(
+                    task_store.orphan_paths, settings.upload_dir,
+                    monotonic_time.time() - settings.orphan_ttl_seconds)
+                for path in orphan_paths:
+                    await asyncio.to_thread(path.unlink, missing_ok=True)
         except Exception:
             logger.exception('过期任务清理失败')
         await asyncio.sleep(60)
@@ -383,6 +414,8 @@ async def detect(response: Response, file: UploadFile = File(...), x_detection_i
         file_path, info = await save_upload(file)
     except ValueError as error:
         raise HTTPException(status_code=413, detail=str(error)) from error
+    except UploadStorageFull as error:
+        raise HTTPException(status_code=507, detail=str(error)) from error
     except OSError as error:
         windows_error = getattr(error, "winerror", None)
         # CPython's file open may expose EINVAL while Windows retains ERROR_VIRUS_INFECTED.

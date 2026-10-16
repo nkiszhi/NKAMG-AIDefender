@@ -1,0 +1,66 @@
+import asyncio
+import io
+import os
+import tempfile
+import time
+import unittest
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
+
+from fastapi import UploadFile
+from app.config import settings
+from app.detection_queue import DetectionTaskStore, QueueFull
+from app.file_info import save_upload, UploadStorageFull
+
+
+class QueuePolicyTests(unittest.TestCase):
+    def test_queue_moves_after_completion(self):
+        with tempfile.TemporaryDirectory() as folder:
+            store = DetectionTaskStore(Path(folder) / 'tasks.sqlite3', 3600)
+            for task in ('a', 'b', 'c'):
+                store.create(task, task, Path(folder) / task, 3)
+            with self.assertRaises(QueueFull):
+                store.create('d', 'd', Path(folder) / 'd', 3)
+            self.assertEqual(store.claim_next()['task_id'], 'a')
+            self.assertEqual(store.public_status(store.get('c'))['tasks_ahead'], 2)
+            store.complete('a', {'ok': True})
+            self.assertEqual(store.get('c')['tasks_ahead'], 1)
+            self.assertEqual(store.claim_next()['task_id'], 'b')
+            store.set_status('b', 'failed', 'timeout')
+            self.assertEqual(store.get('c')['tasks_ahead'], 0)
+            self.assertEqual(store.claim_next()['task_id'], 'c')
+
+    def test_cleanup_protects_active_files_and_unrelated_files(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            store = DetectionTaskStore(root / 'tasks.sqlite3', 3600)
+            files = [root / ('a' * 64 + '-' + char * 32) for char in ('a', 'b', 'c')]
+            for path in files:
+                path.write_bytes(b'pe')
+                os.utime(path, (1, 1))
+            store.create('a', 'a', files[0], 8)
+            store.create('b', 'b', files[1], 8)
+            store.claim_next()
+            other = root / 'user-file.exe'
+            other.write_bytes(b'other')
+            os.utime(other, (1, 1))
+            self.assertEqual(store.orphan_paths(root, time.time() - 3600), [files[2]])
+
+    def test_oversize_removes_partial_and_closes_upload(self):
+        with tempfile.TemporaryDirectory() as folder:
+            upload = UploadFile(filename='large.exe', file=io.BytesIO(b'12345'))
+            with patch.object(settings, 'upload_dir', Path(folder)), patch.object(settings, 'max_upload_size', 4):
+                with self.assertRaises(ValueError):
+                    asyncio.run(save_upload(upload))
+            self.assertEqual(list(Path(folder).iterdir()), [])
+            self.assertTrue(upload.file.closed)
+
+    def test_low_disk_rejects_before_creating_file(self):
+        with tempfile.TemporaryDirectory() as folder:
+            upload = UploadFile(filename='sample.exe', file=io.BytesIO(b'123'))
+            with patch.object(settings, 'upload_dir', Path(folder)), patch('app.file_info.shutil.disk_usage', return_value=SimpleNamespace(free=0)):
+                with self.assertRaises(UploadStorageFull):
+                    asyncio.run(save_upload(upload))
+            self.assertEqual(list(Path(folder).iterdir()), [])
+            self.assertTrue(upload.file.closed)

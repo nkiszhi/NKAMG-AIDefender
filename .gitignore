@@ -14,6 +14,10 @@ dist/
 .env.*
 !.env.example
 web/config.ini
+web/config.ini.before-dual-*.bak
+.pytest_cache/
+web/config.ini.before-dual-*.bak
+.pytest_cache/
 
 # CoDefenderC3 derived artifacts / large files
 CoDefenderC3/.feature_cache/

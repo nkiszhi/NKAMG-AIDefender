@@ -1,9 +1,11 @@
 """Bounded SQLite jobs; one Web process owns each task directory."""
 import json
 import os
+import re
 import sqlite3
 import threading
 from datetime import datetime, timedelta
+from contextlib import contextmanager
 from pathlib import Path
 
 
@@ -26,10 +28,15 @@ class DetectionTaskStore:
                 created_at TEXT NOT NULL, updated_at TEXT NOT NULL)''')
             connection.execute('CREATE INDEX IF NOT EXISTS task_status ON detection_tasks(status,created_at)')
 
+    @contextmanager
     def _connect(self):
         connection = sqlite3.connect(self.path, timeout=10)
         connection.row_factory = sqlite3.Row
-        return connection
+        try:
+            with connection:
+                yield connection
+        finally:
+            connection.close()
 
     def recover(self):
         # Call only after acquiring the process lease, never during import.
@@ -53,9 +60,18 @@ class DetectionTaskStore:
     def get(self, task_id):
         with self._lock, self._connect() as connection:
             row = connection.execute('SELECT * FROM detection_tasks WHERE task_id=?', (task_id,)).fetchone()
+            ahead = 0
+            if row and row['status'] == 'queued':
+                ahead = connection.execute(
+                    "SELECT COUNT(*) FROM detection_tasks WHERE status='running' OR (status='queued' AND rowid < (SELECT rowid FROM detection_tasks WHERE task_id=?))",
+                    (task_id,),
+                ).fetchone()[0]
         if not row:
             return None
         result = dict(row)
+        if result['status'] == 'queued':
+            result['tasks_ahead'] = ahead
+            result['queue_position'] = ahead + 1
         if result['status'] in {'completed', 'failed'}:
             if (datetime.now() - datetime.fromisoformat(result['updated_at'])).total_seconds() > self.ttl_seconds:
                 return None
@@ -64,7 +80,7 @@ class DetectionTaskStore:
     def claim_next(self):
         with self._lock, self._connect() as connection:
             connection.execute('BEGIN IMMEDIATE')
-            row = connection.execute("SELECT * FROM detection_tasks WHERE status='queued' ORDER BY created_at LIMIT 1").fetchone()
+            row = connection.execute("SELECT * FROM detection_tasks WHERE status='queued' ORDER BY rowid LIMIT 1").fetchone()
             if not row:
                 return None
             connection.execute("UPDATE detection_tasks SET status='running',updated_at=? WHERE task_id=?",
@@ -88,9 +104,29 @@ class DetectionTaskStore:
             connection.execute("DELETE FROM detection_tasks WHERE status IN ('completed','failed') AND updated_at<?", (cutoff,))
         return [row['file_path'] for row in rows]
 
+    def orphan_paths(self, upload_dir, cutoff_timestamp):
+        # Only UUID-owned uploads; never delete active tasks or user files.
+        with self._lock, self._connect() as connection:
+            active = {str(Path(row['file_path']).resolve()) for row in connection.execute(
+                "SELECT file_path FROM detection_tasks WHERE status IN ('queued','running')")}
+            paths = []
+            for path in Path(upload_dir).iterdir():
+                if not re.fullmatch(r'(?:[0-9a-f]{64}-[0-9a-f]{32}|\.upload-[0-9]+-[0-9a-f]{32})', path.name):
+                    continue
+                if path.is_symlink() or str(path.resolve()) in active:
+                    continue
+                try:
+                    if path.is_file() and path.stat().st_mtime < cutoff_timestamp:
+                        paths.append(path)
+                except FileNotFoundError:
+                    pass
+            return paths
+
     @staticmethod
     def public_status(row):
         response = {key: row[key] for key in ('task_id','status','filename','created_at','updated_at')}
+        if row['status'] == 'queued':
+            response.update({key: row[key] for key in ('tasks_ahead', 'queue_position') if key in row})
         if row['status'] == 'completed' and row.get('result_json'):
             response['result'] = json.loads(row['result_json'])
         if row['status'] == 'failed':

@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 import mimetypes
 import os
+import shutil
 import struct
 import uuid
 from datetime import datetime, timezone
@@ -16,17 +17,26 @@ from .config import settings
 CHUNK_SIZE = 1024 * 1024
 
 
+class UploadStorageFull(OSError):
+    pass
+
+
 def safe_filename(filename: Optional[str]) -> str:
     name = Path(filename or "sample.bin").name
     return name or "sample.bin"
 
 
 async def save_upload(file: UploadFile) -> Tuple[Path, Dict[str, object]]:
-    return await asyncio.to_thread(_save_upload_sync, file)
+    try:
+        return await asyncio.to_thread(_save_upload_sync, file)
+    finally:
+        await file.close()
 
 
 def _save_upload_sync(file: UploadFile) -> Tuple[Path, Dict[str, object]]:
     settings.upload_dir.mkdir(parents=True, exist_ok=True)
+    if shutil.disk_usage(settings.upload_dir).free < settings.min_free_disk_bytes + settings.max_upload_size:
+        raise UploadStorageFull('服务器临时存储空间不足，请稍后重试')
     original_name = safe_filename(file.filename)
     temp_path = settings.upload_dir / f".upload-{os.getpid()}-{uuid.uuid4().hex}"
 
@@ -40,7 +50,7 @@ def _save_upload_sync(file: UploadFile) -> Tuple[Path, Dict[str, object]]:
             while chunk := file.file.read(CHUNK_SIZE):
                 size += len(chunk)
                 if size > settings.max_upload_size:
-                    raise ValueError(f'文件超过大小限制: {settings.max_upload_size} bytes')
+                    raise ValueError(f'文件超过大小限制：{settings.max_upload_size / (1024 * 1024):g} MiB')
                 sha256.update(chunk)
                 md5.update(chunk)
                 output.write(chunk)
