@@ -6,11 +6,12 @@ from typing import List
 
 WEB_ROOT = Path(__file__).resolve().parents[2]
 CONFIG_PATH = WEB_ROOT / "config.ini"
+EXAMPLE_CONFIG_PATH = WEB_ROOT / "config.example.ini"
 
 
 def _load_config() -> configparser.ConfigParser:
     config = configparser.ConfigParser()
-    config.read(CONFIG_PATH, encoding="utf-8")
+    config.read([str(EXAMPLE_CONFIG_PATH), str(CONFIG_PATH)], encoding="utf-8")
     return config
 
 

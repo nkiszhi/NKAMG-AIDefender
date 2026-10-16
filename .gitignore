@@ -1,4 +1,5 @@
 .venv/
+venv/
 __pycache__/
 *.py[cod]
 *.log
@@ -12,6 +13,7 @@ dist/
 .env
 .env.*
 !.env.example
+web/config.ini
 
 # CoDefenderC3 derived artifacts / large files
 CoDefenderC3/.feature_cache/
