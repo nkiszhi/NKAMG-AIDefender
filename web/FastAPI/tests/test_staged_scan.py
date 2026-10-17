@@ -22,6 +22,32 @@ upgrade = load_module('upgrade', 'CoDefenderC3/docker/patch_progress.py')
 
 
 class StagedScanTests(unittest.TestCase):
+    def test_timeout_chain_reserves_model_time_even_with_old_container_values(self):
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(staged.analysis_timeout(), 180)
+            self.assertEqual(staged.runtime_limits(), (360, 420))
+        with patch.dict(os.environ, {'CODEFENDER_ANALYSIS_TIMEOUT': '180', 'CODEFENDER_REQUEST_TIMEOUT': '240', 'CODEFENDER_HARD_TIMEOUT': '300'}, clear=True):
+            self.assertEqual(staged.runtime_limits(), (360, 420))
+        with patch.dict(os.environ, {'CODEFENDER_ANALYSIS_TIMEOUT': '300'}, clear=True):
+            self.assertEqual(staged.runtime_limits(), (480, 540))
+
+    def test_ninety_second_notice_continues_same_process_to_success(self):
+        from unittest.mock import Mock
+        import pickle
+        process = SimpleNamespace(pid=999999, returncode=0, kill=Mock())
+        process.wait = Mock(side_effect=[subprocess.TimeoutExpired('worker', 90), 0])
+        def start(command, **kwargs):
+            Path(command[-1]).write_bytes(pickle.dumps({'features': {}, 'malgraph': {}}))
+            return process
+        notice = Mock()
+        with patch.object(staged.subprocess, 'Popen', side_effect=start) as spawn:
+            result = staged.isolated_analysis('sample.exe', timeout=180, on_slow=notice)
+        notice.assert_called_once()
+        spawn.assert_called_once()
+        process.kill.assert_not_called()
+        self.assertEqual([call.kwargs['timeout'] for call in process.wait.call_args_list], [90, 90])
+        self.assertIn('seconds', result)
+
     def namespace(self, calls):
         def predict(ens, views, **kwargs):
             items = [{'model': name, 'status': 'ok', 'score': .8, 'prediction': 1}
@@ -43,7 +69,7 @@ class StagedScanTests(unittest.TestCase):
         calls, updates = [], []
         ns = self.namespace(calls)
         ens = SimpleNamespace(view_groups={'fast_view': ['fast'], 'slow_view': ['slow', 'MalGraph']})
-        def analyze(*args):
+        def analyze(*args, **kwargs):
             self.assertTrue(any(any(item['model'] == 'fast' and item['status'] == 'ok' for item in update['models']) for update in updates))
             self.assertEqual(calls, [('predict', False)])
             return {'features': {}, 'malgraph': {}, 'seconds': 1}

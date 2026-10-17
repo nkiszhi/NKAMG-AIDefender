@@ -9,7 +9,8 @@ RUN python3 /tmp/patch_progress.py && \
     python3 -m py_compile /app/engine/app.py /app/engine/scan_runtime.py && \
     rm /tmp/patch_progress.py /tmp/runtime_endpoints.py
 ENV CODEFENDER_MAX_CONCURRENT=1 \
-    CODEFENDER_REQUEST_TIMEOUT=240 \
-    CODEFENDER_HARD_TIMEOUT=300
+    CODEFENDER_ANALYSIS_TIMEOUT=180 \
+    CODEFENDER_REQUEST_TIMEOUT=360 \
+    CODEFENDER_HARD_TIMEOUT=420
 HEALTHCHECK --interval=30s --timeout=5s --start-period=300s --retries=5 \
     CMD python3 -c "import json,urllib.request; d=json.load(urllib.request.urlopen('http://127.0.0.1:8000/readyz',timeout=3)); assert d.get('ready') is True"

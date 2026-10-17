@@ -98,7 +98,7 @@ def _scan_by_stream(file_path, api_base, on_progress):
         with requests.post(api_base + '/predict-stream',
                            files={'file': (Path(file_path).name + '.exe', handle, 'application/octet-stream')},
                            params={'include_de': str(settings.codefender_include_de).lower()},
-                           timeout=(5, settings.codefender_timeout), stream=True) as response:
+                           timeout=(5, max(450, settings.codefender_timeout)), stream=True) as response:
             if response.status_code == 404:
                 # Explicitly absent route means no inference was accepted.
                 return _scan_by_upload(file_path, api_base=api_base)
@@ -152,7 +152,7 @@ def _scan_by_upload(file_path: Path, api_base=None) -> Optional[Dict[str, Dict[s
                 url,
                 files={"file": (f"{Path(file_path).name}.exe", handle, "application/octet-stream")},
                 params={"include_de": str(settings.codefender_include_de).lower()},
-                timeout=settings.codefender_timeout,
+                timeout=max(450, settings.codefender_timeout),
             )
         if response.status_code == 429:
             raise ModelServiceBusy('模型服务忙碌')

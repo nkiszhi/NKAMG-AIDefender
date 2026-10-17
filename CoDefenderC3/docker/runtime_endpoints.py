@@ -1,13 +1,14 @@
 # This fragment is installed into engine/app.py by patch_runtime.py.
 # It deliberately uses the base image's existing feature/model functions.
 from engine.scan_runtime import ScanRuntime, ScanBusy, ScanTimeout
-from engine.staged_scan import run_staged
+from engine.staged_scan import run_staged, runtime_limits
 from starlette.responses import StreamingResponse
 
+_REQUEST_TIMEOUT, _HARD_TIMEOUT = runtime_limits()
 _SCAN_RUNTIME = ScanRuntime(
     concurrency=int(os.environ.get('CODEFENDER_MAX_CONCURRENT', '1')),
-    timeout=int(os.environ.get('CODEFENDER_REQUEST_TIMEOUT', '240')),
-    hard_timeout=int(os.environ.get('CODEFENDER_HARD_TIMEOUT', '300')),
+    timeout=_REQUEST_TIMEOUT,
+    hard_timeout=_HARD_TIMEOUT,
 )
 
 

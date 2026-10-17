@@ -4,6 +4,8 @@ import sys
 import os
 import signal
 import threading
+import time
+from engine.staged_scan import analysis_timeout
 
 
 def main():
@@ -12,7 +14,7 @@ def main():
         if os.name == 'posix' and os.getpgrp() == os.getpid():
             os.killpg(os.getpgrp(), signal.SIGKILL)
         os._exit(124)
-    timeout = max(1, min(120, int(os.environ.get('CODEFENDER_ANALYSIS_TIMEOUT', '90'))))
+    timeout = analysis_timeout()
     watchdog = threading.Timer(timeout + 5, hard_stop)
     watchdog.daemon = True
     watchdog.start()
@@ -26,22 +28,28 @@ def main():
         pass
 
     sample_path, output_path = sys.argv[1:3]
-    result = {'features': {}, 'malgraph': None, 'errors': {}}
+    result = {'features': {}, 'malgraph': None, 'errors': {}, 'timing': {}}
+    started = time.monotonic()
     bv = bn.load(sample_path, options={
         'analysis.mode': 'basic', 'analysis.linearSweep.autorun': True,
         'analysis.limits.maxFunctionSize': 262144,
     })
     if bv is None:
         raise RuntimeError('BinaryNinja could not open the PE')
+    result['timing']['binaryninja_load_seconds'] = round(time.monotonic() - started, 3)
     try:
         extractor = BinjaExtractor()
         extractor.bn = bn
         for name, operation in [('disassembly', extractor._extract_disassembly),
                                 ('graphs', extractor._extract_graphs)]:
+            started = time.monotonic()
             try:
                 result['features'].update(operation(bv))
             except Exception as error:
                 result['errors'][name] = str(error)
+            finally:
+                result['timing'][name + '_features_seconds'] = round(time.monotonic() - started, 3)
+        started = time.monotonic()
         try:
             from models.MalGraph_2022.utils import extract_cfg_and_fcg
             result['malgraph'] = extract_cfg_and_fcg(sample_path, {}, binary_view=bv)
@@ -49,6 +57,8 @@ def main():
                 result['errors']['malgraph'] = 'No valid MalGraph features'
         except Exception as error:
             result['errors']['malgraph'] = str(error)
+        finally:
+            result['timing']['malgraph_features_seconds'] = round(time.monotonic() - started, 3)
     finally:
         bv.file.close()
     with open(output_path, 'wb') as handle:

@@ -581,6 +581,8 @@ async function pollDetectionTask(taskId) {
       detectionMessage.value = task.status === 'queued'
         ? (Number(task.tasks_ahead) > 0 ? `正在排队，前方还有 ${task.tasks_ahead} 个任务` : '任务已接收，即将开始检测')
         : '正在检测，可刷新页面继续等待'
+      if (task.progress?.stage === 'binaryninja') detectionMessage.value = '正在进行反汇编与图特征分析，已完成的模型结果可先查看'
+      if (task.progress?.stage === 'binaryninja_slow') detectionMessage.value = '深度分析已超过 90 秒，仍在继续（本阶段上限 180 秒）；已完成的模型结果可先查看'
       await new Promise(resolve => window.setTimeout(resolve, 2500))
     }
   } catch (error) {

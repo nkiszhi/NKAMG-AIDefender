@@ -12,7 +12,18 @@ import time
 log = logging.getLogger('codefender.stages')
 
 
-def isolated_analysis(path, timeout=90):
+def analysis_timeout():
+    return max(1, min(600, int(os.environ.get('CODEFENDER_ANALYSIS_TIMEOUT', '180'))))
+
+
+def runtime_limits():
+    # Leave room for fast/slow models and report formatting around analysis.
+    request = max(analysis_timeout() + 180, int(os.environ.get('CODEFENDER_REQUEST_TIMEOUT', '360')))
+    hard = max(request + 60, int(os.environ.get('CODEFENDER_HARD_TIMEOUT', '420')))
+    return request, hard
+
+
+def isolated_analysis(path, timeout=180, on_slow=None):
     root = Path(__file__).resolve().parents[1]
     with tempfile.TemporaryDirectory(prefix='aidefender-analysis-') as directory:
         output = str(Path(directory) / 'features.pkl')
@@ -22,7 +33,16 @@ def isolated_analysis(path, timeout=90):
             process = subprocess.Popen(command, cwd=root, stdout=subprocess.DEVNULL, stderr=errors,
                                        start_new_session=os.name == 'posix')
             try:
-                process.wait(timeout=timeout)
+                notice_after = min(90, timeout)
+                try:
+                    process.wait(timeout=notice_after)
+                except subprocess.TimeoutExpired:
+                    if timeout <= notice_after:
+                        raise
+                    if on_slow:
+                        on_slow()
+                    # Notice is informational: continue the SAME process.
+                    process.wait(timeout=timeout - notice_after)
             except BaseException:
                 if os.name == 'posix':
                     try:
@@ -93,12 +113,15 @@ def run_staged(ns, path, filename, size, ens, expected, include_de, on_progress=
         publish('binaryninja')
         analysis_start = time.monotonic()
         try:
-            timeout = max(1, min(120, int(os.environ.get('CODEFENDER_ANALYSIS_TIMEOUT', '90'))))
-            analysis = isolated_analysis(path, timeout)
+            timeout = analysis_timeout()
+            analysis = isolated_analysis(path, timeout, on_slow=lambda: publish('binaryninja_slow'))
             timings['binaryninja_seconds'] = analysis['seconds']
+            timings.update(analysis.get('timing', {}))
             combined = dict(features, **analysis['features'])
             # An empty dict prevents MalGraph from opening BinaryNinja again on failure.
+            stage_start = time.monotonic()
             results += predict(slow_names, combined, True, analysis.get('malgraph') or {})
+            timings['slow_models_seconds'] = round(time.monotonic() - stage_start, 3)
         except Exception as error:
             timings['binaryninja_seconds'] = round(time.monotonic() - analysis_start, 3)
             status = 'timeout' if isinstance(error, subprocess.TimeoutExpired) else 'error'
@@ -115,6 +138,7 @@ def run_staged(ns, path, filename, size, ens, expected, include_de, on_progress=
                 results.append(item)
                 completed(item)
     timings['total_model_seconds'] = round(time.monotonic() - started, 3)
+    log.info('Scan stage timing seconds=%s', timings)
     publish('finalizing')
     report = ns['_scan_single_pe'](path, filename, size, ens, expected, include_de,
                                    per_model_override=results)
