@@ -77,8 +77,8 @@ def build_file_info(
     file_path = Path(file_path)
     size = file_path.stat().st_size if size is None else size
     sha256_value, md5_value = _hash_file(file_path, sha256_value, md5_value)
-    file_type = detect_file_type(file_path, original_name)
     pe_info = analyze_pe(file_path)
+    file_type = detect_file_type(file_path, original_name, pe_info=pe_info)
 
     return {
         "filename": original_name or file_path.name,
@@ -116,12 +116,16 @@ def _hash_file(file_path: Path, sha256_value: Optional[str], md5_value: Optional
     return sha256_value or sha256.hexdigest(), md5_value or md5.hexdigest()
 
 
-def detect_file_type(file_path: Path, original_name: Optional[str] = None) -> str:
+def detect_file_type(file_path: Path, original_name: Optional[str] = None,
+                     pe_info: Optional[Dict[str, Any]] = None) -> str:
+    pe_info = analyze_pe(file_path) if pe_info is None else pe_info
+    if pe_info['is_pe']:
+        return f"{pe_info['pe_type']} ({pe_info['format']}, {pe_info['architecture']})"
     with file_path.open("rb") as handle:
         head = handle.read(4096)
 
     if head.startswith(b"MZ"):
-        return _detect_pe_type(file_path) or "PE executable"
+        return "MZ 文件（未通过 PE 结构校验）"
     if head.startswith(b"%PDF"):
         return "PDF document"
     if head.startswith(b"PK\x03\x04"):
@@ -134,21 +138,8 @@ def detect_file_type(file_path: Path, original_name: Optional[str] = None) -> st
 
 
 def _detect_pe_type(file_path: Path) -> Optional[str]:
-    try:
-        with file_path.open("rb") as handle:
-            handle.seek(0x3C)
-            pe_offset = int.from_bytes(handle.read(4), "little")
-            handle.seek(pe_offset)
-            if handle.read(4) != b"PE\0\0":
-                return None
-            machine = int.from_bytes(handle.read(2), "little")
-            if machine == 0x8664:
-                return "PE32+ executable (x64)"
-            if machine == 0x14C:
-                return "PE32 executable (x86)"
-            return "PE executable"
-    except OSError:
-        return None
+    info = analyze_pe(file_path)
+    return info.get('pe_type') if info['is_pe'] else None
 
 
 def analyze_pe(file_path: Path) -> Dict[str, Any]:
@@ -157,12 +148,14 @@ def analyze_pe(file_path: Path) -> Dict[str, Any]:
     except OSError as error:
         return {"is_pe": False, "reason": f"读取文件失败: {error}"}
 
-    if len(data) < 0x40 or data[:2] != b"MZ":
+    if data[:2] != b"MZ":
         header = data[:8].hex(" ").upper() or "空文件"
         return {"is_pe": False, "header": header, "reason": f"缺少MZ头（文件头: {header}；实际大小: {len(data)} bytes）。PE按内容识别，与文件后缀无关；若样本为压缩包或编码文本，请先解压或还原为原始PE文件"}
+    if len(data) < 0x40:
+        return {"is_pe": False, "reason": "DOS文件头不完整"}
 
     pe_offset = _unpack_from("<I", data, 0x3C)
-    if pe_offset is None or pe_offset + 24 > len(data):
+    if pe_offset is None or pe_offset < 0x40 or pe_offset + 24 > len(data):
         return {"is_pe": False, "reason": "PE头偏移无效"}
     if data[pe_offset:pe_offset + 4] != b"PE\0\0":
         return {"is_pe": False, "reason": "缺少PE签名"}
@@ -179,10 +172,29 @@ def analyze_pe(file_path: Path) -> Dict[str, Any]:
         return {"is_pe": False, "reason": "COFF文件头不完整"}
     if optional_header_offset + optional_header_size > len(data):
         return {"is_pe": False, "reason": "可选头超出文件范围"}
+    if optional_header_size < 2:
+        return {"is_pe": False, "reason": "可选头不完整"}
 
     magic = _unpack_from("<H", data, optional_header_offset)
     if magic not in (0x10B, 0x20B):
         return {"is_pe": False, "reason": "可选头Magic不是PE32/PE32+"}
+    # Standard/Windows fields end at NumberOfRvaAndSizes. Directories are variable.
+    fixed_size = 112 if magic == 0x20B else 96
+    if optional_header_size < fixed_size:
+        return {"is_pe": False, "reason": "可选头长度不足以容纳PE32/PE32+必需字段"}
+    directory_count = _unpack_from('<I', data, optional_header_offset + fixed_size - 4)
+    if fixed_size + directory_count * 8 > optional_header_size:
+        return {"is_pe": False, "reason": "数据目录数量超出可选头范围"}
+    section_offset = optional_header_offset + optional_header_size
+    if section_offset + section_count * 40 > len(data):
+        return {"is_pe": False, "reason": "节表不完整或超出文件范围"}
+    for index in range(section_count):
+        offset = section_offset + index * 40
+        raw_size = _unpack_from('<I', data, offset + 16)
+        raw_pointer = _unpack_from('<I', data, offset + 20)
+        # BSS/uninitialized sections may have no bytes on disk.
+        if raw_size and raw_pointer + raw_size > len(data):
+            return {"is_pe": False, "reason": f"第{index + 1}节原始数据超出文件范围（文件可能被截断）"}
 
     entry_point = _unpack_from("<I", data, optional_header_offset + 16) or 0
     image_base = (
@@ -194,10 +206,15 @@ def analyze_pe(file_path: Path) -> Dict[str, Any]:
     size_of_image = _unpack_from("<I", data, optional_header_offset + 56) or 0
     size_of_headers = _unpack_from("<I", data, optional_header_offset + 60) or 0
 
-    sections = _parse_sections(data, optional_header_offset + optional_header_size, section_count)
+    sections = _parse_sections(data, section_offset, section_count)
+    bits = 64 if magic == 0x20B else 32
+    is_dll = bool(characteristics & 0x2000)
 
     return {
         "is_pe": True,
+        "pe_type": ('dll' if is_dll else 'exe') + str(bits),
+        "bits": bits,
+        "is_dll": is_dll,
         "format": "PE32+" if magic == 0x20B else "PE32",
         "machine": f"0x{machine:04X}",
         "architecture": _machine_name(machine),
