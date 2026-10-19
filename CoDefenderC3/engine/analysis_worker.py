@@ -8,6 +8,18 @@ import time
 from engine.staged_scan import analysis_timeout
 
 
+def load_analysis_view(bn, sample_path):
+    # MalGraph reads func.mlil: basic analysis only provides LLIL.
+    # intermediate produces MLIL without requesting full HLIL analysis.
+    bv = bn.load(sample_path, options={
+        'analysis.mode': 'intermediate', 'analysis.linearSweep.autorun': True,
+        'analysis.limits.maxFunctionSize': 262144,
+    })
+    if bv is None:
+        raise RuntimeError('BinaryNinja could not open the PE')
+    return bv
+
+
 def main():
     # A second watchdog prevents an orphaned native-analysis process if its parent exits.
     def hard_stop():
@@ -30,12 +42,7 @@ def main():
     sample_path, output_path = sys.argv[1:3]
     result = {'features': {}, 'malgraph': None, 'errors': {}, 'timing': {}}
     started = time.monotonic()
-    bv = bn.load(sample_path, options={
-        'analysis.mode': 'basic', 'analysis.linearSweep.autorun': True,
-        'analysis.limits.maxFunctionSize': 262144,
-    })
-    if bv is None:
-        raise RuntimeError('BinaryNinja could not open the PE')
+    bv = load_analysis_view(bn, sample_path)
     result['timing']['binaryninja_load_seconds'] = round(time.monotonic() - started, 3)
     try:
         extractor = BinjaExtractor()

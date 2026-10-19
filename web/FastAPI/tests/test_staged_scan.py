@@ -22,6 +22,30 @@ upgrade = load_module('upgrade', 'CoDefenderC3/docker/patch_progress.py')
 
 
 class StagedScanTests(unittest.TestCase):
+    def analysis_loader(self):
+        # Exercise the production loader without importing native BinaryNinja.
+        tree = ast.parse((ROOT / 'CoDefenderC3/engine/analysis_worker.py').read_text(encoding='utf-8'))
+        function = next(node for node in tree.body if getattr(node, 'name', '') == 'load_analysis_view')
+        namespace = {}
+        exec(compile(ast.Module(body=[function], type_ignores=[]), 'analysis-loader', 'exec'), namespace)
+        return namespace['load_analysis_view']
+
+    def test_analysis_load_generates_mlil_and_reuses_one_view(self):
+        from unittest.mock import Mock
+        view = object()
+        bn = SimpleNamespace(load=Mock(return_value=view))
+        self.assertIs(self.analysis_loader()(bn, 'sample.pe'), view)
+        bn.load.assert_called_once_with('sample.pe', options={
+            'analysis.mode': 'intermediate', 'analysis.linearSweep.autorun': True,
+            'analysis.limits.maxFunctionSize': 262144,
+        })
+
+    def test_analysis_load_rejects_missing_binary_view(self):
+        from unittest.mock import Mock
+        bn = SimpleNamespace(load=Mock(return_value=None))
+        with self.assertRaisesRegex(RuntimeError, 'could not open'):
+            self.analysis_loader()(bn, 'sample.pe')
+
     def test_timeout_chain_reserves_model_time_even_with_old_container_values(self):
         with patch.dict(os.environ, {}, clear=True):
             self.assertEqual(staged.analysis_timeout(), 180)
