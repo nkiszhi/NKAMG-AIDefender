@@ -4,9 +4,12 @@
       <div class="brand-lockup">
         <div class="brand-mark" aria-hidden="true"><img src="/nkamg-logo.png" alt="NKAMG-AIDefender" /></div>
         <div>
-          <div class="eyebrow">NKAMG · MALWARE INTELLIGENCE</div>
-          <h1>NKAMG-AIDefender</h1>
-          <p>面向 PE 样本的多模型威胁分析工作台</p>
+          <div class="eyebrow">NKAMG · 南开大学反病毒实验室</div>
+          <div class="brand-title-row">
+            <h1>NKAMG-AIDefender</h1>
+            <a class="project-repo-link" href="https://github.com/nkiszhi/NKAMG-AIDefender" target="_blank" rel="noopener noreferrer" aria-label="访问 NKAMG-AIDefender 开源项目 GitHub 仓库（新窗口打开）">https://github.com/nkiszhi/NKAMG-AIDefender</a>
+          </div>
+          <p>面向 PE 样本的多模型威胁分析平台</p>
         </div>
       </div>
       <div class="header-tools">

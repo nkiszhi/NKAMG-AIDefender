@@ -40,7 +40,12 @@ button, input { font: inherit; }
 .hash-search button { height: 28px; padding: 0 9px; border: 0; border-radius: 5px; color: #dbe6ff; background: #3b5da8; cursor: pointer; font-size: 11px; }
 .hash-search button:disabled { opacity: .45; cursor: not-allowed; }
 .header-upload { flex: 0 0 auto; }
-.brand-lockup { display: flex; align-items: center; gap: 16px; }
+.brand-lockup { display: flex; align-items: center; gap: 16px; min-width: 0; flex: 1; }
+.brand-lockup > div:last-child { min-width: 0; }
+.brand-title-row { display: flex; align-items: baseline; flex-wrap: wrap; column-gap: 12px; row-gap: 3px; margin-bottom: 3px; }
+.project-repo-link { color: var(--blue); font-size: 11px; line-height: 1.6; overflow-wrap: anywhere; text-decoration: underline; text-underline-offset: 3px; }
+.project-repo-link:hover { color: #b3c7ff; }
+.project-repo-link:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; border-radius: 2px; }
 .brand-mark { display: grid; place-items: center; width: 52px; height: 52px; padding: 5px; border: 1px solid rgba(125, 158, 255, .58); border-radius: 15px; background: linear-gradient(145deg, rgba(90, 124, 214, .35), rgba(48, 72, 128, .18)); box-shadow: 0 0 34px rgba(103, 141, 255, .18), inset 0 1px rgba(255,255,255,.1); }
 .brand-mark img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .eyebrow { color: #8195bf; font-size: 10px; font-weight: 750; letter-spacing: .18em; line-height: 1.5; }
