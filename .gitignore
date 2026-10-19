@@ -1,16 +1,23 @@
 .venv/
+venv/
 __pycache__/
 *.py[cod]
 *.log
 uploads/*
 !uploads/.gitkeep
-backend/uploads/*
-!backend/uploads/.gitkeep
+web/FastAPI/uploads/*
+!web/FastAPI/uploads/.gitkeep
 node_modules/
+web/FastAPI/data/
 dist/
 .env
 .env.*
 !.env.example
+web/config.ini
+web/config.ini.before-dual-*.bak
+.pytest_cache/
+web/config.ini.before-dual-*.bak
+.pytest_cache/
 
 # CoDefenderC3 derived artifacts / large files
 CoDefenderC3/.feature_cache/

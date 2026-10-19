@@ -1,1 +1,0 @@
-"""Codefender backend package."""

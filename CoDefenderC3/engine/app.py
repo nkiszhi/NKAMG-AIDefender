@@ -470,13 +470,13 @@ def _load_malgraph_runtime() -> Dict[str, Any]:
         return _MALGRAPH_RUNTIME
 
 
-def _predict_malgraph_single(pe_path: str) -> Tuple[int, float, Dict[str, Any]]:
+def _predict_malgraph_single(pe_path: str, sample=None) -> Tuple[int, float, Dict[str, Any]]:
     runtime = _load_malgraph_runtime()
 
     from torch_geometric.data import Batch, Data
-    from models.MalGraph_2022.utils import extract_cfg_and_fcg
-
-    sample = extract_cfg_and_fcg(pe_path, vocab_dict={})
+    if sample is None:
+        from models.MalGraph_2022.utils import extract_cfg_and_fcg
+        sample = extract_cfg_and_fcg(pe_path, vocab_dict={})
     if not sample:
         raise RuntimeError("MalGraph feature extraction failed")
 
@@ -650,18 +650,19 @@ def _extract_views_for_single_sample(
     required_views: List[str],
     include_de: bool,
     expected_view_dims: Optional[Dict[str, int]] = None,
+    extracted_features=None,
 ) -> Tuple[Dict[str, np.ndarray], Dict[str, Dict[str, Any]]]:
     ext = _get_extractor()
     feats = {}
     view_meta: Dict[str, Dict[str, Any]] = {}
 
     try:
-        feats.update(ext.extract_fast(pe_path))
+        feats.update(ext.extract_fast(pe_path) if extracted_features is None else extracted_features)
     except Exception as e:
         raise RuntimeError(f"extract_fast failed: {e}") from e
 
     de_status = "skipped"
-    if include_de:
+    if include_de and extracted_features is None:
         try:
             feats.update(ext.extract_de_only(pe_path))
             de_status = "ok"
@@ -718,7 +719,7 @@ def _extract_views_for_single_sample(
                     reason = f"partial_binja_features_missing:{','.join(missing_ids)}"
             else:
                 reason = f"missing_binja_features:{','.join(missing_ids)}"
-                if (not include_de) and any(fid.startswith(("D", "E")) for fid in missing_ids):
+                if (not include_de or extracted_features is not None) and any(fid.startswith(("D", "E")) for fid in missing_ids):
                     reason += "; hint=include_de=true"
                     # B-fix: include_de=false 时 D/E 视角整体缺失 → 禁止任何回退
                     # （否则 EMBER 切片会伪造维度不符的特征行，喂给模型必然报错
@@ -852,12 +853,17 @@ def _predict_per_model(
     view_meta: Optional[Dict[str, Dict[str, Any]]] = None,
     pe_path: Optional[str] = None,
     include_de: bool = True,
+    selected_models=None,
+    malgraph_sample=None,
+    on_result=None,
 ) -> List[Dict[str, Any]]:
     results: List[Dict[str, Any]] = []
 
     for vname, model_names in ens.view_groups.items():
         x_view = views.get(vname)
         for mname in model_names:
+            if selected_models is not None and mname not in selected_models:
+                continue
             model = ens._models.get(mname)  # noqa: SLF001 - existing internal structure
             mtype = ens._model_types.get(mname, "unknown")  # noqa: SLF001
 
@@ -873,14 +879,18 @@ def _predict_per_model(
                         item["status"] = "skipped"
                         item["reason"] = "MalGraph requires D/E features; set include_de=true"
                         results.append(item)
+                        if on_result:
+                            on_result(dict(item))
                         continue
                     if not pe_path:
                         item["status"] = "error"
                         item["reason"] = "missing pe_path for MalGraph inference"
                         results.append(item)
+                        if on_result:
+                            on_result(dict(item))
                         continue
                     try:
-                        pred, score, mg_meta = _predict_malgraph_single(pe_path)
+                        pred, score, mg_meta = _predict_malgraph_single(pe_path, sample=malgraph_sample)
                         item["status"] = "ok"
                         item["score"] = score
                         item["prediction"] = pred
@@ -889,10 +899,14 @@ def _predict_per_model(
                         item["status"] = "unavailable"
                         item["reason"] = str(e)
                     results.append(item)
+                    if on_result:
+                        on_result(dict(item))
                     continue
                 item["status"] = "skipped"
                 item["reason"] = "special_pipeline_not_supported"
                 results.append(item)
+                if on_result:
+                    on_result(dict(item))
                 continue
 
             if x_view is None:
@@ -901,12 +915,16 @@ def _predict_per_model(
                 miss_reason = meta.get("reason", "missing_view_feature")
                 item["reason"] = f"missing_view_feature:{miss_reason}"
                 results.append(item)
+                if on_result:
+                    on_result(dict(item))
                 continue
 
             if model is None:
                 item["status"] = "unavailable"
                 item["reason"] = "model_not_loaded"
                 results.append(item)
+                if on_result:
+                    on_result(dict(item))
                 continue
 
             x_model = x_view
@@ -958,6 +976,8 @@ def _predict_per_model(
                 item["reason"] = str(e)
 
             results.append(item)
+            if on_result:
+                on_result(dict(item))
 
     return results
 
@@ -2412,22 +2432,23 @@ def _scan_single_pe(
     ens: MultiModelEnsemble,
     expected_view_dims: Dict[str, int],
     include_de: bool = True,
+    per_model_override=None,
 ) -> Dict[str, Any]:
     """对单个 PE 文件执行完整推理链路，返回 format_scan_result 格式的 dict。"""
     # PE文件格式验证
     if not _is_valid_pe(pe_path):
         raise ValueError("文件结构不对，或者文件格式损坏")
 
-    views, view_meta = _extract_views_for_single_sample(
-        pe_path=pe_path,
-        required_views=list(ens.view_groups.keys()),
-        include_de=include_de,
-        expected_view_dims=expected_view_dims,
-    )
-
-    per_model = _predict_per_model(
-        ens, views, view_meta=view_meta, pe_path=pe_path, include_de=include_de,
-    )
+    if per_model_override is None:
+        views, view_meta = _extract_views_for_single_sample(
+            pe_path=pe_path, required_views=list(ens.view_groups.keys()),
+            include_de=include_de, expected_view_dims=expected_view_dims,
+        )
+        per_model = _predict_per_model(
+            ens, views, view_meta=view_meta, pe_path=pe_path, include_de=include_de,
+        )
+    else:
+        per_model = per_model_override
     # ── Build (1, K) matrices from flat per_model list ──
     ok_results = [r for r in per_model if r.get("status") == "ok"]
     K = len(ok_results)
@@ -2538,73 +2559,6 @@ def _scan_single_pe_wrapper(
         )
 
 
-@app.post("/predict-single")
-async def predict_single(
-    file: UploadFile = File(...),
-    include_de: bool = Query(
-        default=DEFAULT_INCLUDE_DE,
-        description="Whether to run D/E feature extraction (BinaryNinja disassembly/graph).",
-    ),
-) -> Dict[str, Any]:
-    if not file.filename:
-        raise HTTPException(status_code=400, detail="empty filename")
-
-    content = await file.read()
-    if not content:
-        raise HTTPException(status_code=400, detail="empty file content")
-    if len(content) > MAX_UPLOAD_BYTES:
-        raise HTTPException(
-            status_code=413,
-            detail=f"file too large: {len(content)} bytes > {MAX_UPLOAD_BYTES} bytes",
-        )
-
-    # ── SHA256 + MD5 哈希库预检：命中直接返回 Malicious，跳过模型（毫秒级短路）──
-    precheck = _hash_precheck(content, file.filename, len(content))
-    if precheck is not None:
-        return precheck
-
-    ens = _load_ensemble()
-    expected_view_dims = _infer_expected_view_dims(ens)
-    suffix = os.path.splitext(file.filename)[1] or ".bin"
-    temp_path = None
-
-    try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tf:
-            tf.write(content)
-            temp_path = tf.name
-
-        # 超时控制：120s 未完成则放弃，返回 504
-        try:
-            result = await asyncio.wait_for(
-                asyncio.to_thread(
-                    _scan_single_pe,
-                    temp_path,
-                    file.filename,
-                    len(content),
-                    ens,
-                    expected_view_dims,
-                    include_de,
-                ),
-                timeout=REQUEST_TIMEOUT,
-            )
-            return result
-        except asyncio.TimeoutError:
-            raise HTTPException(
-                status_code=504,
-                detail=f"scan timeout after {REQUEST_TIMEOUT}s",
-            )
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
-    finally:
-        if temp_path and os.path.exists(temp_path):
-            try:
-                os.remove(temp_path)
-            except OSError:
-                pass
 
 
 # ──────────────────────────────────────────────────────────────────
@@ -2953,8 +2907,7 @@ async def _batch_scan_samples(
         } for fpath in pe_paths]
 
 
-@app.post("/predict-directory")
-async def predict_directory(
+async def _predict_directory_unprotected(
     directory: str = Query(..., description="服务器端目录绝对路径"),
     recursive: bool = Query(default=True, description="是否递归扫描子目录"),
     include_de: bool = Query(
@@ -3101,3 +3054,137 @@ async def predict_directory(
         with _METRICS_LOCK:
             _METRICS["predict_dir_error"] += 1
         raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+
+# This fragment is installed into engine/app.py by patch_runtime.py.
+# It deliberately uses the base image's existing feature/model functions.
+from engine.scan_runtime import ScanRuntime, ScanBusy, ScanTimeout
+from engine.staged_scan import run_staged, runtime_limits
+from starlette.responses import StreamingResponse
+
+_REQUEST_TIMEOUT, _HARD_TIMEOUT = runtime_limits()
+_SCAN_RUNTIME = ScanRuntime(
+    concurrency=int(os.environ.get('CODEFENDER_MAX_CONCURRENT', '1')),
+    timeout=_REQUEST_TIMEOUT,
+    hard_timeout=_HARD_TIMEOUT,
+)
+
+
+def _scan_uploaded_sync(content, filename, include_de, on_progress=None):
+    # Older v8 images have no signature precheck. Preserve whichever pipeline
+    # the base image actually provides instead of importing newer dependencies.
+    precheck = globals().get('_hash_precheck')
+    if precheck:
+        hit = precheck(content, filename, len(content))
+        if hit is not None:
+            return hit
+    ens = _load_ensemble()
+    expected = _infer_expected_view_dims(ens)
+    # The worker owns its temporary file for its full lifetime. A timed-out
+    # HTTP caller must neither delete the file nor release its scan slot.
+    with tempfile.TemporaryDirectory(prefix='aidefender-scan-') as directory:
+        path = os.path.join(directory, 'sample.bin')
+        with open(path, 'wb') as handle:
+            handle.write(content)
+        return run_staged(globals(), path, filename, len(content), ens, expected, include_de, on_progress)
+
+
+async def _run_guarded(operation, *args):
+    try:
+        return await _SCAN_RUNTIME.run(operation, *args)
+    except ScanBusy as error:
+        raise HTTPException(429, detail=str(error), headers={'Retry-After': '3'}) from error
+    except ScanTimeout as error:
+        raise HTTPException(504, detail=str(error)) from error
+
+
+@app.on_event('startup')
+async def _warm_runtime_models():
+    # /readyz never loads models. Warm up once so Docker probes can remain cheap.
+    await _SCAN_RUNTIME.run(_load_ensemble)
+
+
+@app.post('/predict-single')
+async def predict_single(
+    file: UploadFile = File(...),
+    include_de: bool = Query(default=DEFAULT_INCLUDE_DE),
+) -> Dict[str, Any]:
+    if not file.filename:
+        raise HTTPException(400, detail='empty filename')
+    if _SCAN_RUNTIME.active >= _SCAN_RUNTIME.concurrency:
+        raise HTTPException(429, detail='model service is busy; retry later', headers={'Retry-After': '3'})
+    try:
+        content = await file.read(MAX_UPLOAD_BYTES + 1)
+        if not content:
+            raise HTTPException(400, detail='empty file content')
+        if len(content) > MAX_UPLOAD_BYTES:
+            raise HTTPException(413, detail='file too large')
+        return await _run_guarded(_scan_uploaded_sync, content, file.filename, include_de)
+    except ValueError as error:
+        raise HTTPException(400, detail=str(error)) from error
+    finally:
+        await file.close()
+
+
+@app.post('/predict-stream')
+async def predict_stream(file: UploadFile = File(...), include_de: bool = Query(default=DEFAULT_INCLUDE_DE)):
+    if _SCAN_RUNTIME.active >= _SCAN_RUNTIME.concurrency:
+        await file.close()
+        raise HTTPException(429, detail='model service is busy; retry later', headers={'Retry-After': '3'})
+    try:
+        content = await file.read(MAX_UPLOAD_BYTES + 1)
+        if not content or not file.filename:
+            raise HTTPException(400, detail='empty file')
+        if len(content) > MAX_UPLOAD_BYTES:
+            raise HTTPException(413, detail='file too large')
+    finally:
+        await file.close()
+    loop = asyncio.get_running_loop()
+    events = asyncio.Queue()
+
+    def progress(payload):
+        loop.call_soon_threadsafe(events.put_nowait, {'event': 'progress', 'data': payload})
+
+    async def produce():
+        try:
+            result = await _run_guarded(_scan_uploaded_sync, content, file.filename, include_de, progress)
+            await events.put({'event': 'result', 'data': result})
+        except Exception as error:
+            await events.put({'event': 'error', 'detail': str(getattr(error, 'detail', error))})
+
+    async def stream():
+        # The runtime reserves the slot before starting the real operation.
+        # Disconnecting the reader must not release it while inference still runs.
+        producer = asyncio.create_task(produce())
+        try:
+            while True:
+                try:
+                    event = await asyncio.wait_for(events.get(), timeout=5)
+                except asyncio.TimeoutError:
+                    yield json.dumps({'event': 'heartbeat'}) + '\n'
+                    continue
+                yield json.dumps(event, ensure_ascii=False) + '\n'
+                if event['event'] in ('result', 'error'):
+                    break
+        finally:
+            if not producer.done():
+                producer.cancel()
+            await asyncio.gather(producer, return_exceptions=True)
+
+    return StreamingResponse(stream(), media_type='application/x-ndjson', headers={'X-Accel-Buffering': 'no'})
+
+
+def _directory_in_thread(directory, recursive, include_de):
+    # The legacy batch coroutine contains synchronous preparation/postprocessing.
+    # Its own loop stays in a worker thread, away from uvicorn's HTTP event loop.
+    return asyncio.run(_predict_directory_unprotected(directory, recursive, include_de))
+
+
+@app.post('/predict-directory')
+async def predict_directory(
+    directory: str = Query(..., description='服务器端目录绝对路径'),
+    recursive: bool = Query(default=True),
+    include_de: bool = Query(default=False),
+) -> Dict[str, Any]:
+    return await _run_guarded(_directory_in_thread, directory, recursive, include_de)

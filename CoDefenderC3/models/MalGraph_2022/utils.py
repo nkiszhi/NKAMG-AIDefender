@@ -21,21 +21,24 @@ def calculate_file_hash(file_path):
             hash_sha256.update(chunk)
     return hash_sha256.hexdigest()
 
-def extract_cfg_and_fcg(file_path, vocab_dict):
+def extract_cfg_and_fcg(file_path, vocab_dict, binary_view=None):
     """
     提取函数调用图（FCG）和控制流图（CFG）
     :param file_path: str PE 文件路径
     :param vocab_dict: dict
     :return: dict 包含 function_edges、acfg_list 等
     """
+    bv = binary_view
     try:
         # 计算文件哈希
         file_hash = calculate_file_hash(file_path)
         # 打开 PE 文件
-        bv = BinaryViewType["PE"].open(file_path)
+        if bv is None:
+            bv = BinaryViewType["PE"].open(file_path)
         if not bv:
             raise ValueError(f"无法打开文件：{file_path}")
-        bv.update_analysis_and_wait()
+        if binary_view is None:
+            bv.update_analysis_and_wait()
 
         for extern_func in bv.get_symbols_of_type(SymbolType.ImportAddressSymbol):
             if extern_func.name in vocab_dict:
@@ -67,6 +70,9 @@ def extract_cfg_and_fcg(file_path, vocab_dict):
 
         for func in local_functions:
             caller_idx = function_index[func.start]
+
+            if func.mlil is None:
+                raise RuntimeError('MalGraph MLIL unavailable for function ' + str(func.start))
 
             # 遍历 MLIL 指令，查找调用指令
             for block in func.mlil:
@@ -189,6 +195,9 @@ def extract_cfg_and_fcg(file_path, vocab_dict):
     except Exception as e:
         print(f"处理文件时出错：{e}")
         return None
+    finally:
+        if binary_view is None and bv is not None:
+            bv.file.close()
 
 
 

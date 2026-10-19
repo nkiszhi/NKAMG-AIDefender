@@ -1,6 +1,6 @@
-# Codefender 多模型恶意文件检测
+# NKAMG-AIDefender 多模型恶意文件检测
 
-Codefender 是一个独立的 PE 样本恶意文件检测 Web 项目。系统由三部分组成：
+NKAMG-AIDefender 是一个独立的 PE 样本恶意文件检测 Web 项目，接入 CoDefenderC3 模型服务。系统由三部分组成：
 
 - 前端：Vue3 + Element Plus，提供样本上传、基础信息展示、PE 结构展示和模型结果展示。
 - 后端：FastAPI，负责文件上传、PE 结构校验、基础信息计算、模型服务适配。
@@ -21,50 +21,79 @@ Codefender 是一个独立的 PE 样本恶意文件检测 Web 项目。系统由
 
 ## 支持模型
 
-当前模型清单共 33 个：
+当前模型清单共 33 个。
 
-1. MalConv
-2. MalConv2
-3. ByteTransformer
-4. SaxeBerlinDNN
-5. EmberDNN
-6. NatarajKNN
-7. DrebinSVM
-8. DL4MD
-9. PEMinerRF
-10. DrebinImport
-11. ALOHANet
-12. EmberGBDT_Import
-13. RaffFeatureNet
-14. DrebinString
-15. OpcodeLSTM
-16. OpcodeTransformer
-17. OpcodeStatNet
-18. AsmEmbedNet
-19. MalGraph
-20. CFGGAT
-21. CFGGCN
-22. CFGDGCNN
-23. CallGraphGNN
-24. GraphStatNet
-25. GrayscaleCNN
-26. InceptionV3
-27. IMCFN
-28. ColorCNN
-29. MarkovCNN
-30. EntropyMapCNN
-31. HashEmbedNet
-32. MetadataNet
-33. ResourceNet
+| 模型 | 参考文献 |
+|---|---|
+| MalConv | Raff E, Barker J, Sylvester J, et al. Malware Detection by Eating a Whole EXE. AAAI Workshop on Artificial Intelligence for Cyber Security, 2018. [arXiv:1710.09435](https://arxiv.org/abs/1710.09435) |
+| MalConv2 | Raff E, Fleshman W, Zak R, et al. Classifying Sequences of Extreme Length with Constant Memory Applied to Malware Detection. AAAI, 2021. [arXiv:2012.09390](https://arxiv.org/abs/2012.09390) |
+| ByteTransformer | Vaswani A, Shazeer N, Parmar N, et al. Attention Is All You Need. NeurIPS, 2017. [arXiv:1706.03762](https://arxiv.org/abs/1706.03762) |
+| SaxeBerlinDNN | Saxe J, Berlin K. Deep Neural Network Based Malware Detection Using Two-Dimensional Binary Visualization. IEEE ISI, 2015. [doi:10.1109/ISI.2015.7165944](https://doi.org/10.1109/ISI.2015.7165944) |
+| EmberDNN | Anderson H S, Roth P. EMBER: An Open Dataset for Training Static PE Malware Machine Learning Models. KDD Workshop, 2018. [arXiv:1804.04637](https://arxiv.org/abs/1804.04637) |
+| NatarajKNN | Nataraj L, Karthikeyan S, Jacob G, et al. Malware Images: Visualization and Automatic Classification. VizSec, 2011. [doi:10.1145/2016904.2016908](https://doi.org/10.1145/2016904.2016908) |
+| DrebinSVM | Arp D, Spreitzenbarth M, Hübner M, et al. DREBIN: Effective and Explainable Detection of Android Malware in Your Pocket. NDSS, 2014. [ndss-symposium.org](https://www.ndss-symposium.org/ndss-paper/drebin-effective-and-explainable-detection-of-android-malware-in-your-pocket/) |
+| DL4MD | Hardy W, Chen L, Hou S, et al. DL4MD: A Deep Learning Framework for Intelligent Malware Detection. DMIN, 2016. [doi:10.1109/DMIN.2016.9](https://doi.org/10.1109/DMIN.2016.9) |
+| PEMinerRF | Shafiq M Z, Tabish S M, Mirza F, et al. PE-Miner: Mining Structural Information to Detect Malicious Executables in Realtime. RAID, 2009. [doi:10.1007/978-3-642-04342-0_1](https://doi.org/10.1007/978-3-642-04342-0_1) |
+| DrebinImport | Arp D, et al. DREBIN: Effective and Explainable Detection of Android Malware in Your Pocket. NDSS, 2014. [ndss-symposium.org](https://www.ndss-symposium.org/ndss-paper/drebin-effective-and-explainable-detection-of-android-malware-in-your-pocket/) |
+| ALOHANet | Aghakhani H, Gritti F, Mecca F, et al. When Malware is Packin' Heat; Limits of Machine Learning Classifiers Based on Static Analysis Features. USENIX Security, 2020. [usenix.org](https://www.usenix.org/conference/usenixsecurity20/presentation/aghakhani) |
+| EmberGBDT_Import | Anderson H S, Roth P. EMBER: An Open Dataset for Training Static PE Malware Machine Learning Models. KDD Workshop, 2018. [arXiv:1804.04637](https://arxiv.org/abs/1804.04637) |
+| RaffFeatureNet | Raff E, et al. Malware Detection by Eating a Whole EXE. AAAI Workshop, 2018. [arXiv:1710.09435](https://arxiv.org/abs/1710.09435) |
+| DrebinString | Arp D, et al. DREBIN: Effective and Explainable Detection of Android Malware in Your Pocket. NDSS, 2014. [ndss-symposium.org](https://www.ndss-symposium.org/ndss-paper/drebin-effective-and-explainable-detection-of-android-malware-in-your-pocket/) |
+| OpcodeLSTM | Deep Android Malware Detection. IEEE Transactions on Information Forensics and Security, 2017. [doi:10.1109/TIFS.2017.2713418](https://doi.org/10.1109/TIFS.2017.2713418) |
+| OpcodeTransformer | Ren Z, Wu H, Ning Q, et al. End-to-end Malware Detection for Android IoT Devices Using Deep Learning. IEEE Access, 2020. [doi:10.1109/ACCESS.2020.2993370](https://doi.org/10.1109/ACCESS.2020.2993370) |
+| OpcodeStatNet | Ahmadi M, Ulyanov D, Semenov S, et al. Novel Feature Extraction, Selection and Fusion for Effective Malware Family Classification. ACM CODASPY, 2016. [doi:10.1145/2857705.2857713](https://doi.org/10.1145/2857705.2857713) |
+| AsmEmbedNet | Ding S Y H, Fung B C M, Charland P. Asm2Vec: Boosting Static Representation Robustness for Binary Clone Search against Code Obfuscation and Compiler Optimization. IEEE S&P, 2019. [doi:10.1109/SP.2019.00003](https://doi.org/10.1109/SP.2019.00003) |
+| MalGraph | Ling X, Wu L, Deng W, et al. MalGraph: Hierarchical Graph Neural Networks for Robust Windows Malware Detection. IEEE INFOCOM, 2022. [github.com/ryderling/MalGraph](https://github.com/ryderling/MalGraph) |
+| CFGGAT | Yan J, Yan G, Jin D. Classifying Malware Represented as Control Flow Graphs Using Deep Graph CNN. IEEE DSN, 2019. [doi:10.1109/DSC47296.2019](https://doi.org/10.1109/DSC47296.2019) |
+| CFGGCN | Kipf T N, Welling M. Semi-Supervised Classification with Graph Convolutional Networks. ICLR, 2017. [arXiv:1609.02907](https://arxiv.org/abs/1609.02907) |
+| CFGDGCNN | Zhang M, Cui Z, Neumann M, et al. An End-to-End Deep Learning Architecture for Graph Classification. AAAI, 2018. [doi:10.1609/aaai.v32i1.11782](https://doi.org/10.1609/aaai.v32i1.11782) |
+| CallGraphGNN | Li Y, Gu C, Dullien T, et al. Graph Matching Networks for Learning the Similarity of Graph Structured Objects. ICML, 2019. [arXiv:1904.12787](https://arxiv.org/abs/1904.12787) |
+| GraphStatNet | Kinable J, Kostakis O. Malware Classification Based on Call Graph Clustering. Journal in Computer Virology, 7(4):233-245, 2011. [doi:10.1007/s11416-011-0151-y](https://doi.org/10.1007/s11416-011-0151-y) |
+| GrayscaleCNN | Nataraj L, et al. Malware Images: Visualization and Automatic Classification. VizSec, 2011. [doi:10.1145/2016904.2016908](https://doi.org/10.1145/2016904.2016908) |
+| InceptionV3 | Nataraj L, et al. Malware Images（VizSec 2011）可视化方法 + Szegedy C, Vanhoucke V, Ioffe S, et al. Rethinking the Inception Architecture for Computer Vision. CVPR, 2016. [arXiv:1512.00567](https://arxiv.org/abs/1512.00567) |
+| IMCFN | Vasan D, Alazab M, Wassan S, et al. IMCFN: Image-based Malware Classification Using Fine-tuned Convolutional Neural Network Architecture. Computer Networks, 171:107138, 2020. [doi:10.1016/j.comnet.2020.107138](https://doi.org/10.1016/j.comnet.2020.107138) |
+| ColorCNN | Fu J, Xue J, Wang Y, et al. Malware Visualization for Fine-Grained Classification. IEEE Access, 6:14510–14523, 2018. [doi:10.1109/ACCESS.2018.2805301](https://doi.org/10.1109/ACCESS.2018.2805301) |
+| MarkovCNN | Malware Identification Using Visualization Images and Deep Learning. Computers & Security, 2018. [doi:10.1016/j.cose.2018.09.001](https://doi.org/10.1016/j.cose.2018.09.001) |
+| EntropyMapCNN | Conti M, et al. Visual Reverse Engineering of Binary and Data Files. VizSec. [doi:10.1007/978-3-319-73198-8_1](https://doi.org/10.1007/978-3-319-73198-8_1) |
+| HashEmbedNet | Towards Interpretable and Robust ML-based Malware Detection. CCS Workshop on AI for Security, 2019. [doi:10.1145/3338466.3358907](https://doi.org/10.1145/3338466.3358907) |
+| MetadataNet | Shafiq M Z, Tabish S M, Mirza F, et al. PE-Miner: Mining Structural Information to Detect Malicious Executables in Realtime. In: Recent Advances in Intrusion Detection (RAID), LNCS 5758, pp. 121-141, 2009. [doi:10.1007/978-3-642-04342-0_1](https://doi.org/10.1007/978-3-642-04342-0_1) |
+| ResourceNet | Ahmadi M, Ulyanov D, Semenov S, et al. Novel Feature Extraction, Selection and Fusion for Effective Malware Family Classification. ACM CODASPY, 2016. [doi:10.1145/2857705.2857713](https://doi.org/10.1145/2857705.2857713) |
+
+### 模型优化要点
+
+1. **维度对齐重训**：11 个模型的权重维度与线上特征维度不一致，这些票近似噪声。
+
+| 模型 | 注册维度（线上输入） | 权重实际维度 | 差异 |
+|:-:|:--:|:--:|:-:|
+| SaxeBerlinDNN | 512 | 776 | +264 |
+| EmberDNN | 512 | 776 | +264 |
+| NatarajKNN | 512 | 776（近邻库 3,339 行） | +264 |
+| DrebinSVM | 327 | 264 | −63 |
+| DL4MD | 327 | 264 | −63 |
+| DrebinImport | 1280 | 339 | −941 |
+| ALOHANet | 1280 | 339 | −941 |
+| RaffFeatureNet | 104 | 553 | +449 |
+| DrebinString | 104 | 553 | +449 |
+| MetadataNet | 158 | 60 | −98 |
+| HashEmbedNet | 512 | 64（4 路 Embedding 结构，输入类型不符） | 类型不符 |
+
+错位成对出现：DrebinImport/ALOHANet 同错成 339，RaffFeatureNet/DrebinString 同错成 553——同一视角的模型是在同一份错误切片上训练的。PEMinerRF 另有疑点：30 棵树的最大分裂特征下标为 104，未按完整 327 维训练。
+
+2. **字节模型截断**：MalConv/MalConv2/ByteTransformer 只读文件头（32KB/2MB），大文件欠拟合。
+3. **操作码词表固定**：当前用 `crc32` 哈希桶当词表，重训前后词表漂移。
+4. **伪图模型不吃边**：CFGGAT/CFGGCN/CFGDGCNN/CallGraphGNN 推理时是同一个 22 维统计上的 MLP，不是图模型。
 
 前端页面会通过后端 `/models` 接口显示模型清单。
 
 ## 目录结构
 
 ```text
-backend/   FastAPI 后端，提供上传检测、PE结构分析和模型服务适配
-frontend/  Vue3 + Element Plus 单页前端
-config.ini 后端、Docker 模型服务和跨容器路径配置
+web/
+  FastAPI/   FastAPI 后端，提供上传检测、PE结构分析和模型服务适配
+  Vue/       Vue3 + Element Plus 单页前端
+    public/config.ini  浏览器访问后端的地址配置
+  config.ini 后端、Docker 模型服务和跨容器路径配置
+CoDefenderC3/ 模型推理服务及训练代码
 ```
 
 ## 环境要求
@@ -80,11 +109,11 @@ config.ini 后端、Docker 模型服务和跨容器路径配置
 
 ```powershell
 cd C:\zjp\github
-git clone https://github.com/nkiszhi/codefender.git
-cd C:\zjp\github\codefender
+git clone https://github.com/nkiszhi/NKAMG-AIDefender.git
+cd C:\zjp\github\NKAMG-AIDefender
 ```
 
-### 2. 启动 Codefender 模型服务
+### 2. 启动 Codefender 模型服务	
 
 拉取公开 Docker 镜像：
 
@@ -105,7 +134,7 @@ curl http://127.0.0.1:8001/health
 curl http://127.0.0.1:8001/openapi.json
 ```
 
-如果容器名不是 `codefender-api`，需要修改根目录 `config.ini`：
+如果容器名不是 `codefender-api`，需要修改 `web/config.ini`：
 
 ```ini
 [docker]
@@ -121,7 +150,7 @@ docker ps
 
 ### 3. 配置后端
 
-根目录 `config.ini` 默认配置如下：
+`web/config.ini` 默认配置如下：
 
 ```ini
 [server]
@@ -131,7 +160,7 @@ cors_origins = *
 max_upload_size = 104857600
 
 [paths]
-upload_dir = backend/uploads
+upload_dir = FastAPI/uploads
 
 [codefender]
 api_base = http://127.0.0.1:8001
@@ -147,28 +176,30 @@ container_name = codefender-api
 container_upload_dir = /tmp/codefender_uploads
 ```
 
+配置中的相对路径以 `web/` 为基准，默认上传目录是 `web/FastAPI/uploads`。前端地址配置保留在 `web/Vue/public/config.ini`，供浏览器通过 `/config.ini` 加载。
+
 默认模式不需要给 Docker 挂载目录。后端会把上传样本复制到模型容器的 `container_upload_dir`，再调用 `/scan/file` 检测。
 
 如果你希望使用目录挂载方式，也可以这样启动 Docker：
 
 ```powershell
 docker run -d --name codefender-api -p 8001:8000 `
-  -v "C:\zjp\github\codefender\backend\uploads:/samples/uploads" `
+  -v "C:\zjp\github\NKAMG-AIDefender\web\FastAPI\uploads:/samples/uploads" `
   peng233/codefender:v2
 ```
 
-同时把 `config.ini` 改成：
+同时把 `web/config.ini` 改成：
 
 ```ini
 [codefender]
-host_path_prefix = C:\zjp\github\codefender\backend\uploads
+host_path_prefix = C:\zjp\github\NKAMG-AIDefender\web\FastAPI\uploads
 container_path_prefix = /samples/uploads
 ```
 
 ### 4. 启动后端
 
 ```powershell
-cd C:\zjp\github\codefender\backend
+cd C:\zjp\github\NKAMG-AIDefender\web\FastAPI
 python -m venv .venv
 .\.venv\Scripts\activate
 pip install -r requirements.txt
@@ -191,7 +222,7 @@ curl http://127.0.0.1:5005/models
 ### 5. 启动前端
 
 ```powershell
-cd C:\zjp\github\codefender\frontend
+cd C:\zjp\github\NKAMG-AIDefender\web\Vue
 npm install
 npm run dev
 ```
@@ -209,20 +240,20 @@ http://127.0.0.1:5173
 前端构建：
 
 ```powershell
-cd C:\zjp\github\codefender\frontend
+cd C:\zjp\github\NKAMG-AIDefender\web\Vue
 npm run build
 ```
 
 构建产物在：
 
 ```text
-frontend/dist
+web/Vue/dist
 ```
 
 后端可使用 `uvicorn` 启动：
 
 ```powershell
-cd C:\zjp\github\codefender\backend
+cd C:\zjp\github\NKAMG-AIDefender\web\FastAPI
 uvicorn main:app --host 0.0.0.0 --port 5005
 ```
 
@@ -243,7 +274,7 @@ docker ps
 curl http://127.0.0.1:8001/health
 ```
 
-再确认 `config.ini` 的容器名是否正确：
+再确认 `web/config.ini` 的容器名是否正确：
 
 ```ini
 [docker]

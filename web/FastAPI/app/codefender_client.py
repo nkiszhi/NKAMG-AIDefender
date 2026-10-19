@@ -3,6 +3,10 @@ import re
 import shutil
 # Docker CLI is used as an optional local integration, without shell=True.
 import subprocess  # nosec B404
+import threading
+import logging
+import time
+import json
 from collections import OrderedDict
 from pathlib import Path
 from typing import Any, Dict, Iterable, Optional, Tuple
@@ -23,19 +27,95 @@ DEFAULT_MODEL_NAMES = [
 ]
 
 
-def scan_file(file_path: Path) -> Dict[str, Dict[str, Any]]:
+class ModelServiceBusy(RuntimeError):
+    pass
+
+
+class ModelEndpointPool:
+    """One in-flight Web request per isolated model endpoint, no hidden waiters."""
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._active = set()
+        self._cursor = 0
+
+    def acquire(self, urls, excluded=()):
+        with self._lock:
+            for offset in range(len(urls)):
+                index = (self._cursor + offset) % len(urls)
+                url = urls[index]
+                if url not in self._active and url not in excluded:
+                    self._active.add(url)
+                    self._cursor = (index + 1) % len(urls)
+                    return url
+        return None
+
+    def release(self, url):
+        with self._lock:
+            self._active.discard(url)
+
+
+_endpoint_pool = ModelEndpointPool()
+logger = logging.getLogger('aidefender.model_client')
+
+
+def scan_file(file_path: Path, on_progress=None) -> Dict[str, Dict[str, Any]]:
+    urls = settings.codefender_api_bases
+    if len(urls) > 1:
+        attempted = set()
+        while len(attempted) < len(urls):
+            url = _endpoint_pool.acquire(urls, attempted)
+            if url is None:
+                break
+            attempted.add(url)
+            started = time.monotonic()
+            try:
+                result = (_scan_by_stream(file_path, url, on_progress) if on_progress
+                          else _scan_by_upload(file_path, api_base=url))
+                if result is not None:
+                    return result
+                # Unknown failures/timeouts must not resubmit the same sample.
+                raise RuntimeError('模型服务检测失败，请检查容器日志和模型服务连接')
+            except ModelServiceBusy:
+                continue  # A 429 explicitly means this request was not accepted.
+            finally:
+                _endpoint_pool.release(url)
+                logger.info('模型请求结束 endpoint=%s elapsed_seconds=%.3f', url, time.monotonic() - started)
+        raise ModelServiceBusy('所有模型服务正在忙碌')
     path_result = _scan_by_path(file_path)
     if path_result is not None:
         return path_result
 
-    upload_result = _scan_by_upload(file_path)
+    upload_result = (_scan_by_stream(file_path, urls[0], on_progress) if on_progress
+                     else _scan_by_upload(file_path))
     if upload_result is not None:
         return upload_result
 
-    return {
-        "CoDefender集成模型": {"probability": None, "result": "预测失败"},
-        "集成结果": {"probability": None, "result": "无有效预测"},
-    }
+    raise RuntimeError("模型服务检测失败，请检查容器日志和模型服务连接")
+
+
+def _scan_by_stream(file_path, api_base, on_progress):
+    with Path(file_path).open('rb') as handle:
+        with requests.post(api_base + '/predict-stream',
+                           files={'file': (Path(file_path).name + '.exe', handle, 'application/octet-stream')},
+                           params={'include_de': str(settings.codefender_include_de).lower()},
+                           timeout=(5, max(450, settings.codefender_timeout)), stream=True) as response:
+            if response.status_code == 404:
+                # Explicitly absent route means no inference was accepted.
+                return _scan_by_upload(file_path, api_base=api_base)
+            if response.status_code == 429:
+                raise ModelServiceBusy('模型服务忙碌')
+            response.raise_for_status()
+            for line in response.iter_lines(chunk_size=1):
+                if not line:
+                    continue
+                event = json.loads(line)
+                if event.get('event') == 'progress':
+                    on_progress(event['data'])
+                elif event.get('event') == 'result':
+                    return parse_codefender_response(event['data'])
+                elif event.get('event') == 'error':
+                    raise RuntimeError(event.get('detail') or '模型检测失败')
+    raise RuntimeError('模型进度连接结束，未收到最终结果')
 
 
 def _scan_by_path(file_path: Path) -> Optional[Dict[str, Dict[str, Any]]]:
@@ -49,24 +129,37 @@ def _scan_by_path(file_path: Path) -> Optional[Dict[str, Dict[str, Any]]]:
         response = requests.post(url, json=payload, timeout=settings.codefender_timeout)
         if response.status_code == 404:
             return None
+        if response.status_code == 429:
+            raise ModelServiceBusy('模型服务忙碌')
         response.raise_for_status()
         return parse_codefender_response(response.json())
+    except ModelServiceBusy:
+        raise
     except Exception as error:
         print(f"CoDefender路径扫描API调用失败: {error}")
         return None
 
 
-def _scan_by_upload(file_path: Path) -> Optional[Dict[str, Dict[str, Any]]]:
+def _scan_by_upload(file_path: Path, api_base=None) -> Optional[Dict[str, Dict[str, Any]]]:
     endpoint = _normalize_endpoint(settings.codefender_predict_endpoint)
     if not endpoint:
         return None
 
-    url = f"{settings.codefender_api_base}{endpoint}"
+    url = f"{api_base or settings.codefender_api_base}{endpoint}"
     try:
         with Path(file_path).open("rb") as handle:
-            response = requests.post(url, files={"file": handle}, timeout=settings.codefender_timeout)
+            response = requests.post(
+                url,
+                files={"file": (f"{Path(file_path).name}.exe", handle, "application/octet-stream")},
+                params={"include_de": str(settings.codefender_include_de).lower()},
+                timeout=max(450, settings.codefender_timeout),
+            )
+        if response.status_code == 429:
+            raise ModelServiceBusy('模型服务忙碌')
         response.raise_for_status()
         return parse_codefender_response(response.json())
+    except ModelServiceBusy:
+        raise
     except Exception as error:
         print(f"CoDefender上传预测API调用失败: {error}")
         return None
@@ -145,6 +238,8 @@ def _translate_path_for_container(file_path: Path) -> str:
 
 
 def parse_codefender_response(data: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    if isinstance(data.get("ScanResult"), dict):
+        return _parse_v8_response(data)
     result_root = data.get("Result") or data.get("result") or data
     model_results = _read_first(
         result_root,
@@ -164,6 +259,43 @@ def parse_codefender_response(data: Dict[str, Any]) -> Dict[str, Dict[str, Any]]
         results["CoDefender集成模型"] = _format_model_result(final_raw, "CoDefender集成模型")
 
     ensemble = _build_ensemble(result_root if isinstance(result_root, dict) else data, results)
+    results["集成结果"] = ensemble
+    return results
+
+
+def _parse_v8_response(data: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    scan = data["ScanResult"]
+    scores = scan.get("PerModelScores") or {}
+    predictions = scan.get("PerModelPreds") or {}
+    stats = scan.get("ModelStats") or {}
+    if data.get("Status") == -1 or (stats and stats.get("OkModels") == 0):
+        raise ValueError("模型服务没有返回有效子模型预测")
+
+    results = OrderedDict()
+    for name, score in scores.items():
+        raw = {"probability": score}
+        prediction = predictions.get(name)
+        if prediction in (0, 1):
+            raw["is_malware"] = bool(prediction)
+        results[name] = _format_model_result(raw, name)
+
+    for item in scan.get('PerModelDetails') or []:
+        name = item.get('model')
+        if name and item.get('status') != 'ok':
+            labels = {'timeout': '超时', 'error': '失败', 'unavailable': '不可用', 'skipped': '已跳过'}
+            results[name] = {'probability': None, 'result': labels.get(item.get('status'), '未完成'),
+                             'status': item.get('status'), 'reason': item.get('reason', '')}
+
+    final = dict(data)
+    final["virus_name"] = scan.get("VirusName", "")
+    ensemble = _format_model_result(final, "CoDefender集成模型")
+    if data.get("Status") == 2:
+        ensemble["result"] = "疑似漂移"
+    if not scores:
+        if data.get("IsMalicious") is not True:
+            raise ValueError("模型服务返回空预测结果")
+        # Hash database hits return an ensemble verdict without running submodels.
+        results["签名库预检"] = dict(ensemble)
     results["集成结果"] = ensemble
     return results
 
@@ -282,7 +414,7 @@ def _extract_probability(data: Dict[str, Any]) -> Optional[float]:
 
 
 def _extract_result(data: Dict[str, Any], probability: Optional[float]) -> str:
-    is_malware = _read_first(data, ["is_malware", "isMalware", "IsMalware", "malicious", "is_malicious"])
+    is_malware = _read_first(data, ["is_malware", "isMalware", "IsMalware", "IsMalicious", "malicious", "is_malicious"])
     if isinstance(is_malware, bool):
         return "恶意" if is_malware else "安全"
 
