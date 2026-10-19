@@ -64,6 +64,11 @@
                   <span><b>特征</b>{{ item.features || '项目特征' }}</span>
                   <span><b>用途</b>{{ item.role || '参与多模型恶意文件判定' }}</span>
                 </div>
+                <div v-if="modelPapers[item.name]" class="model-paper-reference">
+                  <b>参考文献</b>
+                  <span>{{ modelPapers[item.name].title }}</span>
+                  <a class="model-paper-link" :href="modelPapers[item.name].url" target="_blank" rel="noopener noreferrer" :aria-label="`${item.name} 参考文献：${modelPapers[item.name].label}（新窗口打开）`">{{ modelPapers[item.name].label }}</a>
+                </div>
               </div>
             </article>
           </div>
@@ -236,6 +241,7 @@ import axios from 'axios'
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Search, UploadFilled } from '@element-plus/icons-vue'
+import { modelPapers } from './modelPapers'
 
 const apiService = axios.create({ timeout: 600000 })
 
