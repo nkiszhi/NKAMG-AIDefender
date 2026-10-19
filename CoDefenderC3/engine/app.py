@@ -75,6 +75,36 @@ if not _cf_logger.handlers:
     _cf_logger.propagate = False   # 避免调用方另行 basicConfig 时重复输出
 
 
+# ── 文件描述符上限 ──────────────────────────────────────────────
+# 签名库分片是 WAL (journal_mode 持久写在文件头): 每个 SQLite 连接要占 2~3 个 fd
+# (db / -wal / -shm)。一次 update-signatures 的 finalize 要扫过每族全部 dirty 分片
+# (shard_count=256 × sha256/md5/fuzzy 三族) —— 该路径已改短连接 (见 scaner/scanner.py
+# 的 _open_finalize_conn); 在线扫描的 LRU 池也已给退役连接加上限 (CODEFENDER_RETIRED_MAX,
+# 见 scanner.py 的 _PoolConn / _evict_and_trim_locked)。这里再兜一层: 容器默认
+# soft nofile=1024 太紧, 触顶时 SQLite 抛的是
+# `OperationalError: unable to open database file`(SQLITE_CANTOPEN, 底层 EMFILE),
+# 从报错完全看不出是 fd 不够。启动时把 soft 抬到 hard 允许的范围 (非 root 也能抬,
+# 只要不超过 hard; 若容器 hard 被压到 <65536 则本调用失败, 需 docker run 显式
+# 加 --ulimit nofile=65535:65535)。
+def _raise_nofile_limit(target=65536):
+    try:
+        import resource
+    except ImportError:            # 非 POSIX 平台
+        return
+    try:
+        soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+        new_soft = target if hard == resource.RLIM_INFINITY else min(target, hard)
+        if new_soft > soft:
+            resource.setrlimit(resource.RLIMIT_NOFILE, (new_soft, hard))
+            _cf_logger.info(
+                "[startup] nofile 上限 %s -> %s (hard=%s)", soft, new_soft, hard)
+    except Exception as exc:       # 平台/权限差异: 不因抬高失败而中断启动
+        _cf_logger.warning("[startup] 抬高 nofile 上限失败(忽略): %s", exc)
+
+
+_raise_nofile_limit()
+
+
 RAW_LEN = 32768
 INT_VIEWS = {"V1_byte", "V6_opcode_seq"}
 FEATURE_DIMS = BinjaExtractor.feature_dims()
@@ -1043,6 +1073,166 @@ def _vacuum_shards(db_obj, sids) -> Dict[str, Any]:
     return {"vacuumed_shards": done, "seconds": round(time.time() - t0, 1)}
 
 
+# ──────────────────────────────────────────────────────────────────
+# 签名库发布的空间管理（防止容器可写层被 releases/ 累积撑爆）
+# ──────────────────────────────────────────────────────────────────
+
+def _dir_bytes(path: str) -> int:
+    """目录总字节数（不跟随符号链接；单文件也接受）。"""
+    if os.path.isfile(path):
+        try:
+            return os.path.getsize(path)
+        except OSError:
+            return 0
+    total = 0
+    for dirpath, _dirs, files in os.walk(path, followlinks=False):
+        for n in files:
+            try:
+                total += os.path.getsize(os.path.join(dirpath, n))
+            except OSError:
+                pass
+    return total
+
+
+def _sig_families_bytes(root: str, fams) -> int:
+    """本次发布要拷贝的源库体量（<fam>.db.shards + <fam>.db.bloom）。"""
+    total = 0
+    for fam in fams:
+        for suffix in (".db.shards", ".db.bloom"):
+            p = os.path.join(root, fam + suffix)
+            if os.path.isdir(p):
+                total += _dir_bytes(p)
+    return total
+
+
+def _ensure_free_space(root: str, need_bytes: int, log) -> None:
+    """拷贝前预检可用空间；不足则**早失败**（避免拷到一半 ENOSPC 留下半成品）。
+
+    阈值：CODEFENDER_SIG_MIN_FREE_MB 显式指定绝对值，否则取 need*1.2（VACUUM
+    还会额外占一份临时空间，故留 20% 余量）。
+    """
+    try:
+        free = shutil.disk_usage(root).free
+    except OSError:
+        return
+    required = (config.SIG_MIN_FREE_MB * 1024 * 1024) if config.SIG_MIN_FREE_MB > 0 \
+        else int(need_bytes * 1.2)
+    if free < required:
+        raise HTTPException(507, detail=(
+            "签名库目录可用空间不足，拒绝开始发布（避免拷贝中途撑爆容器）。"
+            f" 需要≈{required / 1e6:.0f}MB，可用={free / 1e6:.0f}MB，"
+            f"目录={root}。请先清理 {os.path.join(root, 'releases')} 下的历史版本 "
+            "或调小 CODEFENDER_SIG_RELEASE_KEEP。"))
+    log.info("[sigupdate] 空间预检通过: 可用=%.1fGB 需要≈%.1fGB (目录=%s)",
+             free / 1e9, required / 1e9, root)
+
+
+def _releases_storage(root: str) -> Dict[str, Any]:
+    """releases/ 现状快照（版本数 + 占用），用于观测容器空间增长。"""
+    rel_dir = os.path.join(root, "releases")
+    info: Dict[str, Any] = {"versions": 0, "releases_mb": 0.0}
+    if not os.path.isdir(rel_dir):
+        return info
+    try:
+        names = [n for n in os.listdir(rel_dir)
+                 if n.startswith("v") and os.path.isdir(os.path.join(rel_dir, n))]
+    except OSError:
+        return info
+    info["versions"] = len(names)
+    info["releases_mb"] = round(_dir_bytes(rel_dir) / 1e6, 1)
+    return info
+
+
+def _prune_releases(root: str, keep: int, protect, log) -> List[str]:
+    """只保留 releases/ 下最新的 keep 个版本目录，其余整目录删除。
+
+    - keep < 1 时按 1 处理（至少留当前版本）。
+    - protect 内的路径（realpath）永不删除：调用方应放 current 指向的目录。
+    - 版本名形如 vYYYYmmdd-HHMMSS，字典序 == 时间序，故直接排序取尾部。
+    - 删除失败只告警不抛（可能被占用），保证不影响发布主流程。
+    """
+    rel_dir = os.path.join(root, "releases")
+    if not os.path.isdir(rel_dir):
+        return []
+    keep = max(1, int(keep))
+    prot = set()
+    for p in (protect or ()):
+        if p:
+            try:
+                prot.add(os.path.realpath(p))
+            except OSError:
+                pass
+    versions = []
+    try:
+        for n in os.listdir(rel_dir):
+            p = os.path.join(rel_dir, n)
+            if n.startswith("v") and os.path.isdir(p):
+                versions.append((n, p))
+    except OSError as e:
+        log.warning("[sigupdate] 列出 releases 失败(忽略): %s", e)
+        return []
+    versions.sort(key=lambda x: x[0])
+    if len(versions) <= keep:
+        return []
+    removed: List[str] = []
+    for n, p in versions[:-keep] if keep > 0 else versions:
+        if os.path.realpath(p) in prot:
+            log.warning("[sigupdate] 跳过删除受保护的发布版本 %s (current 指向中)", n)
+            continue
+        try:
+            shutil.rmtree(p, ignore_errors=False)
+            removed.append(n)
+        except OSError as e:
+            log.warning("[sigupdate] 清理旧发布版本 %s 失败(忽略): %s", n, e)
+    if removed:
+        log.info("[sigupdate] 已清理旧发布版本 %d 个 (保留最近 %d): %s",
+                 len(removed), keep, removed)
+    return removed
+
+
+def _cleanup_stale_build(build_dir: str, ttl_hours: float, skip, log) -> List[str]:
+    """清理 build/ 下超期的 staging-*/incoming-*/upload-*.zip 残留。
+
+    用途：硬杀容器 / 崩溃会绕过 finally，把 ~1GB 的半成品永久留在可写层。
+    只删**超过 ttl_hours 且不在 skip 集合中**的条目，避免误伤并发中的更新。
+    """
+    if not os.path.isdir(build_dir):
+        return []
+    skip = set(skip or ())
+    now = time.time()
+    ttl = max(0.0, float(ttl_hours)) * 3600.0
+    removed: List[str] = []
+    try:
+        names = os.listdir(build_dir)
+    except OSError:
+        return []
+    for n in names:
+        if not (n.startswith("staging-") or n.startswith("incoming-")
+                or n.startswith("upload-")):
+            continue
+        p = os.path.join(build_dir, n)
+        if os.path.abspath(p) in skip:
+            continue
+        try:
+            age = now - os.path.getmtime(p)
+        except OSError:
+            continue
+        if age < ttl:
+            continue
+        try:
+            if os.path.isdir(p):
+                shutil.rmtree(p, ignore_errors=False)
+            else:
+                os.remove(p)
+            removed.append(n)
+        except OSError as e:
+            log.warning("[sigupdate] 清理残留 %s 失败(忽略): %s", n, e)
+    if removed:
+        log.info("[sigupdate] 已清理 build/ 残留 %d 项 (TTL=%.1fh): %s",
+                 len(removed), ttl_hours, removed)
+    return removed
+
+
 def _build_hash_dbs(sig_dir: str, log) -> Tuple[Dict[str, Any], Dict[str, str]]:
     """按当前 config 在给定目录构建三库实例（不触碰全局引用），失败独立降级。
 
@@ -1848,6 +2038,10 @@ def update_signatures(
     ts = datetime.now().strftime("%Y%m%d-%H%M%S")
     staging = os.path.join(build_dir, f"staging-{ts}")
     incoming_dir = os.path.join(build_dir, f"incoming-{ts}")
+    # 0) 空间管理：先清掉上次崩溃/硬杀留下的 build/ 残留（跳过本次自己的两个目录）
+    _cleanup_stale_build(build_dir, config.SIG_STAGING_TTL_H,
+                         skip={os.path.abspath(staging), os.path.abspath(incoming_dir)},
+                         log=log)
     week = "".join(ch for ch in (week_id or "") if ch.isalnum() or ch in "-_") or ts
     old_counts: Dict[str, Optional[int]] = {}
     new_counts: Dict[str, int] = {}
@@ -1901,6 +2095,8 @@ def update_signatures(
         sources = [p for p in sources if os.path.getsize(p) > 0]
         if not sources:
             raise HTTPException(400, detail="输入中未找到任何非空 .csv/.hdb 文件")
+        # 拷贝前预检可用空间：staging 是全量拷贝(~1GB)，空间不足应早失败而非拷到一半 ENOSPC
+        _ensure_free_space(root, _sig_families_bytes(src_dir, fams), log)
         for fam in fams:
             if not _copy_sig_family(src_dir, staging, fam):
                 raise HTTPException(500, detail=f"复制 {fam} 库失败: {src_dir} 缺少分片目录")
@@ -2019,6 +2215,17 @@ def update_signatures(
                     globals()[gname] = new_dbs[fam]
         log.info("[sigupdate] %d 个源文件 (week=%s, 格式=%s) 已发布并热切换: %s → %s",
                  len(sources), week, fmt_count, old_counts, new_counts)
+        # 9) 空间管理：清理超出保留数的历史发布版本（current/release 指向的永不删）
+        storage = _releases_storage(root)
+        pruned = _prune_releases(root, config.SIG_RELEASE_KEEP, {release}, log)
+        storage["pruned"] = len(pruned)
+        storage["kept_after"] = storage.get("versions", 0) - len(pruned)
+        try:
+            du = shutil.disk_usage(root)
+            storage["disk_free_gb"] = round(du.free / 1e9, 2)
+            storage["disk_total_gb"] = round(du.total / 1e9, 2)
+        except OSError:
+            pass
         return {
             "status": "published",
             "files": len(sources),
@@ -2030,6 +2237,8 @@ def update_signatures(
             "rows_inserted": inserted_rows,
             "counts": {"before": old_counts, "after": new_counts},
             "vacuum": vac_info,
+            "pruned_releases": pruned,
+            "storage": storage,
             "note": "已热切换，无需重启。回滚：将 current 指回上一版本目录后重启进程（重启会经 _active_sig_dir 解析回旧版）。",
         }
     except HTTPException:

@@ -281,6 +281,10 @@ HASH_DB_LAYOUT  = os.environ.get("CODEFENDER_HASH_DB_LAYOUT", "hex")
 HASH_DB_SHARDS  = int(os.environ.get("CODEFENDER_HASH_DB_SHARDS", "4"))   # hex 布局下内部固定 256 片
 HASH_DB_FP_RATE = float(os.environ.get("CODEFENDER_HASH_DB_FP_RATE", "0.01"))
 HASH_DB_MAX_OPEN = int(os.environ.get("CODEFENDER_HASH_DB_MAX_OPEN", "16"))
+# 连接池"退役队列"上限 (fd 泄漏防护, 每个库对象最多再留这么多条待关连接):
+# 读取位置在 scaner/scanner.py (RETIRED_MAX, 构造库对象时生效), 故不在此处定义;
+# env CODEFENDER_RETIRED_MAX, 默认 32; <=0 = 关闭该保护(退回旧的无限累积行为)。
+# 池内连接总上限 ≈ max_open + RETIRED_MAX (每连接 2~3 fd) —— 见 app.py _raise_nofile_limit。
 
 # ── fuzzy 模糊哈希库（第三级预检: sha256 → md5 → fuzzy）─────────────
 # ssdeep 为纯 Python 实现 (ppdeep), 耗时随输入近线性 (1MB≈24s):
@@ -300,6 +304,21 @@ FUZZY_DB_TLSH_MAX_BYTES = int(os.environ.get(
     "CODEFENDER_FUZZY_DB_TLSH_MAX_BYTES", str(1024 * 1024)))
 FUZZY_DB_TLSH_MAX_BYTES_OFFLINE = int(os.environ.get(
     "CODEFENDER_FUZZY_DB_TLSH_MAX_BYTES_OFFLINE", str(2 * 1024 * 1024)))
+
+# ── 签名库发布的空间管理（防止容器可写层被 releases/ 累积撑爆）───────
+# /update-signatures 每次发布 = staging 全量拷贝(~1GB) → rename 到 releases/v<ts>，
+# 且**永不清理** ⇒ 每次在线更新净增一个完整版本。容器 overlay 只 50G 左右，
+# 几十次更新就写满（写满后 SQLite 报 CANTOPEN，伪装成"fd/权限"故障）。
+#   · RELEASE_KEEP   : releases/ 只保留最近 N 个版本(N≥1)；current 指向的版本永不删。
+#                      N=2 可保留一步回滚；N=1 最省空间(无回滚)。
+#   · STAGING_TTL_H  : 清理 build/ 下超过该小时数的残留 staging-*/incoming-*/upload-*.zip
+#                      (硬杀容器/崩溃会绕过 finally 留下 ~1GB 垃圾)。
+#   · MIN_FREE_MB    : 拷贝前预检可用空间(<0 关闭)。0 = 自动按"本次需要量的 1.2 倍"判。
+SIG_RELEASE_KEEP = int(os.environ.get("CODEFENDER_SIG_RELEASE_KEEP", "2"))
+SIG_STAGING_TTL_H = float(os.environ.get("CODEFENDER_SIG_STAGING_TTL_H", "6"))
+SIG_MIN_FREE_MB = int(os.environ.get("CODEFENDER_SIG_MIN_FREE_MB", "0"))
+# SIG_RELEASE_KEEP / SIG_MIN_FREE_MB 走 /admin/config 热改（见下方 _RUNTIME_SPEC）；
+# SIG_STAGING_TTL_H 只认环境变量（需要在拷贝前早生效，不值得进热改面）。
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -392,6 +411,8 @@ _RUNTIME_SPEC = {
     "FUZZY_DB_MAX_BYTES":              ("CODEFENDER_FUZZY_DB_MAX_BYTES", "int", True),
     "FUZZY_DB_TLSH_MAX_BYTES":         ("CODEFENDER_FUZZY_DB_TLSH_MAX_BYTES", "int", True),
     "FUZZY_DB_TLSH_MAX_BYTES_OFFLINE": ("CODEFENDER_FUZZY_DB_TLSH_MAX_BYTES_OFFLINE", "int", True),
+    "SIG_RELEASE_KEEP":                ("CODEFENDER_SIG_RELEASE_KEEP", "int", True),
+    "SIG_MIN_FREE_MB":                 ("CODEFENDER_SIG_MIN_FREE_MB", "int", True),
     "VIEWS_REQUIRE_ALL":               ("CODEFENDER_VIEWS_REQUIRE_ALL", "bool", False),
 }
 RUNTIME_SPEC = _RUNTIME_SPEC  # 公开别名（供 engine/app.py 校验入参使用）

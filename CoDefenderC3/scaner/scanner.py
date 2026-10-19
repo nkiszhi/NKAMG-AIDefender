@@ -166,6 +166,61 @@ class BloomFilter:
         return bf
 
 
+# 在线查询连接池: 被 LRU 淘汰的连接要延迟关闭 (等正在 execute 它的线程用完),
+# 但退役队列必须有上限, 否则长时间运行会缓慢吃光 fd —— 每次淘汰就永久占住
+# 2~3 个 fd (WAL 分片: .db / -wal / -shm), 只有 close() (进程退出或换库) 才归还。
+# 上限以"连接条数"计, 默认 32 (≈96 fd/库对象); <=0 = 关闭该保护 (退回旧行为, 无限累积)。
+RETIRED_MAX = int(os.environ.get("CODEFENDER_RETIRED_MAX", "32"))
+
+
+class _PoolConn:
+    """LRU 池里的一条只读分片连接 + 它的串行锁 + 在途引用计数。
+
+    线程安全契约 (inflight 一律在 HashSignatureDB/FuzzySignatureDB._cache_lock 下读写):
+      - _ro_conn() 从池里交付连接时 inflight += 1, 且与"取/建连接"处于同一临界区,
+        所以"已交付但还没开始查"的连接也算在途 —— 关闭动作关不进这个窗口;
+      - _query_shard() 查完在 finally 里 inflight -= 1;
+      - 退役队列裁剪只关 inflight == 0 的条目, 因此不可能关掉其它线程正在 execute
+        的连接 (那样 Python sqlite3 会抛 `Cannot operate on a closed database`)。
+    """
+    __slots__ = ("conn", "lock", "inflight")
+
+    def __init__(self, conn):
+        self.conn = conn
+        self.lock = threading.Lock()   # 连接级串行锁: 同连接不并发 execute
+        self.inflight = 0              # 正在(或将)使用本连接的线程数
+
+    def close(self):
+        try:
+            self.conn.close()
+        except sqlite3.Error:
+            pass
+
+
+def _open_finalize_conn(path):
+    """finalize / bloom 重建专用的短连接 (用完即关, 不进 LRU 池)。
+
+    为什么要另开一条路: _ro_conn() 是给"在线查询"设计的 LRU 池, 淘汰时把连接
+    移进 _retired 延迟关闭 (只等正在用的线程用完, 队列有上限, 详见 _PoolConn)。
+    而 finalize() 要一次性扫过**全部** dirty 分片 (每族最多 256 片 × 3 族), 走
+    _ro_conn 会瞬间把 700+ 个连接灌进退役队列; staging 分片被 _open_rw 的
+    PRAGMA journal_mode=WAL 持久置成 WAL, 每个连接要吃 2~3 个 fd (db / -wal / -shm),
+    于是轻松突破 soft nofile —— 此时 SQLite 报
+    `OperationalError: unable to open database file` (SQLITE_CANTOPEN, 底层实为 EMFILE),
+    典型现象是"CSV 导入全部成功、finalize 扫到一半突然失败"。
+
+    mode=rw 而非 mode=ro: 只读连接无权创建 WAL 索引 -shm, 首次真查询同样 CANTOPEN;
+    只读语义由 PRAGMA query_only=ON 保证 (mode=rw 不新建不存在的文件)。
+    """
+    conn = sqlite3.connect(
+        f"file:{path}?mode=rw", uri=True, check_same_thread=False)
+    try:
+        conn.execute("PRAGMA query_only=ON")
+    except sqlite3.Error:
+        pass
+    return conn
+
+
 # ============================================================
 # 哈希签名库 (Bloom shard 驱动的动态分片 SQLite)
 # ============================================================
@@ -259,8 +314,9 @@ class HashSignatureDB:
                 f"{self.pk_col},size" if self._store_size else self.pk_col
             )
         self._lock = threading.RLock()       # 写路径互斥 (import_hdb / finalize / close)
-        self._cache_lock = threading.Lock()  # _conns/_blooms 字典 LRU 操作的细粒度锁
-        self._retired = []                   # LRU 淘汰的连接, 延迟到 close() 统一关闭
+        self._cache_lock = threading.Lock()  # _conns/_blooms 字典 LRU + inflight 的细粒度锁
+        self._retired = []                   # LRU 淘汰的 _PoolConn, 延迟关闭但有上限
+        self._retired_max = max(0, RETIRED_MAX)   # 见 _evict_and_trim_locked
         self.source_files = []
 
         # 旧版单一 Bloom 文件 (sha256.db.bloom 单文件) 与新版 bloom 目录同名,
@@ -282,8 +338,7 @@ class HashSignatureDB:
         # 布局一致性: 旧 hex 前缀布局或 shard_count 变更 → 自动重分片
         self._sync_layout()
 
-        self._conns = OrderedDict()    # shard_id(int) -> 只读 SQLite 连接 (LRU)
-        self._conn_locks = {}          # shard_id(int) -> 连接级串行锁 (Python sqlite3 不允许同连接并发 execute)
+        self._conns = OrderedDict()    # shard_id(int) -> _PoolConn (LRU)
         self._blooms = OrderedDict()   # shard_id(int) -> BloomFilter (LRU)
         self._bloom_dirty = set()      # 需要重建 bloom 的分片
         self._count = self._load_count()
@@ -500,58 +555,81 @@ class HashSignatureDB:
         conn.execute("CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT)")
         conn.commit()
 
-    def _ro_conn(self, shard_id):
-        """获取分片只读连接 (懒加载 + LRU 淘汰); 分片文件不存在则返回 None
+    def _evict_and_trim_locked(self):
+        """(须持有 _cache_lock) ① LRU 溢出 → 移入退役队列; ② 退役队列超限 → 交出可关的连接。
 
-        线程安全: 每个连接配一把串行锁 (_conn_locks) —— Python sqlite3 允许连接
+        返回**锁外**才真正 close() 的 _PoolConn 列表, 其中只含 inflight == 0 的条目:
+        仍被别的线程 execute 的条目留在队列里等下一轮 —— 宁可多留几个 fd, 也不关热连接。
+        锁外关闭是安全的: 条目已不在 _conns 里, 新查询不可能再拿到它。
+        """
+        victims = []
+        while len(self._conns) > self.max_open_shards:
+            _old_id, old = self._conns.popitem(last=False)
+            self._retired.append(old)          # 延迟关闭: 可能还有线程正在用
+        if self._retired_max > 0:
+            excess = len(self._retired) - self._retired_max
+            if excess > 0:
+                keep = []
+                for h in self._retired:        # 列表顺序即 FIFO: 先退役的先关
+                    if len(victims) < excess and h.inflight == 0:
+                        victims.append(h)
+                    else:
+                        keep.append(h)
+                self._retired = keep
+        return victims
+
+    def _ro_conn(self, shard_id):
+        """获取分片只读连接 (懒加载 + LRU 淘汰); 返回 _PoolConn (已在途+1), 无分片返回 None
+
+        线程安全: 每个连接自带一把串行锁 (h.lock) —— Python sqlite3 允许连接
         跨线程使用 (check_same_thread=False), 但多个线程不能同时在同一连接上
         execute; 连接级锁使同一连接串行、不同连接并行 (并发度 = min(分片数, LRU 上限))。
-        仅字典 LRU 操作处加细粒度 _cache_lock; 被淘汰的连接移入 _retired 延迟关闭,
-        避免正在查询中的连接被中途 close。
+        仅字典 LRU 操作处加细粒度 _cache_lock; inflight += 1 与"交付连接"在同一临界区,
+        所以取出后发现连接刚被淘汰也不会拿到已关闭的连接 (旧实现需 tmp_conn 兜底,
+        现在由引用计数从根上保证)。
         """
         with self._cache_lock:
-            conn = self._conns.get(shard_id)
-            if conn is not None:
+            h = self._conns.get(shard_id)
+            if h is not None:
                 self._conns.move_to_end(shard_id)
-                return conn
-            path = self._shard_path(shard_id)
-            if not os.path.exists(path):
-                return None  # 该分片无签名, 无需建库
-            conn = sqlite3.connect(
-                f"file:{path}?mode=ro", uri=True, check_same_thread=False
-            )
-            try:
-                conn.execute("PRAGMA query_only=ON")  # 双保险: 只读连接拒绝任何写
-            except sqlite3.Error:
-                pass
-            self._conns[shard_id] = conn
-            self._conn_locks[shard_id] = threading.Lock()
-            while len(self._conns) > self.max_open_shards:
-                old_id, old = self._conns.popitem(last=False)
-                self._conn_locks.pop(old_id, None)  # 淘汰分片的锁随之移除
-                self._retired.append(old)
-            return conn
+            else:
+                path = self._shard_path(shard_id)
+                if not os.path.exists(path):
+                    return None  # 该分片无签名, 无需建库
+                # ⚠ mode=rw 而非 mode=ro: 分片是 WAL 模式(journal_mode=WAL 是持久属性),
+                #   只读连接在**第一次真正读取**时才去打开 WAL 索引 -shm, 而只读连接
+                #   无权创建它 → sqlite3.OperationalError: unable to open database file
+                #   (SQLITE_CANTOPEN)。典型现场: /update-signatures 走到
+                #   FuzzySignatureDB.finalize() 读刚写完的分片时整条链断掉。
+                #   connect() 本身不报、query_only 那步也不报, 只有第一个真查询才炸。
+                #   mode=rw = 可读写但**文件不存在则不创建**(区别于裸 connect 的 rwc),
+                #   写语义仍由下面的 PRAGMA query_only=ON 兜住。
+                conn = sqlite3.connect(
+                    f"file:{path}?mode=rw", uri=True, check_same_thread=False
+                )
+                try:
+                    conn.execute("PRAGMA query_only=ON")  # 双保险: 只读连接拒绝任何写
+                except sqlite3.Error:
+                    pass
+                h = _PoolConn(conn)
+                self._conns[shard_id] = h
+            h.inflight += 1                    # 与交付同一临界区: 关闭动作关不进这个窗口
+            victims = self._evict_and_trim_locked()
+        for v in victims:                      # 锁外关闭, 不阻塞其它分片的取连接
+            v.close()
+        return h
 
     def _query_shard(self, shard_id, sql, params=()):
-        """分片连接点查 (连接级串行锁; 连接被淘汰瞬间开临时连接补查, 不漏报)"""
-        conn = self._ro_conn(shard_id)
-        if conn is None:
+        """分片连接点查 (连接级串行锁 + 在途引用计数, 连接不会被并发关闭)"""
+        h = self._ro_conn(shard_id)
+        if h is None:
             return None
-        with self._cache_lock:
-            lock = self._conn_locks.get(shard_id)
-        if lock is None:
-            # 连接刚被 LRU 淘汰: 开临时只读连接补查, 确保不漏报 (C1 修复)
-            path = self._shard_path(shard_id)
-            if not os.path.exists(path):
-                return None
-            tmp_conn = sqlite3.connect(
-                f"file:{path}?mode=ro", uri=True, check_same_thread=False)
-            try:
-                return tmp_conn.execute(sql, params).fetchone()
-            finally:
-                tmp_conn.close()
-        with lock:
-            return conn.execute(sql, params).fetchone()
+        try:
+            with h.lock:
+                return h.conn.execute(sql, params).fetchone()
+        finally:
+            with self._cache_lock:             # 查完才允许被退役队列回收
+                h.inflight -= 1
 
     # ---------- 计数 ----------
     def _load_count(self):
@@ -568,7 +646,7 @@ class HashSignatureDB:
             path = self._shard_path(sid)
             if not os.path.exists(path):
                 continue
-            conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+            conn = sqlite3.connect(f"file:{path}?mode=rw", uri=True)  # WAL 分片见 _ro_conn 注释
             try:
                 cnt = conn.execute("SELECT COUNT(*) FROM sigs").fetchone()[0]
             except sqlite3.Error:
@@ -922,14 +1000,12 @@ class HashSignatureDB:
         path = self._shard_path(sid)
         if not os.path.exists(path):
             return None
-        conn = self._ro_conn(sid)
-        if conn is None:
-            return None
-        lock = self._conn_locks.get(sid)
-        if lock is None:
-            return None
-        with lock:
-            cnt = conn.execute(f"SELECT COUNT(*) FROM sigs").fetchone()[0]
+        # 短连接而非 _ro_conn: finalize 会连续重建全部 dirty 分片, 池化连接会在
+        # _retired 里堆积到 close() (每连接 2~3 fd) → 见 _open_finalize_conn 注释。
+        # 独占连接天然无跨线程争用, 也就不需要连接级锁 (_PoolConn.lock)。
+        conn = _open_finalize_conn(path)
+        try:
+            cnt = conn.execute("SELECT COUNT(*) FROM sigs").fetchone()[0]
             if cnt == 0:
                 return None
             bf = BloomFilter(cnt, self.bloom_fp_rate)
@@ -940,6 +1016,8 @@ class HashSignatureDB:
                     break
                 for (h,) in rows:
                     bf.add(h)
+        finally:
+            conn.close()
         bf.save(self._bloom_path(sid))
         with self._cache_lock:
             self._blooms[sid] = bf
@@ -1125,6 +1203,7 @@ class HashSignatureDB:
         with self._cache_lock:
             bloom_items = list(self._blooms.values())
             open_conns = len(self._conns)
+            retired_conns = len(self._retired)
         bloom_info = None
         if bloom_items:
             total_mem = sum(b.mem_bytes for b in bloom_items)
@@ -1158,7 +1237,9 @@ class HashSignatureDB:
                 "configured": self.shard_count,
                 "total": len(shard_files),
                 "open_conns": open_conns,
+                "retired_conns": retired_conns,
                 "max_open": self.max_open_shards,
+                "max_retired": self._retired_max,
             },
             "db_size_mb": round(db_size / 1048576, 1),
         }
@@ -1166,16 +1247,12 @@ class HashSignatureDB:
     def close(self):
         with self._lock:
             with self._cache_lock:
-                conns = list(self._conns.values()) + self._retired
+                holders = list(self._conns.values()) + list(self._retired)
                 self._conns.clear()
-                self._conn_locks.clear()
                 self._retired = []
                 self._blooms.clear()
-            for conn in conns:
-                try:
-                    conn.close()
-                except sqlite3.Error:
-                    pass
+            for h in holders:
+                h.close()
             self.meta.close()
 
 
@@ -1282,6 +1359,14 @@ CSV_REF_COLS = [
 # 威胁标注列: 全空表示该行没有任何"恶意"证据 (良性/未标注), 默认不入检测库
 CSV_LABEL_COLS = ("category", "family", "kav_result", "defender_result", "has_vt_summary")
 
+# ── 大 CSV 分批落盘阈值 (单位: 已解析的 CSV 行数) ─────────────────────
+# 每行的 pending 内存 ≈ 1.6KB (同一行会分别进 sha256 / md5 两个 hash 桶,
+# 以及最多 6 个 fuzzy 桶), 全量解析在百万行量级就会吃光容器内存 —— 这是
+# /update-signatures 在大 CSV 上的首要爆点 (与分片数无关, 见 fd 说明)。
+# 累计到该阈值即落盘并清空 pending ⇒ 峰值内存与文件总行数解耦。
+# 0 / 负数 = 关闭分批 (退回全量解析, 仅在需要复现旧行为时使用)。
+CSV_FLUSH_ROWS = int(os.environ.get("CODEFENDER_CSV_FLUSH_ROWS", "50000"))
+
 
 def _csv_size(field):
     """length 列 → int; 空/'*'/'0' 归一化为 None (不限大小)"""
@@ -1378,33 +1463,62 @@ def iter_csv_signatures(filepath, malicious_only=True, stats=None):
 
 
 def import_csv_signatures(filepath, dbs, record_name=None, batch=50_000,
-                          malicious_only=True, stats=None):
-    """把日更 CSV 一次性导入多个签名库 (单趟读盘, 流式)。
+                          malicious_only=True, stats=None, flush_rows=None):
+    """把日更 CSV 导入多个签名库 (单趟读盘, 分批落盘)。
 
     dbs: {"sha256": HashSignatureDB, "md5": HashSignatureDB, "fuzzy": FuzzySignatureDB}
     （按 isinstance 分派, md5 库缺席时自动只喂存在的库。）
     返回 {fam: inserted}；stats 见 iter_csv_signatures。
+
+    内存: 解析期 pending 只保留 flush_rows 行的量, 到阈值即落盘清空 ⇒ 峰值内存
+    与文件总行数解耦 (旧实现是全量解析后才提交, 内存 O(文件总行数))。
+    flush_rows=None 取模块级 CSV_FLUSH_ROWS (env CODEFENDER_CSV_FLUSH_ROWS);
+    ≤0 表示关闭分批, 退回一次性提交。
+
+    分批不改变幂等性与元数据一致性: 落盘用 INSERT OR IGNORE; meta 的
+    shard_counts / fuzzy_counts 是 INSERT OR REPLACE (后一批以更高计数覆盖
+    同一条前缀); imported_files 是 INSERT OR IGNORE; counts_valid 反复置 '1'
+    均安全。inserted 为各批之和。
 
     并发约定: 解析阶段无锁（只填本地 pending），提交阶段各自持库锁；
     因此同一 dbs 对象不应被并发调用（/update-signatures 每次请求都用独立的
     staging 副本实例, 天然满足）。
     """
     basename = os.path.basename(record_name) if record_name else os.path.basename(filepath)
+    limit = CSV_FLUSH_ROWS if flush_rows is None else int(flush_rows)
     pend_hash = {}    # fam -> {shard_id: [rows]}
     pend_fuzzy = {}   # (ftype, shard_id) -> [rows]
+    out = {fam: 0 for fam in dbs}   # fam -> 累计新增
+
+    def _flush():
+        """落盘当前 pending 并清空 (hash / fuzzy 各持自己库的锁)。"""
+        for fam, db in dbs.items():
+            with db._lock:
+                if isinstance(db, FuzzySignatureDB):
+                    out[fam] += db._commit_fuzzy_rows(pend_fuzzy, basename, batch)
+                else:
+                    # 无 pending 时传 {} : 仍会登记 imported_files 并返回 0
+                    out[fam] += db._commit_hash_rows(pend_hash.get(fam, {}), basename, batch)
+        pend_hash.clear()
+        pend_fuzzy.clear()
+
+    staged = 0    # 当前 pending 已累积的 CSV 行数
+    flushes = 0   # 已落盘的批次数
     for row in iter_csv_signatures(filepath, malicious_only=malicious_only, stats=stats):
         for fam, db in dbs.items():
             if isinstance(db, FuzzySignatureDB):
                 db.stage_csv_row(row, pend_fuzzy)
             else:
                 db.stage_csv_row(row, pend_hash.setdefault(fam, {}))
-    out = {}
-    for fam, db in dbs.items():
-        with db._lock:
-            if isinstance(db, FuzzySignatureDB):
-                out[fam] = db._commit_fuzzy_rows(pend_fuzzy, basename, batch)
-            else:
-                out[fam] = db._commit_hash_rows(pend_hash[fam], basename, batch)
+        staged += 1
+        if limit > 0 and staged >= limit:
+            _flush()
+            flushes += 1
+            staged = 0
+    # 收尾: 有残余必落盘; 一行都没有过时也走一次 (登记 imported_files + 置
+    # counts_valid, 与旧行为一致 —— 旧实现在 hash 分支会因 pend_hash[fam] 缺键抛 KeyError)
+    if staged or not flushes:
+        _flush()
     return out
 
 
@@ -1453,11 +1567,11 @@ class FuzzySignatureDB:
         self._init_meta()
 
         # LRU caches: 连接按 shard_id 共享 (5 表在同一文件), bloom 按 (type, shard_id)
-        self._conns = OrderedDict()
-        self._conn_locks = {}
+        self._conns = OrderedDict()     # shard_id(int) -> _PoolConn (LRU)
         self._blooms = OrderedDict()    # (fuzzy_type, shard_id) -> BloomFilter
         self._bloom_dirty = set()       # {(fuzzy_type, shard_id)}
-        self._retired = []
+        self._retired = []              # LRU 淘汰的 _PoolConn, 延迟关闭但有上限
+        self._retired_max = max(0, RETIRED_MAX)   # 见 _evict_and_trim_locked
 
         self._counts = self._load_counts()
         self.source_files = [
@@ -1519,49 +1633,65 @@ class FuzzySignatureDB:
                             f"{self._shard_name(shard_id)}_{fuzzy_type}.bloom")
 
     # ---------- 连接管理 (5 表共享同一 shard 连接) ----------
+    def _evict_and_trim_locked(self):
+        """同 HashSignatureDB._evict_and_trim_locked: 淘汰入退役队列 + 超限回收可关连接
+
+        (须持有 _cache_lock) 只关 inflight == 0 的条目, 返回的连接由调用方在锁外 close()。
+        """
+        victims = []
+        while len(self._conns) > self.max_open_shards:
+            _old_id, old = self._conns.popitem(last=False)
+            self._retired.append(old)
+        if self._retired_max > 0:
+            excess = len(self._retired) - self._retired_max
+            if excess > 0:
+                keep = []
+                for h in self._retired:        # FIFO: 先退役的先关
+                    if len(victims) < excess and h.inflight == 0:
+                        victims.append(h)
+                    else:
+                        keep.append(h)
+                self._retired = keep
+        return victims
+
     def _ro_conn(self, shard_id):
-        """获取分片只读连接 (懒加载 + LRU); 5 表共用同一连接"""
+        """获取分片只读连接 (懒加载 + LRU); 5 表共用同一连接; 返回 _PoolConn (已在途+1)"""
         with self._cache_lock:
-            conn = self._conns.get(shard_id)
-            if conn is not None:
+            h = self._conns.get(shard_id)
+            if h is not None:
                 self._conns.move_to_end(shard_id)
-                return conn
-            path = self._shard_path(shard_id)
-            if not os.path.exists(path):
-                return None
-            conn = sqlite3.connect(
-                f"file:{path}?mode=ro", uri=True, check_same_thread=False)
-            try:
-                conn.execute("PRAGMA query_only=ON")
-            except sqlite3.Error:
-                pass
-            self._conns[shard_id] = conn
-            self._conn_locks[shard_id] = threading.Lock()
-            while len(self._conns) > self.max_open_shards:
-                old_id, old = self._conns.popitem(last=False)
-                self._conn_locks.pop(old_id, None)
-                self._retired.append(old)
-            return conn
+            else:
+                path = self._shard_path(shard_id)
+                if not os.path.exists(path):
+                    return None
+                # mode=rw 而非 mode=ro: 同 HashSignatureDB._ro_conn 的注释 ——
+                # 只读连接无法创建 WAL 索引 -shm, 第一次真查询即
+                # sqlite3.OperationalError: unable to open database file。
+                conn = sqlite3.connect(
+                    f"file:{path}?mode=rw", uri=True, check_same_thread=False)
+                try:
+                    conn.execute("PRAGMA query_only=ON")
+                except sqlite3.Error:
+                    pass
+                h = _PoolConn(conn)
+                self._conns[shard_id] = h
+            h.inflight += 1                    # 与交付同一临界区, 见 _PoolConn 契约
+            victims = self._evict_and_trim_locked()
+        for v in victims:
+            v.close()
+        return h
 
     def _query_shard(self, shard_id, sql, params=()):
-        conn = self._ro_conn(shard_id)
-        if conn is None:
+        """分片连接点查 (连接级串行锁 + 在途引用计数, 连接不会被并发关闭)"""
+        h = self._ro_conn(shard_id)
+        if h is None:
             return None
-        with self._cache_lock:
-            lock = self._conn_locks.get(shard_id)
-        if lock is None:
-            # 连接刚被 LRU 淘汰: 开临时只读连接补查, 确保不漏报 (C1 修复)
-            path = self._shard_path(shard_id)
-            if not os.path.exists(path):
-                return None
-            tmp_conn = sqlite3.connect(
-                f"file:{path}?mode=ro", uri=True, check_same_thread=False)
-            try:
-                return tmp_conn.execute(sql, params).fetchone()
-            finally:
-                tmp_conn.close()
-        with lock:
-            return conn.execute(sql, params).fetchone()
+        try:
+            with h.lock:
+                return h.conn.execute(sql, params).fetchone()
+        finally:
+            with self._cache_lock:
+                h.inflight -= 1
 
     # ---------- 计数 ----------
     def _load_counts(self):
@@ -1578,7 +1708,7 @@ class FuzzySignatureDB:
             path = self._shard_path(sid)
             if not os.path.exists(path):
                 continue
-            conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+            conn = sqlite3.connect(f"file:{path}?mode=rw", uri=True)  # WAL 分片见 _ro_conn 注释
             prefix = self._shard_name(sid)
             for ftype in FUZZY_TYPES:
                 spec = FUZZY_TABLE_SPECS[ftype]
@@ -1861,14 +1991,12 @@ class FuzzySignatureDB:
                     path = self._shard_path(sid)
                     if not os.path.exists(path):
                         continue
-                    conn = self._ro_conn(sid)
-                    if conn is None:
-                        continue
-                    lock = self._conn_locks.get(sid)
-                    if lock is None:
-                        continue
-                    spec = FUZZY_TABLE_SPECS[ftype]
-                    with lock:
+                    # 短连接而非 _ro_conn: 见 _open_finalize_conn 注释 —— 一次
+                    # finalize 要扫完全部 dirty (ftype, sid), 池化连接会在 _retired
+                    # 堆积到 close(), 三族叠加必破 nofile 上限。
+                    conn = _open_finalize_conn(path)
+                    try:
+                        spec = FUZZY_TABLE_SPECS[ftype]
                         cnt = conn.execute(
                             f"SELECT COUNT(*) FROM {spec['table']}").fetchone()[0]
                         if cnt == 0:
@@ -1882,6 +2010,8 @@ class FuzzySignatureDB:
                                 break
                             for (h,) in rows:
                                 bf.add(self._bloom_key(ftype, h))
+                    finally:
+                        conn.close()
                     bf.save(self._bloom_path(ftype, sid))
                     with self._cache_lock:
                         self._blooms[(ftype, sid)] = bf
@@ -1958,6 +2088,7 @@ class FuzzySignatureDB:
         with self._cache_lock:
             bloom_items = list(self._blooms.values())
             open_conns = len(self._conns)
+            retired_conns = len(self._retired)
         bloom_info = None
         if bloom_items:
             total_mem = sum(b.mem_bytes for b in bloom_items)
@@ -1994,7 +2125,9 @@ class FuzzySignatureDB:
                 "total": len(shard_files),
                 "types": len(FUZZY_TYPES),
                 "open_conns": open_conns,
+                "retired_conns": retired_conns,
                 "max_open": self.max_open_shards,
+                "max_retired": self._retired_max,
             },
             "db_size_mb": round(db_size / 1048576, 1),
         }
@@ -2002,16 +2135,12 @@ class FuzzySignatureDB:
     def close(self):
         with self._lock:
             with self._cache_lock:
-                conns = list(self._conns.values()) + self._retired
+                holders = list(self._conns.values()) + list(self._retired)
                 self._conns.clear()
-                self._conn_locks.clear()
                 self._retired = []
                 self._blooms.clear()
-            for conn in conns:
-                try:
-                    conn.close()
-                except sqlite3.Error:
-                    pass
+            for h in holders:
+                h.close()
             self.meta.close()
 
 

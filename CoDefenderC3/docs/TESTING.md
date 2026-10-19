@@ -22,7 +22,7 @@ docker images codefender
 
 ```bash
 docker run -d --name codefender \
-  -p 8000:8000 \
+  -p 8000:8000 --ulimit nofile=65535:65535 \
   codefender-c3:v8
 ```
 
@@ -30,7 +30,7 @@ docker run -d --name codefender \
 
 ```bash
 docker run -d --name codefender \
-  -v /mnt/hgfs/VM_Share/testsamples:/data/samples:ro \
+  -v /mnt/hgfs/VM_Share/testsamples:/data/samples --ulimit nofile=65535:65535 \
   -p 8000:8000 \
   codefender-c3:v8
 ```
@@ -265,7 +265,7 @@ curl -s http://localhost:8000/model-info | python -m json.tool
 curl -s -X POST http://localhost:8000/reload-model | python -m json.tool
 
 # 切换到新模型
-curl -s -X POST "http://localhost:8000/reload-model?model_path=/app/ensemble_v2.pkl" | python -m json.tool
+curl -s -X POST "http://localhost:8000/reload-model?model_path=/data/models/ensemble.pkl" | python -m json.tool
 ```
 
 ---

@@ -463,6 +463,10 @@ def main(argv=None):
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--views", choices=["full", "fast"], default="full",
                     help="full=11快速+4个BN视角(15)；fast=只提快速路径(11)")
+    ap.add_argument("--exclude-sha256", default=None,
+                    help="排除清单（每行一个 sha256）：在 1:1 截断**之前**剔除。"
+                         "用于放弃 D/E 永远取不到的样本（加壳/病态大文件）；"
+                         "剔除后两类数量不等时，截断会自动重新配平为严格 1:1。")
     ap.add_argument("--allow-partial-de", action="store_true",
                     help="允许 D/E 覆盖率<100%% 仍继续（会丢样本，慎用）")
     ap.add_argument("--path-style", choices=["abs", "native"], default="abs",
@@ -541,6 +545,22 @@ def main(argv=None):
     print("    非 PE(MZ 失败) : %d" % len(bad_mz))
     print("    标签无法判定   : %d" % len(unlabeled))
     print("    内容重复       : %d" % len(dup))
+
+    # 排除清单：在 1:1 截断之前剔除（放弃 D/E 永远取不到的加壳/病态样本）
+    if args.exclude_sha256:
+        excl = set()
+        with open(args.exclude_sha256, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    excl.add(line.split()[0].lower())
+        n_before = len(records)
+        n_ex_b = sum(1 for r in records if r["sha256"].lower() in excl and r["label"] == 0)
+        n_ex_m = sum(1 for r in records if r["sha256"].lower() in excl and r["label"] == 1)
+        records = [r for r in records if r["sha256"].lower() not in excl]
+        print("    按清单排除     : %d (恶意 %d / 良性 %d) ← %s，剩 %d"
+              % (n_before - len(records), n_ex_m, n_ex_b,
+                 os.path.basename(args.exclude_sha256), len(records)))
 
     mal = [r for r in records if r["label"] == 1]
     ben = [r for r in records if r["label"] == 0]
@@ -651,9 +671,13 @@ def main(argv=None):
     # per_month 一律先清空：残留的旧缓存会被 _has_month_cache 误判为有效
     month_cache = loader._month_cache
     if os.path.isdir(month_cache):
-        stale = month_cache + ".stale-%s" % time.strftime("%Y%m%d-%H%M%S")
-        os.replace(month_cache, stale)
-        print("    旧 per_month 已移走 → %s" % os.path.basename(stale))
+        if os.path.isjunction(month_cache):
+            # per_month 已被 junction 分流到别的盘（如 E:）→ 保持链接，别把它改名搬走
+            print("    per_month 是 junction → 保持外部分流: %s" % month_cache)
+        else:
+            stale = month_cache + ".stale-%s" % time.strftime("%Y%m%d-%H%M%S")
+            os.replace(month_cache, stale)
+            print("    旧 per_month 已移走 → %s" % os.path.basename(stale))
     os.makedirs(month_cache, exist_ok=True)
     # 跳过日志按 basename 记录，会永久跳过样本
     for stale_log in ("sample_skip.log",):
