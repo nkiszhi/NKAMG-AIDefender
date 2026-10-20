@@ -18,6 +18,7 @@ from starlette.responses import JSONResponse
 
 from app.codefender_client import DEFAULT_MODEL_NAMES, ModelServiceBusy, scan_file
 from app.config import settings
+from app.http_guard import PublicAPIGuard
 from app.file_info import save_upload, UploadStorageFull
 from app.sample_repository import SampleRepository
 from app.stats_repository import StatsRepository
@@ -159,6 +160,10 @@ async def limit_uploads(request: Request, call_next):
         _uploads_inflight -= 1
 
 
+# Outer user middleware: reject oversized bodies before multipart spooling.
+app.add_middleware(PublicAPIGuard, max_body_bytes=settings.max_upload_size + 1024 * 1024)
+
+
 def _response_payload(info: dict, exe_result: dict, detection_mode: str) -> dict:
     return {
         "success": True,
@@ -255,7 +260,7 @@ async def _fetch_endpoint_health(base) -> dict:
         return {"connected": True, "ready": payload.get("ready") is True, "model_count": payload.get("model_count", 0), "service": payload}
     except Exception as error:
         logger.warning("模型服务健康检查失败: %s", error)
-        return {"connected": False, "ready": False, "model_count": 0, "detail": str(error)}
+        return {"connected": False, "ready": False, "model_count": 0, "detail": "模型服务暂不可用"}
 
 
 @app.get("/stats")
@@ -299,7 +304,7 @@ async def _run_detection(file_path: Path, info: dict, on_progress=None) -> dict:
         sample_record = await asyncio.to_thread(sample_repository.find_malicious, info["sha256"])
     except RuntimeError as error:
         sample_record = None
-        database_error = str(error)
+        database_error = '样本库暂不可用'
         logger.warning("样本库查询不可用，继续33模型检测: %s", error)
 
     if sample_record:
@@ -385,7 +390,7 @@ async def _process_detection_task(task_id: str, file_path: Path, row: dict) -> N
         logger.info('检测任务完成 task_id=%s processing_seconds=%.3f', task_id, monotonic_time.monotonic() - started)
     except Exception as error:
         logger.exception('检测任务失败 task_id=%s', task_id)
-        await asyncio.to_thread(task_store.set_status, task_id, 'failed', str(error))
+        await asyncio.to_thread(task_store.set_status, task_id, 'failed', '检测任务失败，请稍后重试或联系管理员')
     finally:
         try:
             await asyncio.to_thread(file_path.unlink, missing_ok=True)
@@ -439,10 +444,10 @@ async def detect(response: Response, file: UploadFile = File(...), x_detection_i
                 detail="Windows 安全防护拦截了上传样本，后端无法读取，尚未提交 Docker 检测。请查看 Windows 安全中心的保护历史记录。",
             ) from error
         logger.exception("保存上传文件失败")
-        raise HTTPException(status_code=500, detail=f"保存上传文件失败: {error}") from error
+        raise HTTPException(status_code=500, detail="保存上传文件失败，请联系管理员") from error
     except Exception as error:
         logger.exception("保存上传文件失败")
-        raise HTTPException(status_code=500, detail=f"保存上传文件失败: {error}") from error
+        raise HTTPException(status_code=500, detail="保存上传文件失败，请联系管理员") from error
 
     logger.info("开始检测上传文件: filename=%s sha256=%s", info["filename"], info["sha256"])
     if not info["is_pe"]:
@@ -485,6 +490,8 @@ async def detect(response: Response, file: UploadFile = File(...), x_detection_i
 
 @app.get("/detect/tasks/{task_id}")
 async def detection_task_status(task_id: str) -> dict:
+    if not re.fullmatch(r'[a-f0-9]{32}', task_id):
+        raise HTTPException(status_code=400, detail='检测请求标识无效')
     await asyncio.to_thread(task_store.heartbeat, task_id)
     row = await asyncio.to_thread(task_store.get, task_id)
     if not row:
