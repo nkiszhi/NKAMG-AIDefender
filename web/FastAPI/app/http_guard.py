@@ -1,4 +1,5 @@
 """Bound anonymous API traffic and request bodies before multipart parsing."""
+import re
 import time
 from collections import OrderedDict, deque
 
@@ -11,11 +12,34 @@ class BodyLimitExceeded(MultiPartException):
 
 
 class PublicAPIGuard:
+    # Browser IDs provide anonymous fairness, not authentication. Rotating IDs
+    # still consumes the shared IP budget. Both kinds share bounded storage.
+    CLIENT_LIMITS = {'upload': 6, 'lookup': 60, 'read': 240}
+    IP_LIMITS = {'upload': 60, 'lookup': 300, 'read': 2400}
+
     def __init__(self, app, max_body_bytes, max_clients=4096):
         self.app = app
         self.max_body_bytes = max_body_bytes
         self.max_clients = max_clients
         self.clients = OrderedDict()
+
+    def allow(self, key, group, limit, now):
+        while self.clients and next(iter(self.clients.values()))['seen'] <= now - 60:
+            self.clients.popitem(last=False)
+        if key not in self.clients:
+            if len(self.clients) >= self.max_clients:
+                return False
+            self.clients[key] = {'seen': now, 'buckets': {}}
+        state = self.clients[key]
+        state['seen'] = now
+        self.clients.move_to_end(key)
+        bucket = state['buckets'].setdefault(group, deque())
+        while bucket and bucket[0] <= now - 60:
+            bucket.popleft()
+        if len(bucket) >= limit:
+            return False
+        bucket.append(now)
+        return True
 
     async def __call__(self, scope, receive, send):
         if scope['type'] != 'http':
@@ -24,25 +48,18 @@ class PublicAPIGuard:
         upload = scope['method'] == 'POST' and path == '/detect'
         lookup = path.startswith('/samples/')
         group = 'upload' if upload else 'lookup' if lookup else 'read'
-        limit = 6 if upload else 60 if lookup else 240
         peer = (scope.get('client') or ('unknown', 0))[0]
         now = time.monotonic()
-        while self.clients and next(iter(self.clients.values()))['seen'] <= now - 60:
-            self.clients.popitem(last=False)
-        if peer not in self.clients:
-            if len(self.clients) >= self.max_clients:
-                return await self.reject(scope, receive, send, 429, '请求过于频繁，请稍后重试')
-            self.clients[peer] = {'seen': now, 'buckets': {}}
-        state = self.clients[peer]
-        state['seen'] = now
-        self.clients.move_to_end(peer)
-        bucket = state['buckets'].setdefault(group, deque())
-        while bucket and bucket[0] <= now - 60:
-            bucket.popleft()
-        if len(bucket) >= limit:
+        if not self.allow(('ip', peer), group, self.IP_LIMITS[group], now):
             return await self.reject(scope, receive, send, 429, '请求过于频繁，请稍后重试')
-        bucket.append(now)
         headers = dict(scope.get('headers', []))
+        client_id = headers.get(b'x-client-id')
+        if client_id is not None and not re.fullmatch(rb'[0-9a-f]{32}', client_id):
+            return await self.reject(scope, receive, send, 400, '浏览器标识格式无效，请刷新页面')
+        # Legacy clients without a browser ID retain a conservative per-IP quota.
+        key = ('browser', peer, client_id) if client_id else ('anonymous', peer)
+        if not self.allow(key, group, self.CLIENT_LIMITS[group], now):
+            return await self.reject(scope, receive, send, 429, '请求过于频繁，请稍后重试')
         cap = self.max_body_bytes if upload else 65536
         try:
             length = int(headers.get(b'content-length', b'0'))

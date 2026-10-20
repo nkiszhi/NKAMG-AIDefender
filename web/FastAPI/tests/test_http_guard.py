@@ -52,10 +52,49 @@ class HTTPGuardTests(unittest.TestCase):
         self.assertEqual(self.request(guard, method='GET', path='/detect/tasks/a')[0]['status'], 200)
 
     def test_invalid_length_and_bounded_client_memory(self):
-        guard = PublicAPIGuard(self.consume, 10, max_clients=1)
+        guard = PublicAPIGuard(self.consume, 10, max_clients=2)
         self.assertEqual(self.request(guard, headers=[(b'content-length', b'-1')])[0]['status'], 400)
         self.assertEqual(self.request(guard, peer='other')[0]['status'], 429)
-        self.assertEqual(len(guard.clients), 1)
+        self.assertEqual(len(guard.clients), 2)
+
+    def test_browsers_on_shared_ip_have_separate_upload_quotas(self):
+        guard = PublicAPIGuard(self.consume, 10)
+        first = [(b'x-client-id', b'a' * 32)]
+        second = [(b'x-client-id', b'b' * 32)]
+        for _ in range(6):
+            self.assertEqual(self.request(guard, headers=first)[0]['status'], 200)
+        self.assertEqual(self.request(guard, headers=first)[0]['status'], 429)
+        self.assertEqual(self.request(guard, headers=second)[0]['status'], 200)
+        self.assertEqual(self.request(guard, headers=first, method='GET',
+                                      path='/detect/tasks/a')[0]['status'], 200)
+
+    def test_rotating_browser_ids_cannot_bypass_shared_ip_limit(self):
+        guard = PublicAPIGuard(self.consume, 10)
+        for index in range(60):
+            headers = [(b'x-client-id', format(index, '032x').encode())]
+            self.assertEqual(self.request(guard, headers=headers)[0]['status'], 200)
+        headers = [(b'x-client-id', b'f' * 32)]
+        self.assertEqual(self.request(guard, headers=headers)[0]['status'], 429)
+        self.assertEqual(self.request(guard, headers=headers, peer='other')[0]['status'], 200)
+
+    def test_invalid_browser_ids_and_raw_forwarded_header(self):
+        guard = PublicAPIGuard(self.consume, 10)
+        for value in (b'', b'bad', b'A' * 32, b'a' * 33):
+            self.assertEqual(self.request(guard, headers=[(b'x-client-id', value)])[0]['status'], 400)
+        for index in range(6):
+            headers = [(b'x-forwarded-for', str(index).encode())]
+            self.assertEqual(self.request(guard, headers=headers)[0]['status'], 200)
+        self.assertEqual(self.request(guard, headers=[(b'x-forwarded-for', b'new')])[0]['status'], 429)
+
+    def test_expired_rate_entries_release_capacity(self):
+        from unittest.mock import patch
+        guard = PublicAPIGuard(self.consume, 10, max_clients=2)
+        with patch('app.http_guard.time.monotonic', return_value=100):
+            self.assertEqual(self.request(guard)[0]['status'], 200)
+            self.assertEqual(self.request(guard, peer='other')[0]['status'], 429)
+        with patch('app.http_guard.time.monotonic', return_value=161):
+            self.assertEqual(self.request(guard, peer='other')[0]['status'], 200)
+        self.assertEqual(len(guard.clients), 2)
 
     def test_reports_are_not_cached_and_sniffing_disabled(self):
         messages = self.request(PublicAPIGuard(self.consume, 10))

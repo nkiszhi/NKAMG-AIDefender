@@ -242,8 +242,14 @@ import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Search, UploadFilled } from '@element-plus/icons-vue'
 import { modelPapers } from './modelPapers'
+import { getClientId } from './clientIdentity'
 
-const apiService = axios.create({ timeout: 600000 })
+let identityStorage
+try { identityStorage = window.localStorage } catch { /* Use page memory. */ }
+const apiService = axios.create({
+  timeout: 600000,
+  headers: { 'X-Client-ID': getClientId(identityStorage, window.crypto) }
+})
 
 const showSection = ref('fileInfo')
 const modelsOpen = ref(['modelCatalog', 'sampleLibrary'])
