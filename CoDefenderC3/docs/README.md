@@ -514,10 +514,10 @@ bash docker/build.sh codefender-c3:v8
 ```bash
 # 生产启动（推荐）：零挂载 —— 代码 / 模型 / 三族签名库都已在镜像里
 # 镜像已固化 CODEFENDER_ENV=prod + 全引擎 + 缺库拒绝启动
-docker run -d -p 8000:8000 --name codefender codefender-c3:v8
+docker run -d -p 8000:8000 --ulimit nofile=65535:65535 --name codefender codefender-c3:v8
 
 # 指定环境变量
-docker run -d -p 8000:8000 --name codefender \
+docker run -d -p 8000:8000 --name codefender --ulimit nofile=65535:65535 \
   -e CODEFENDER_ENABLE_MALGRAPH=false \
   codefender-c3:v8
 

@@ -826,8 +826,8 @@ for line in lines:
         for i in range(total):
             task_q.put((pe_paths[i], bndb_paths[i], npz_paths[i]))
 
-        PER_FILE_TIMEOUT = 180          # 单文件超时 (秒)
-        WORKER_INIT_TIMEOUT = 120       # Worker 初始化超时
+        PER_FILE_TIMEOUT = _env_int("CODEFENDER_DE_PER_FILE_TIMEOUT", 180)   # 单文件超时 (秒)
+        WORKER_INIT_TIMEOUT = _env_int("CODEFENDER_DE_WORKER_INIT_TIMEOUT", 120)  # Worker 初始化超时
         MAX_RESTARTS_PER_SLOT = 200     # 单 slot 最大重启次数 (含主动重启)
         MAX_FILES_PER_WORKER = 500      # 每个 Worker 处理 N 个文件后主动重启 (防 BN 内存泄漏)
 

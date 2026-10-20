@@ -3,9 +3,9 @@
 #  CoDefenderC3 —— 一键构建「自包含推理镜像」（代码 + 签名库 + ensemble.pkl）
 # =============================================================================
 #  用法：
-#      bash docker/build.sh                       # 默认 tag: codefender-c3:v8
-#      bash docker/build.sh codefender-c3:v8.1    # 指定 tag
-#      bash docker/build.sh codefender-c3:v8 --no-cache
+#      bash docker/build.sh                       # 默认 tag: codefenderc3:v8
+#      bash docker/build.sh codefenderc3:v8.1     # 指定 tag
+#      bash docker/build.sh codefenderc3:v8 --no-cache
 #      PYTHON=/d/work/tools/miniconda3/python.exe bash docker/build.sh   # 指定解释器
 #
 #  三步走（前两步是本机预处理，很快；第三步才是真正耗时的构建）：
@@ -23,7 +23,7 @@
 # =============================================================================
 set -euo pipefail
 
-TAG="${1:-codefender-c3:v8}"
+TAG="${1:-codefenderc3:v8}"
 shift || true
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -50,8 +50,12 @@ echo "▶ [2/3] 预检构建上下文"
 "$PY" docker/check_context.py
 
 echo
-echo "▶ [3/3] docker build -t ${TAG}"
-docker build -t "${TAG}" "$@"
+echo "▶ [3/3] docker build -t ${TAG} ."
+#  ⚠ 构建上下文路径 `.` 必须补在**引号外、命令最后**：docker build 的语法是
+#     `docker build [OPTIONS] PATH`（buildx 同样要求 PATH 在末位）。
+#     写成 "${TAG} ." 会把那个空格并进 tag 名，PATH 依旧缺失 →
+#     报 `docker buildx build requires 1 argument`。脚本开头已 cd "$ROOT"。
+docker build -t "${TAG}" "$@" .
 
 echo
 docker images "${TAG}"
