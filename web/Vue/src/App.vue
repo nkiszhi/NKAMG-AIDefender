@@ -503,7 +503,7 @@ async function uploadFile(file) {
   // but before the POST response arrives can still recover the existing task.
   localStorage.setItem(TASK_KEY, requestId)
   localStorage.setItem(TASK_PHASE_KEY, 'uploading')
-  detectionMessage.value = '正在上传样本'
+  detectionMessage.value = '正在上传样本并查询样本库，未命中时将进入模型检测队列'
   try {
     const response = await apiService.post(`${apiBaseUrl.value}/detect`, formData, {
       headers: { 'X-Detection-ID': requestId },

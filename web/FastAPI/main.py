@@ -298,14 +298,15 @@ async def sample_by_sha256(sha256: str) -> dict:
     }
 
 
-async def _run_detection(file_path: Path, info: dict, on_progress=None) -> dict:
+async def _lookup_uploaded_sample(info: dict):
+    """Cheap database preflight, independent of model queue capacity."""
     database_error = None
     try:
         sample_record = await asyncio.to_thread(sample_repository.find_malicious, info["sha256"])
     except RuntimeError as error:
         sample_record = None
         database_error = '样本库暂不可用'
-        logger.warning("样本库查询不可用，继续33模型检测: %s", error)
+        logger.warning("样本库查询不可用，转入模型检测流程: %s", error)
 
     if sample_record:
         public_record = SampleRepository.public_fields(sample_record)
@@ -321,7 +322,15 @@ async def _run_detection(file_path: Path, info: dict, on_progress=None) -> dict:
             sample_record=public_record,
             exe_result={},
             results={},
-        )
+        ), None
+    return None, database_error
+
+
+async def _run_detection(file_path: Path, info: dict, on_progress=None) -> dict:
+    # Recheck after waiting: the library may have gained this sample meanwhile.
+    known_result, database_error = await _lookup_uploaded_sample(info)
+    if known_result is not None:
+        return known_result
 
     for attempt in range(21):
         try:
@@ -463,6 +472,18 @@ async def detect(response: Response, file: UploadFile = File(...), x_detection_i
             model_skipped=True,
             database_hit=False,
         )
+
+    # A known sample must not wait behind inference or fail because its queue
+    # is full. Hashes are already calculated while saving the upload.
+    try:
+        known_result, _ = await _lookup_uploaded_sample(info)
+    except BaseException:
+        await asyncio.to_thread(file_path.unlink, missing_ok=True)
+        raise
+    if known_result is not None:
+        await asyncio.to_thread(file_path.unlink, missing_ok=True)
+        logger.info('上传样本命中数据库，直接返回且不进入模型队列: task_id=%s', task_id)
+        return known_result
 
     try:
         row = await asyncio.to_thread(task_store.create, task_id, info['filename'], file_path,
