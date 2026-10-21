@@ -45,7 +45,7 @@ class HTTPGuardTests(unittest.TestCase):
 
     def test_upload_rate_is_per_peer_and_does_not_block_polling(self):
         guard = PublicAPIGuard(self.consume, 10)
-        for _ in range(6):
+        for _ in range(60):
             self.assertEqual(self.request(guard)[0]['status'], 200)
         self.assertEqual(self.request(guard)[0]['status'], 429)
         self.assertEqual(self.request(guard, peer='other')[0]['status'], 200)
@@ -59,12 +59,17 @@ class HTTPGuardTests(unittest.TestCase):
 
     def test_browsers_on_shared_ip_have_separate_upload_quotas(self):
         guard = PublicAPIGuard(self.consume, 10)
+        # Isolate the browser buckets here; production still has a shared IP
+        # ceiling so rotating IDs cannot evade the public abuse limit.
+        guard.IP_LIMITS = {**guard.IP_LIMITS, 'upload': 120}
         first = [(b'x-client-id', b'a' * 32)]
         second = [(b'x-client-id', b'b' * 32)]
-        for _ in range(6):
+        for _ in range(60):
             self.assertEqual(self.request(guard, headers=first)[0]['status'], 200)
+        for _ in range(60):
+            self.assertEqual(self.request(guard, headers=second)[0]['status'], 200)
         self.assertEqual(self.request(guard, headers=first)[0]['status'], 429)
-        self.assertEqual(self.request(guard, headers=second)[0]['status'], 200)
+        self.assertEqual(self.request(guard, headers=second)[0]['status'], 429)
         self.assertEqual(self.request(guard, headers=first, method='GET',
                                       path='/detect/tasks/a')[0]['status'], 200)
 
@@ -81,7 +86,7 @@ class HTTPGuardTests(unittest.TestCase):
         guard = PublicAPIGuard(self.consume, 10)
         for value in (b'', b'bad', b'A' * 32, b'a' * 33):
             self.assertEqual(self.request(guard, headers=[(b'x-client-id', value)])[0]['status'], 400)
-        for index in range(6):
+        for index in range(60):
             headers = [(b'x-forwarded-for', str(index).encode())]
             self.assertEqual(self.request(guard, headers=headers)[0]['status'], 200)
         self.assertEqual(self.request(guard, headers=[(b'x-forwarded-for', b'new')])[0]['status'], 429)
