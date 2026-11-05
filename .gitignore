@@ -56,3 +56,13 @@ CoDefenderC3/_tools/ember/
 *.log
 CoDefenderC3/tmp*/
 *.tmp
+
+# ── W1 基线快照采集用的本地依赖与产物（不入库）─────────────────────────
+#   _tools/py310_pkgs  ← 给 BinaryNinja 自带 python 3.10 用的 numpy(cp310)/pefile
+#                        （BN 的 python 没有 numpy；也可用 --pkgs 指向别处）
+_tools/
+#   全量特征数组（单样本约 10 MB × 88 = 900 MB）
+_baseline_arrays/
+#   临时下载 / 解包的中间物
+_wheels/
+_oci/

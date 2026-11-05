@@ -112,6 +112,7 @@ PYTHONIOENCODING=utf-8 python -u CoDefenderC3/train/verify_trained_ensemble.py -
 | `_probe_env_profile.py` | 档位隔离回归探针（41 项断言） |
 | `_probe_runtime_cfg.py` | 运行时配置热切换探针（20 项断言） |
 | [`tests/`](tests/) | 回归测试（W0 特征哈希稳定性：11 项，含跨进程一致性） |
+| [`tests/fixtures/bn_baseline/`](tests/fixtures/bn_baseline/) | BN 基线特征快照（88 样本 / 2640 个特征指纹）—— Phase 1 的验收基准 |
 
 ### `docs/` 索引
 
@@ -121,6 +122,7 @@ PYTHONIOENCODING=utf-8 python -u CoDefenderC3/train/verify_trained_ensemble.py -
 | [`docs/增量训练与Checkpoint技术方案.md`](docs/增量训练与Checkpoint技术方案.md) | 增量训练 + checkpoint 完整技术方案（缺陷清单 B1–B8 / 附录 C 最小数据集 / 附录 D MalGraph 接入） |
 | [`docs/TESTING.md`](docs/TESTING.md) | 测试说明 |
 | [`docs/FEATURE_HASH_STABILITY.md`](docs/FEATURE_HASH_STABILITY.md) | **特征哈希稳定性（W0）**：内置 hash() 跨进程不一致的成因、修复与强制重训清单 |
+| [`docs/BASELINE_FIXTURE.md`](docs/BASELINE_FIXTURE.md) | **BN 基线特征快照（W1）**：Phase 1 的验收基准；含 BinaryNinja 许可过期的 P0 发现 |
 | [`docs/PAPERS.md`](docs/PAPERS.md) | 33 个子模型的论文与架构参考 |
 | [`docs/BINARYNINJA_OPTIMIZATION_GUIDE.md`](docs/BINARYNINJA_OPTIMIZATION_GUIDE.md) | BinaryNinja 分析选项优化指南 |
 | [`docs/testing_hash.md`](docs/testing_hash.md) / [`docs/testing_hash_simple.md`](docs/testing_hash_simple.md) | 哈希库测试记录 |

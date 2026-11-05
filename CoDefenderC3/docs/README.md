@@ -18,6 +18,7 @@
 - [配置参考](#配置参考)
 - [项目结构](#项目结构)
 - [特征哈希稳定性 (W0)](#特征哈希稳定性-w0)
+- [BN 基线特征快照 (W1)](#bn-基线特征快照-w1)
 
 ---
 
@@ -1292,7 +1293,7 @@ CoDefenderC3_v8/
 ├── codefender.ini               # Supervisor program 配置（生产档位环境变量在此）
 ├── dev_model_only.cmd           # 【本机开发】纯模型链路启动（Windows，ASCII-only）
 ├── dev_model_only.sh            # 【本机开发】纯模型链路启动（Linux/VM）
-├── tests/                      # 回归测试（W0 特征哈希稳定性：11 项）
+├── tests/                      # 回归测试（W0 特征哈希稳定性：11 项）├── baseline_fixture.py         # BN 基线快照采集/校验（W1）├── fixtures/bn_baseline/        # 基线快照：88 样本 / 2640 特征指纹
 ├── _probe_env_profile.py        # 档位隔离回归探针（41 项断言）
 ├── _probe_runtime_cfg.py        # 运行时配置热切换探针（20 项断言）
 └── testsamples/                 # 测试样本 (SHA256 命名)
@@ -1340,3 +1341,30 @@ A: 将 Dockerfile 中 PyTorch 安装的 `--index-url` 改为 GPU 版本，并设
 ```bash
 python tests/test_stable_hash.py          # 无需 pytest，11 项
 ```
+---
+
+## BN 基线特征快照 (W1)
+
+**2026-11-05 落地。SMDA 迁移 Phase 1（IR 抽象）的验收基准。**
+
+Phase 1 要把「BinaryNinja → 特征」重构一遍。没有基准的话，重构后分不清是
+「重构引入的 bug」「hash 修复带来的语义变化」「后端换成 SMDA 带来的分布漂移」——三件事混在一起。
+
+因此在动手重构前，先用**当前代码**对 88 个分层样本（benign/malicious × 32/64 位）
+跑一遍真实生产路径（`extract_fast` + `extract_de_only`），把每个特征向量的
+`sha256(原始字节)` 存成指纹。重构后再跑一遍，指纹必须逐位相同。
+
+完整说明（选样规则 / 指纹判据 / 环境要求 / 补采命令）见
+**[`docs/BASELINE_FIXTURE.md`](BASELINE_FIXTURE.md)**。
+
+```bash
+python tests/baseline_fixture.py verify \
+    --samples tests/fixtures/bn_baseline/samples.json \
+    --manifest tests/fixtures/bn_baseline/manifest.json
+
+```
+
+> ⚠ **当前只覆盖 30/39 个特征**（D01-D07、E01-E04 需 BinaryNinja，而本机 BN 许可已过期）。
+> 这同时暴露了一个 **P0 生产问题**：容器用的 `license.txt` 是同一份过期许可，
+> `include_de=true` 时 D/E 视角取不到，**10 个模型静默不参与推理**且 API 不报错。
+> 详见 `docs/BASELINE_FIXTURE.md` 的「许可阻塞」一节。
