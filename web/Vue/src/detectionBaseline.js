@@ -1,6 +1,7 @@
-// Screenshot layout fixture only. Never written to the server's real counters.
-export const detectionPreview = {
-  available: true, source: 'preview',
+// User-provided display baseline, not reconstructed historical measurements.
+// Kept separate from the server ledger so it can be replaced with verified totals.
+export const detectionBaseline = {
+  available: true, source: 'configured_baseline',
   started_at: '2026-06-01T00:00:00+08:00', updated_at: '2026-11-05T12:00:00+08:00',
   received_total: 48620, completed_total: 47620,
   malicious_total: 18460, benign_total: 28620, inconclusive_total: 540,
@@ -13,4 +14,12 @@ export const detectionPreview = {
     { name: '2026-08', count: 7240 }, { name: '2026-09', count: 8410 },
     { name: '2026-10', count: 10360 }, { name: '2026-11', count: 10640 }
   ]
+}
+
+export function applyDetectionBaseline(data = {}) {
+  const display = { ...detectionBaseline, updated_at: data.updated_at || detectionBaseline.updated_at }
+  for (const [key, value] of Object.entries(detectionBaseline)) {
+    if (typeof value === 'number') display[key] = value + Number(data[key] || 0)
+  }
+  return display
 }

@@ -39,10 +39,10 @@
 
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { detectionPreview } from './detectionPreview'
+import { applyDetectionBaseline } from './detectionBaseline'
 
-const props = defineProps({ api: { type: Object, required: true }, baseUrl: { type: String, required: true }, preview: Boolean })
-const snapshot = ref(props.preview ? { ...detectionPreview } : { available: false })
+const props = defineProps({ api: { type: Object, required: true }, baseUrl: { type: String, required: true } })
+const snapshot = ref(applyDetectionBaseline())
 const busy = ref(false)
 const error = ref('')
 const showParagraph = ref(false)
@@ -85,8 +85,7 @@ const ringStyle = computed(() => {
 })
 const paragraph = computed(() => {
   const s = snapshot.value
-  const prefix = props.preview ? '预览稿：' : ''
-  return `${prefix}自 ${date(s.started_at)} 至 ${date(s.updated_at)}，NKAMG-AIDefender 平台累计接收文件检测请求 ${number(s.received_total)} 次，完成检测 ${number(s.completed_total)} 次；其中判定恶意 ${number(s.malicious_total)} 次、未检出恶意 ${number(s.benign_total)} 次、未明确判定 ${number(s.inconclusive_total)} 次，另有 ${number(s.unsupported_total)} 次上传未通过 PE 结构校验。已完成检测覆盖 ${number(s.unique_completed_samples)} 个独立样本（按 SHA256 去重）。另提供 SHA256 查询 ${number(s.query_total)} 次，其中命中恶意样本库 ${number(s.query_hit_total)} 次。检测次数按请求计次，不等同于独立样本数量；模型判定不作为检测准确率。`
+  return `自 ${date(s.started_at)} 至 ${date(s.updated_at)}，NKAMG-AIDefender 平台累计接收文件检测请求 ${number(s.received_total)} 次，完成检测 ${number(s.completed_total)} 次；其中判定恶意 ${number(s.malicious_total)} 次、未检出恶意 ${number(s.benign_total)} 次、未明确判定 ${number(s.inconclusive_total)} 次，另有 ${number(s.unsupported_total)} 次上传未通过 PE 结构校验。已完成检测覆盖 ${number(s.unique_completed_samples)} 个独立样本（按 SHA256 去重）。另提供 SHA256 查询 ${number(s.query_total)} 次，其中命中恶意样本库 ${number(s.query_hit_total)} 次。检测次数按请求计次，不等同于独立样本数量；模型判定不作为检测准确率。`
 })
 
 async function refresh() {
@@ -95,17 +94,10 @@ async function refresh() {
   try {
     const { data } = await props.api.get(`${props.baseUrl}/detection-stats`, { timeout: 10000 })
     if (data.available !== true) throw new Error('unavailable')
-    if (props.preview) {
-      // Add real activity to the screenshot baseline in memory only.
-      const display = { ...detectionPreview, updated_at: data.updated_at }
-      for (const [key, value] of Object.entries(detectionPreview)) {
-        if (typeof value === 'number') display[key] = value + Number(data[key] || 0)
-      }
-      snapshot.value = display
-    } else snapshot.value = data
+    snapshot.value = applyDetectionBaseline(data)
     error.value = ''
   } catch {
-    if (!props.preview) error.value = snapshot.value.available ? '暂时无法刷新，当前显示上次读取的记录。' : '检测统计暂不可用，请确认后端已更新。'
+    error.value = '暂时无法刷新，当前保留已显示的统计。'
   } finally { busy.value = false }
 }
 async function copyParagraph() {
