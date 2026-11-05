@@ -113,6 +113,7 @@ PYTHONIOENCODING=utf-8 python -u CoDefenderC3/train/verify_trained_ensemble.py -
 | `_probe_runtime_cfg.py` | 运行时配置热切换探针（20 项断言） |
 | [`tests/`](tests/) | 回归测试（W0 特征哈希稳定性：11 项，含跨进程一致性） |
 | [`tests/fixtures/bn_baseline/`](tests/fixtures/bn_baseline/) | BN 基线特征快照（88 样本 / 2640 个特征指纹）—— Phase 1 的验收基准 |
+| [`feature_extraction/ir.py`](feature_extraction/ir.py) | **ProgramIR** 数据类（后端中立的中间表示，Phase 1 的核心契约） |
 
 ### `docs/` 索引
 
@@ -123,6 +124,7 @@ PYTHONIOENCODING=utf-8 python -u CoDefenderC3/train/verify_trained_ensemble.py -
 | [`docs/TESTING.md`](docs/TESTING.md) | 测试说明 |
 | [`docs/FEATURE_HASH_STABILITY.md`](docs/FEATURE_HASH_STABILITY.md) | **特征哈希稳定性（W0）**：内置 hash() 跨进程不一致的成因、修复与强制重训清单 |
 | [`docs/BASELINE_FIXTURE.md`](docs/BASELINE_FIXTURE.md) | **BN 基线特征快照（W1）**：Phase 1 的验收基准；含「BN 打不开非 ASCII 路径」等关键前置条件 |
+| [`docs/IR_CONTRACT.md`](docs/IR_CONTRACT.md) | **ProgramIR 契约（Phase 1）**：后端中立的中间表示、不变量、feature ID ↔ IR 字段映射表 |
 | [`docs/PAPERS.md`](docs/PAPERS.md) | 33 个子模型的论文与架构参考 |
 | [`docs/BINARYNINJA_OPTIMIZATION_GUIDE.md`](docs/BINARYNINJA_OPTIMIZATION_GUIDE.md) | BinaryNinja 分析选项优化指南 |
 | [`docs/testing_hash.md`](docs/testing_hash.md) / [`docs/testing_hash_simple.md`](docs/testing_hash_simple.md) | 哈希库测试记录 |

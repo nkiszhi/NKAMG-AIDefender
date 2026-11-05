@@ -19,6 +19,7 @@
 - [项目结构](#项目结构)
 - [特征哈希稳定性 (W0)](#特征哈希稳定性-w0)
 - [BN 基线特征快照 (W1)](#bn-基线特征快照-w1)
+- [ProgramIR 契约 (Phase 1)](#programir-契约--phase-1)
 
 ---
 
@@ -1293,7 +1294,8 @@ CoDefenderC3_v8/
 ├── codefender.ini               # Supervisor program 配置（生产档位环境变量在此）
 ├── dev_model_only.cmd           # 【本机开发】纯模型链路启动（Windows，ASCII-only）
 ├── dev_model_only.sh            # 【本机开发】纯模型链路启动（Linux/VM）
-├── tests/                      # 回归测试（W0 特征哈希稳定性：11 项）├── baseline_fixture.py         # BN 基线快照采集/校验（W1）├── fixtures/bn_baseline/        # 基线快照：88 样本 / 2640 特征指纹
+├── tests/                      # 回归测试（W0 特征哈希 11 项 + IR 契约 15 项）├── ir.py                      # ProgramIR 数据类（后端中立中间表示，Phase 1）
+├── baseline_fixture.py         # BN 基线快照采集/校验（W1）├── fixtures/bn_baseline/        # 基线快照：88 样本 / 2640 特征指纹
 ├── _probe_env_profile.py        # 档位隔离回归探针（41 项断言）
 ├── _probe_runtime_cfg.py        # 运行时配置热切换探针（20 项断言）
 └── testsamples/                 # 测试样本 (SHA256 命名)
@@ -1376,3 +1378,32 @@ python tests/baseline_fixture.py verify \
 > ② **BN 打不开路径含非 ASCII 字符的文件** —— 样本库在 `E:\nkproject\00 样本库\...` 这种路径下，
 >    训练侧的 D/E 抽取会 100% 失败（很可能就是历史 `bndb_fail.log` 的真正原因）。
 > 详见 `docs/BASELINE_FIXTURE.md`。
+---
+
+## ProgramIR 契约 (Phase 1)
+
+**SMDA 迁移 Phase 1 的设计基线。**
+
+把「反汇编后端」和「特征计算」之间插入一层**后端中立、可缓存、顺序敏感**的中间表示：
+
+```
+    PE ──[后端: BN / SMDA]──> ProgramIR ──[特征层]──> D01-D07 / E03-E04
+```
+
+配套代码：[`feature_extraction/ir.py`](../feature_extraction/ir.py)（数据类 + 序列化 + 校验）、
+`tests/test_ir_contract.py`（15 项契约测试，含一个 mock 后端作为适配器行为规范）。
+
+要点：
+
+* **顺序即语义** —— functions/blocks/instructions/callees 全是有序列表，
+  D01（opcode 序列）、D02/D03（n-gram）直接依赖顺序，不能去重；
+* **callees 保留重复** —— 同一被调方调两次 = 2 条调用边（现有代码按重数计）；
+* **IR → 特征是纯函数** —— 后端的不确定性（BN 分析不确定，W1 实测 25/88 样本有差异）
+  被隔离在「生成一次 IR」这一步，IR 可像现在的 .bndb 一样缓存但格式与后端无关；
+* **完备性已证明** —— 现有代码用到的每一个 BN API 都有 IR 落点（见文档第 3 节）；
+* **feature ID ↔ IR 字段映射表** —— 见文档第 4 节。
+
+验收方式：用 **G2 门禁**（bndb 锚定）比对「bndb → IR → 特征」与「bndb → 旧特征代码」，
+两者必须逐位相同。
+
+完整说明见 **[`docs/IR_CONTRACT.md`](IR_CONTRACT.md)**。
