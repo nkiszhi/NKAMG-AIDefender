@@ -112,3 +112,88 @@ CODEFENDER_MASK_VIEWS=V6_opcode_stat
 
 实测：OpcodeStatNet 的 ROC-AUC 由 0.5478 提升到 0.6108（+0.042），
 且 14 个未受影响模型的分数逐位一致（证明补丁只作用于目标视图）。
+
+## 8. GPU 镜像（两个变体）
+
+### 8.1 为什么分两个版本
+
+| 变体 | `--target` | 哈希预检 | 签名库 | 用途 |
+|---|---|---|---|---|
+| 训练 / 离线测评 | `train` | sha256 / md5 / fuzzy **全关** | 不打进镜像 | 训练、测评——所有样本真正走模型打分 |
+| 线上生产 | `serve` | **全开** | 构建期内嵌 `/app/signatures` | 生产——命中签名库直接短路返回 |
+
+两者**反汇编后端、特征口径、模型权重、引擎逻辑完全一致** ⇒ 分数可比。
+唯一差异是"哈希预检是否短路"。
+
+> 生产档位与训练档位的区别由 `CODEFENDER_REQUIRE_HASH_DB` 决定：
+> `=1` 时签名库缺失或损坏会**拒绝启动**（响的失败优于静默降级）；
+> `=0` 时哈希库不参与，缺库也能起（纯模型模式）。
+> 所以训练版必须是 `REQUIRE_HASH_DB=0`，否则引擎启动即报错。
+
+### 8.2 构建
+
+```bash
+cd CoDefenderC3
+
+# ① 训练 / 测评版（不需要签名库）
+docker build -f Dockerfile.smda.gpu --target train -t codefender-c3:gpu-train .
+
+# ② 线上生产版（必须先暂存签名库）
+python docker/stage_signatures.py
+docker build -f Dockerfile.smda.gpu --target serve -t codefender-c3:gpu-serve .
+
+# 导出（拷到服务器）
+docker save codefender-c3:gpu-train | gzip > codefender-c3-gpu-train.tar.gz
+docker save codefender-c3:gpu-serve | gzip > codefender-c3-gpu-serve.tar.gz
+```
+
+### 8.3 CUDA 版本与驱动要求
+
+默认 `torch 2.5.1+cu121 / torchvision 0.20.1+cu121` → **CUDA 12.1 runtime，驱动 >= 525.60.13**
+（3090 / 4090 / A10 都可以）。驱动较新（>= 550）想换 cu124 时不用改文件：
+
+```bash
+docker build -f Dockerfile.smda.gpu --target serve \
+  --build-arg TORCH_INDEX_URL=https://download.pytorch.org/whl/cu124 \
+  --build-arg TORCH_VERSION=2.6.0+cu124 \
+  --build-arg TORCHVISION_VERSION=0.21.0+cu124 \
+  -t codefender-c3:gpu-serve .
+```
+
+服务器需装 **NVIDIA Container Toolkit**，否则 `docker run --gpus all` 会报 "could not select device driver"。
+
+### 8.4 运行
+
+```bash
+docker run -d --name codefender -p 8000:8000 --gpus all \
+    -e CUDA_VISIBLE_DEVICES=0 \
+    -e CODEFENDER_MAX_CONCURRENT=4 \
+    codefender-c3:gpu-serve
+```
+
+- `CUDA_VISIBLE_DEVICES=0`：**必须指定**，否则 N 个 worker 会散到多张卡上各占一份上下文；
+- `CODEFENDER_MAX_CONCURRENT`：每个并发 worker 会各自加载一份 ensemble → 各占一份 CUDA 上下文
+  （约 300~500MB 显存/份）。24GB 卡上 4~8 个没问题；再高就先降 `CODEFENDER_MODEL_DEVICE=cpu`。
+- 推理设备：`CODEFENDER_MODEL_DEVICE` = `auto`（默认，有 CUDA 就用）/ `cuda` / `cuda:N` / `cpu`；
+  `cuda` 不可用时**自动降级 CPU** 并打日志，不会启动失败。
+  `CODEFENDER_MALGRAPH_DEVICE` 同理（只管 MalGraph）。
+
+### 8.5 GPU 的实际收益边界（重要，别高估）
+
+单样本耗时构成（6160 样本实测，CPU 版）：
+
+| 阶段 | p50 | 能否被 GPU 加速 |
+|---|---:|---|
+| SMDA 反汇编（capstone，纯 CPU） | **6.28 s** | ❌ 瓶颈在这 |
+| fast 模型前向 | 1.22 s | ✅ |
+| slow 模型前向（D/E 模型） | 1.89 s | ✅ |
+
+⇒ **GPU 只能加速那 ~3.1 s 的模型前向，端到端理论上限约 20~30%**；
+真正的吞吐杠杆是**并发**（80 核机器上 `CODEFENDER_MAX_CONCURRENT` 还能往上调，
+但每个 worker 一份 CUDA 上下文，所以要用 `CUDA_VISIBLE_DEVICES` 把它们钉到同一张卡上，
+或 `CODEFENDER_MODEL_DEVICE=cpu` 让模型留在 CPU、只让 MalGraph 用 GPU）。
+
+### 8.6 与 CPU 版的关系
+
+`Dockerfile.smda`（CPU）与 `Dockerfile.smda.gpu`（GPU）的**引擎代码完全相同**，
+只有 torch 轮子与哈希开关不同 ⇒ 两个版本产出的分数可直接比对。

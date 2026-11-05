@@ -123,6 +123,14 @@ _MALGRAPH_MAX_VOCAB_ENV = os.environ.get("CODEFENDER_MALGRAPH_MAX_VOCAB_SIZE", "
 MALGRAPH_PARAMS_FILE = os.environ.get("CODEFENDER_MALGRAPH_PARAMS_FILE", "").strip()
 MALGRAPH_PARAMS_JSON = os.environ.get("CODEFENDER_MALGRAPH_PARAMS_JSON", "").strip()
 MALGRAPH_DEVICE = os.environ.get("CODEFENDER_MALGRAPH_DEVICE", "cuda").strip() or "cuda"
+
+# ── 推理设备（GPU 版镜像用）────────────────────────────────────────────
+#   auto   : 有可用 CUDA 就用 GPU，否则 CPU（默认；CPU 镜像自动落到 CPU）
+#   cuda   : 强制 GPU；CUDA 不可用时降级 CPU 并记警告
+#   cuda:N : 指定卡号
+#   cpu    : 纯 CPU —— 多进程 worker 多时用它，避免每个进程各占一份 CUDA 上下文
+MODEL_DEVICE = (os.environ.get("CODEFENDER_MODEL_DEVICE", "auto").strip().lower()
+                or "auto")
 DEFAULT_MALGRAPH_PARAMS = {
     "gnn_type": "graphsage",
     "pool_type": "global_max_pool",
@@ -217,6 +225,49 @@ _MALGRAPH_RUNTIME: Optional[Dict[str, Any]] = None
 _SDD_ENGINE: Optional[Any] = None
 
 
+def _resolve_model_device() -> str:
+    """解析推理设备。auto=有 CUDA 用 GPU；显式 cuda 但 CUDA 不可用则降级 CPU。"""
+    want = MODEL_DEVICE
+    if want in ("", "auto"):
+        if torch is not None and torch.cuda.is_available():
+            return "cuda"
+        return "cpu"
+    if want.startswith("cuda"):
+        if torch is None or not torch.cuda.is_available():
+            logging.getLogger("codefender.engine").warning(
+                "[device] CODEFENDER_MODEL_DEVICE=%s 但 CUDA 不可用，降级 CPU", want)
+            return "cpu"
+        return want
+    return want
+
+
+def _move_ensemble_to_device(ens: MultiModelEnsemble) -> str:
+    """把 ensemble 中的 torch 模型一次性搬到推理设备。
+
+    推理路径用 `next(model.parameters()).device` 取设备，所以这里搬完即可自动生效；
+    numpy 类模型（RF/GBDT/SVM/XGBoost）不受影响，仍在 CPU 上跑。
+    """
+    if torch is None:
+        return "cpu"
+    dev = _resolve_model_device()
+    if dev == "cpu":
+        logging.getLogger("codefender.engine").info("[device] 推理设备: CPU")
+        return dev
+    moved, failed = 0, []
+    for name, m in (getattr(ens, "_models", {}) or {}).items():
+        if isinstance(m, torch.nn.Module):
+            try:
+                m.to(torch.device(dev))
+                m.eval()
+                moved += 1
+            except Exception as e:
+                failed.append("%s:%s" % (name, e))
+    log = logging.getLogger("codefender.engine")
+    log.info("[device] 推理设备: %s（已迁移 %d 个 torch 模型）", dev, moved)
+    if failed:
+        log.warning("[device] 部分模型迁移失败: %s", failed[:5])
+    return dev
+
 def _load_ensemble() -> MultiModelEnsemble:
     global _ENSEMBLE
     if _ENSEMBLE is not None:
@@ -228,6 +279,11 @@ def _load_ensemble() -> MultiModelEnsemble:
         if not os.path.exists(MODEL_PATH):
             raise FileNotFoundError(f"model file not found: {MODEL_PATH}")
         _ENSEMBLE = MultiModelEnsemble.load(MODEL_PATH)
+        try:
+            _move_ensemble_to_device(_ENSEMBLE)
+        except Exception as e:
+            logging.getLogger("codefender.engine").warning(
+                "[device] 模型迁移到 GPU 失败，继续用 CPU: %s", e)
         return _ENSEMBLE
 
 
