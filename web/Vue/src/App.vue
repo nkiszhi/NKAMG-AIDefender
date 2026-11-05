@@ -12,7 +12,7 @@
           <p>面向 PE 样本的多模型威胁分析平台</p>
         </div>
       </div>
-      <div class="header-tools">
+      <div v-if="!reportOnly" class="header-tools">
         <form class="hash-search" @submit.prevent="searchSample">
           <el-icon aria-hidden="true"><Search /></el-icon>
           <input v-model.trim="hashQuery" type="search" maxlength="64" spellcheck="false" placeholder="搜索 SHA256" aria-label="搜索 SHA256" />
@@ -27,7 +27,11 @@
       </div>
     </section>
 
-    <section class="workbench">
+    <section v-if="reportOnly" class="workbench">
+      <div class="collapse-title"><span class="collapse-title-mark">03</span><span>检测统计</span></div>
+      <DetectionStats :api="apiService" :base-url="apiBaseUrl" :preview="reportPreview" />
+    </section>
+    <section v-else class="workbench">
       <div class="upload-zone" @drop="handleDrop" @dragover.prevent>
         <input ref="fileInput" class="hidden-input" type="file" @change="handleFileChange" />
         <div class="upload-orbit" aria-hidden="true"><el-icon class="upload-icon"><UploadFilled /></el-icon></div>
@@ -111,6 +115,12 @@
             <p class="muted-text stats-updated">数据更新时间：{{ stats.updated_at || '-' }}</p>
           </div>
           <div v-else class="stats-unavailable"><span class="pulse-dot"></span>{{ stats.reason || '统计数据暂不可用' }}</div>
+        </el-collapse-item>
+        <el-collapse-item name="detectionStats">
+          <template #title>
+            <div class="collapse-title"><span class="collapse-title-mark">03</span><span>检测统计</span><small>检测记录与结果分布</small></div>
+          </template>
+          <DetectionStats ref="detectionStatsPanel" :api="apiService" :base-url="apiBaseUrl" :preview="reportPreview" />
         </el-collapse-item>
       </el-collapse>
     </section>
@@ -243,6 +253,11 @@ import { ElMessage } from 'element-plus'
 import { Search, UploadFilled } from '@element-plus/icons-vue'
 import { modelPapers } from './modelPapers'
 import { getClientId } from './clientIdentity'
+import DetectionStats from './DetectionStats.vue'
+
+const reportPreview = new URLSearchParams(window.location.search).get('report-preview') === '1'
+const reportOnly = new URLSearchParams(window.location.search).get('report-only') === '1'
+const detectionStatsPanel = ref(null)
 
 let identityStorage
 try { identityStorage = window.localStorage } catch { /* Use page memory. */ }
@@ -252,7 +267,7 @@ const apiService = axios.create({
 })
 
 const showSection = ref('fileInfo')
-const modelsOpen = ref(['modelCatalog', 'sampleLibrary'])
+const modelsOpen = ref(['detectionStats'])
 const loading = ref(false)
 const maxUploadSize = ref(20 * 1024 * 1024)
 const detectionMessage = ref('正在检测，可刷新页面继续等待')
@@ -354,6 +369,7 @@ const safeCount = computed(() => modelRows.value.filter(row => row.result === '�
 const incompleteCount = computed(() => modelRows.value.filter(row => !['恶意', '安全'].includes(row.result)).length)
 
 onMounted(async () => {
+  if (reportOnly) return
   window.addEventListener('pagehide', notifyPageLeave)
   loading.value = Boolean(localStorage.getItem(TASK_KEY))
   await loadConfig()
@@ -443,7 +459,8 @@ function parseIni(text) {
 function resetResult() {
   uploadResult.value = null
   showSection.value = 'fileInfo'
-  modelsOpen.value = []
+  modelsOpen.value = ['detectionStats']
+  void detectionStatsPanel.value?.refresh()
 }
 
 async function searchSample() {
@@ -461,6 +478,7 @@ async function searchSample() {
     ElMessage.error(status === 404 ? '样本库中未找到该 SHA256' : (error.response?.data?.detail || '样本库查询失败'))
   } finally {
     searching.value = false
+    void detectionStatsPanel.value?.refresh()
   }
 }
 
@@ -529,6 +547,7 @@ async function uploadFile(file) {
     ElMessage.error('检测失败: ' + (error.response?.data?.detail || error.message))
   } finally {
     loading.value = false
+    void detectionStatsPanel.value?.refresh()
   }
 }
 
@@ -612,7 +631,8 @@ function setDetectionResult(data) {
   const normalized = normalizeDetectionResponse(data)
   uploadResult.value = normalized
   showSection.value = normalized.is_pe && !normalized.database_hit ? 'modelDetection' : 'fileInfo'
-  modelsOpen.value = []
+  modelsOpen.value = ['detectionStats']
+  void detectionStatsPanel.value?.refresh()
   nextTick(() => resultSection.value?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
 }
 

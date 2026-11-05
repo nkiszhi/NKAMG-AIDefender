@@ -17,7 +17,10 @@ class DatabasePreflightTests(unittest.TestCase):
              patch.object(main, 'scan_file') as scan:
             result = asyncio.run(main.sample_by_sha256('a' * 64))
         self.assertTrue(result['database_hit'])
-        self.assertEqual(store.mock_calls, [])
+        store.record_hash_query.assert_called_once_with('hit')
+        store.get.assert_not_called()
+        store.create.assert_not_called()
+        store.claim_next.assert_not_called()
         scan.assert_not_called()
 
     def run_upload(self, folder, record=None, error=None):

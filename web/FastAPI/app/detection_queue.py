@@ -7,6 +7,7 @@ import threading
 from datetime import datetime, timedelta
 from contextlib import contextmanager
 from pathlib import Path
+from app import detection_metrics
 
 
 class QueueFull(Exception):
@@ -32,6 +33,7 @@ class DetectionTaskStore:
                 if name not in columns:
                     connection.execute(f'ALTER TABLE detection_tasks ADD COLUMN {name} TEXT')
             connection.execute("UPDATE detection_tasks SET client_seen_at=created_at WHERE client_seen_at IS NULL")
+            detection_metrics.initialize(connection)
 
     @contextmanager
     def _connect(self):
@@ -48,7 +50,7 @@ class DetectionTaskStore:
         with self._lock, self._connect() as connection:
             connection.execute("UPDATE detection_tasks SET status='queued',progress_json=NULL WHERE status='running'")
 
-    def create(self, task_id, filename, file_path, capacity):
+    def create(self, task_id, filename, file_path, capacity, sha256=None):
         now = datetime.now().isoformat(timespec='microseconds')
         with self._lock, self._connect() as connection:
             connection.execute('BEGIN IMMEDIATE')
@@ -61,6 +63,7 @@ class DetectionTaskStore:
             connection.execute('INSERT INTO detection_tasks(task_id,status,filename,file_path,created_at,updated_at) VALUES(?,?,?,?,?,?)',
                                (task_id, 'queued', filename, str(file_path), now, now))
             connection.execute('UPDATE detection_tasks SET client_seen_at=? WHERE task_id=?', (now, task_id))
+            detection_metrics.begin(connection, task_id, sha256)
             return dict(connection.execute('SELECT * FROM detection_tasks WHERE task_id=?', (task_id,)).fetchone())
 
     def get(self, task_id):
@@ -105,6 +108,7 @@ class DetectionTaskStore:
             for row in rows:
                 connection.execute("UPDATE detection_tasks SET status='cancelled',error=?,updated_at=? WHERE task_id=? AND status='queued'",
                                    ('页面已离开，排队任务已取消', now.isoformat(), row['task_id']))
+                detection_metrics.finish(connection, row['task_id'], status='cancelled')
             return [row['file_path'] for row in rows]
 
     def update_progress(self, task_id, progress):
@@ -125,13 +129,30 @@ class DetectionTaskStore:
 
     def set_status(self, task_id, status, error=None):
         with self._lock, self._connect() as connection:
-            connection.execute('UPDATE detection_tasks SET status=?,error=?,updated_at=? WHERE task_id=?',
-                               (status, error, datetime.now().isoformat(), task_id))
+            changed = connection.execute('UPDATE detection_tasks SET status=?,error=?,updated_at=? WHERE task_id=?',
+                                         (status, error, datetime.now().isoformat(), task_id))
+            if changed.rowcount and status in ('failed', 'cancelled'):
+                detection_metrics.finish(connection, task_id, status=status)
 
     def complete(self, task_id, result):
         with self._lock, self._connect() as connection:
-            connection.execute("UPDATE detection_tasks SET status='completed',result_json=?,error=NULL,updated_at=? WHERE task_id=?",
-                               (json.dumps(result, ensure_ascii=False, default=str), datetime.now().isoformat(), task_id))
+            changed = connection.execute("UPDATE detection_tasks SET status='completed',result_json=?,error=NULL,updated_at=? WHERE task_id=?",
+                                         (json.dumps(result, ensure_ascii=False, default=str), datetime.now().isoformat(), task_id))
+            if changed.rowcount:
+                detection_metrics.finish(connection, task_id, result)
+
+    def record_direct_result(self, task_id, result):
+        with self._lock, self._connect() as connection:
+            detection_metrics.finish(connection, task_id, result)
+
+    def detection_summary(self):
+        with self._lock, self._connect() as connection:
+            return detection_metrics.summary(connection)
+
+    def record_hash_query(self, outcome):
+        with self._lock, self._connect() as connection:
+            connection.execute('INSERT INTO hash_query_metrics(queried_at,outcome) VALUES (?,?)',
+                               (detection_metrics.now_iso(), outcome))
 
     def cleanup(self):
         cutoff = (datetime.now() - timedelta(seconds=self.ttl_seconds)).isoformat()

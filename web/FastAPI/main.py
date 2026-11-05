@@ -268,6 +268,11 @@ async def stats() -> dict:
     return stats_cache
 
 
+@app.get("/detection-stats")
+async def detection_stats() -> dict:
+    return await asyncio.to_thread(task_store.detection_summary)
+
+
 @app.get("/samples/{sha256}")
 async def sample_by_sha256(sha256: str) -> dict:
     """Look up a malicious sample by its content hash for the web search bar."""
@@ -276,7 +281,9 @@ async def sample_by_sha256(sha256: str) -> dict:
     try:
         record = await asyncio.to_thread(sample_repository.find_malicious, sha256)
     except RuntimeError as error:
+        await asyncio.to_thread(task_store.record_hash_query, 'failed')
         raise HTTPException(status_code=503, detail="样本库暂不可用") from error
+    await asyncio.to_thread(task_store.record_hash_query, 'hit' if record else 'miss')
     if not record:
         raise HTTPException(status_code=404, detail="样本库中未找到该 SHA256")
     public_record = SampleRepository.public_fields(record)
@@ -463,7 +470,7 @@ async def detect(response: Response, file: UploadFile = File(...), x_detection_i
         file_path.unlink(missing_ok=True)
         reason = info["pe_info"].get("reason") or "不是有效PE样本"
         logger.info("非PE文件: filename=%s reason=%s", info["filename"], reason)
-        return _payload(
+        result = _payload(
             info,
             detection_status="unsupported",
             detection_mode="rejected",
@@ -472,6 +479,8 @@ async def detect(response: Response, file: UploadFile = File(...), x_detection_i
             model_skipped=True,
             database_hit=False,
         )
+        await asyncio.to_thread(task_store.record_direct_result, task_id, result)
+        return result
 
     # A known sample must not wait behind inference or fail because its queue
     # is full. Hashes are already calculated while saving the upload.
@@ -482,12 +491,14 @@ async def detect(response: Response, file: UploadFile = File(...), x_detection_i
         raise
     if known_result is not None:
         await asyncio.to_thread(file_path.unlink, missing_ok=True)
+        await asyncio.to_thread(task_store.record_direct_result, task_id, known_result)
         logger.info('上传样本命中数据库，直接返回且不进入模型队列: task_id=%s', task_id)
         return known_result
 
     try:
         row = await asyncio.to_thread(task_store.create, task_id, info['filename'], file_path,
-                                      settings.max_queued_scans + settings.max_concurrent_scans)
+                                      settings.max_queued_scans + settings.max_concurrent_scans,
+                                      sha256=info['sha256'])
     except QueueFull:
         file_path.unlink(missing_ok=True)
         raise HTTPException(status_code=429, detail='检测服务繁忙，请稍后重试', headers={'Retry-After': '5'})
