@@ -221,6 +221,8 @@ def _bn_functional_probe(ext, sample_path=None):
         import binaryninja as bn
     except Exception as e:
         return {"usable": False, "reason": "无法 import binaryninja: %s" % e}
+    if sample_path and os.path.isfile(sample_path):
+        sample_path, _ = _ascii_path(sample_path)
     if not sample_path or not os.path.isfile(sample_path):
         return {"usable": None, "reason": "没有可探测的样本"}
     try:
@@ -300,18 +302,50 @@ def _fingerprint(arr):
     }
 
 
-def _extract_all(pe_path, ext):
-    """跑真实生产路径：extract_fast（无 BN）+ extract_de_only（BN）。"""
+
+# BinaryNinja 打不开含非 ASCII 字符的路径 —— 同一个样本，ASCII 路径能分析、
+# 中文路径直接 "Unable to create new BinaryView"。样本库在 E:\nkproject\00 样本库\...
+# 这种路径下，D/E 抽取会 100% 失败。故分析前统一镜像到 ASCII 临时路径。
+_MIRROR_DIR = [None]
+
+
+def _ascii_path(pe_path):
+    """返回可被 BinaryNinja 打开的路径：非 ASCII 路径则复制到 ASCII 临时目录。"""
+    try:
+        if all(ord(c) < 128 for c in pe_path):
+            return pe_path, False
+    except Exception:
+        pass
+    import shutil
+    import tempfile
+    if _MIRROR_DIR[0] is None:
+        _MIRROR_DIR[0] = tempfile.mkdtemp(prefix="bn_fixture_")
+    base = os.path.basename(pe_path)
+    dst = os.path.join(_MIRROR_DIR[0], base)
+    if not os.path.exists(dst):
+        shutil.copyfile(pe_path, dst)
+    return dst, True
+def _extract_all(pe_path, ext, fast_only=False):
+    """跑真实生产路径：extract_fast（无 BN）+ extract_de_only（BN）。
+
+    fast_only=True 时只跑 fast 路径 —— 因为「PE → BN 实时分析」这一步**不确定**
+    （多线程分析 / 函数发现顺序 / 机器负载），D/E 特征无法逐位复现；
+    D/E 的确定性门禁请用 bndb 锚定模式（bndb / verify-bndb 子命令）。
+    """
     feats = {}
     errs = {}
+    analyze_path, mirrored = _ascii_path(pe_path)
+    if mirrored:
+        errs["_mirror"] = "非 ASCII 路径 → 已镜像到 %s" % analyze_path
     try:
-        feats.update(ext.extract_fast(pe_path))
+        feats.update(ext.extract_fast(analyze_path))
     except Exception as e:
         errs["fast"] = "%s: %s" % (type(e).__name__, e)
-    try:
-        feats.update(ext.extract_de_only(pe_path))
-    except Exception as e:
-        errs["de"] = "%s: %s" % (type(e).__name__, e)
+    if not fast_only:
+        try:
+            feats.update(ext.extract_de_only(analyze_path))
+        except Exception as e:
+            errs["de"] = "%s: %s" % (type(e).__name__, e)
     return feats, errs
 
 
@@ -324,6 +358,8 @@ def _activate_license(path=None):
 
     许可无效时 BN 不会抛错，只是静默不生效（core_license_count() 仍为 0），
     随后创建 BinaryView 会失败。故这里把结果显式报出来。
+    ⚠ BN 的许可校验**需要联网**（访问 Vector35 许可服务器）：断网时同样表现为
+       "Unable to create new BinaryView"，但许可本身是好的。别误判成许可过期。
     """
     try:
         import binaryninja as bn
@@ -335,6 +371,9 @@ def _activate_license(path=None):
     env = os.environ.get("CODEFENDER_BN_LICENSE")
     if env:
         cands.append(env)
+    # 容器里 start_codefender.sh 用的就是这个路径（COPY license.txt 过去）
+    cands.append(os.path.join(os.path.expanduser("~"), ".binaryninja", "license.dat"))
+    # Windows GUI 的存放位置
     cands.append(os.path.join(os.path.expanduser("~"), "AppData", "Roaming",
                               "Binary Ninja", "license.dat"))
     cands.append(os.path.join(REPO, "license.txt"))
@@ -359,7 +398,7 @@ def _activate_license(path=None):
         if n:
             return {"available": True, "source": c, "license_count": n,
                     "serial": bn.core_serial(), "tried": tried}
-        tried.append("%s (BN 未接受：许可无效或已过期)" % c)
+        tried.append("%s (core_license_count 未变化 —— 该字段不可信, 真正判据见 _bn_functional_probe)" % c)
     return {"available": False, "reason": "没有可用的许可", "tried": tried}
 
 
@@ -388,12 +427,21 @@ def _env_info(license=None, probe_path=None):
 def cmd_capture(args):
     _ensure_deps(args.pkgs)
     _lic = _activate_license(args.license)
-    if _lic.get("available"):
-        print("[bn] 许可已载入: %s (serial=%s)" % (_lic.get("source"), _lic.get("serial")))
-        print("     注意：license_count 不可信，仍需确认能否创建 BinaryView")
+    _probe_path = None
+    try:
+        with open(args.samples, "r", encoding="utf-8") as f:
+            _probe_path = json.load(f)["samples"][0]["path"]
+    except Exception:
+        pass
+    _probe = {} if args.fast_only else _bn_functional_probe(None, _probe_path)
+    if args.fast_only:
+        print("[bn] --fast-only: 不需要 BinaryNinja")
+    elif _probe.get("usable"):
+        print("[bn] BinaryNinja 可用（功能性探测通过，%d 个函数）" % _probe.get("functions", 0))
     else:
-        print("[bn] 警告: BinaryNinja 无有效许可 → D/E 视角无法采集")
-        print("     原因: %s" % _lic.get("reason"))
+        print("[bn] 警告: BinaryNinja 不可用 → D/E 视角无法采集")
+        print("     探测结果: %s" % _probe.get("reason"))
+        print("     可能原因: ① 许可无效 ② 断网（许可校验要访问 Vector35 服务器）③ 路径含非 ASCII 字符（BN 打不开）")
         for x in _lic.get("tried", []):
             print("       - %s" % x)
     import numpy as np
@@ -421,7 +469,7 @@ def cmd_capture(args):
             entries.append(rec)
             print("[capture] %3d/%d %s  !! 样本不存在" % (i, len(samples), os.path.basename(p)))
             continue
-        feats, errs = _extract_all(p, ext)
+        feats, errs = _extract_all(p, ext, fast_only=args.fast_only)
         rec["errors"] = errs
         for fid in sorted(feats):
             try:
@@ -498,7 +546,7 @@ def cmd_verify(args):
                 diffs.append((fid, "sha256 不一致"))
             elif cur["dim"] != ref["dim"] or cur["dtype"] != ref["dtype"]:
                 diffs.append((fid, "维度/dtype 不一致"))
-        extra = [fid for fid in feats if fid not in e["features"]]
+        extra = [] if args.fast_only else [fid for fid in feats if fid not in e["features"]]
         if diffs or extra:
             bad_samples += 1
             n_bad += len(diffs) + len(extra)
@@ -521,6 +569,126 @@ def cmd_verify(args):
     return 0
 
 
+
+# ── bndb 锚定模式 ────────────────────────────────────────────────────────
+# PE → BN 实时分析这一步是**不确定**的（多线程分析、函数发现顺序、机器负载），
+# 实测同一批样本两次采集，D/E 特征有 25/88 的样本不一致（124 个指纹不同），
+# 且差异集中在耗时较长的样本上。
+# 而「固定 .bndb → 抽特征」是**确定**的（实测 36/36 逐位一致）。
+# 所以 Phase 1 的 D/E 验收必须锚在 .bndb 上 —— 这也正是训练管线的真实结构
+#（PE → bndb 缓存 → 从 bndb 抽特征）。
+
+
+def _bndb_files(d):
+    import glob
+    return sorted(glob.glob(os.path.join(d, "*.bndb")))
+
+
+def _extract_from_bndb(bndb_path, ext):
+    bv = ext.bn.load(bndb_path)
+    if bv is None:
+        raise RuntimeError("bn.load 返回 None")
+    try:
+        feats = {}
+        feats.update(ext._extract_disassembly(bv))
+        feats.update(ext._extract_graphs(bv))
+        return feats
+    finally:
+        try:
+            bv.file.close()
+        except Exception:
+            pass
+
+
+def cmd_bndb(args):
+    """从 .bndb 目录采集 D/E 特征指纹（确定性锚点）。"""
+    _ensure_deps(args.pkgs)
+    _activate_license(args.license)
+    import binaryninja as bn
+    BinjaExtractor = _load_extractor()
+    ext = BinjaExtractor.__new__(BinjaExtractor)
+    ext.bn = bn
+    ext._headless = True
+    files = _bndb_files(args.dir)
+    if not files:
+        print("[bndb] 目录里没有 .bndb: %s" % args.dir)
+        return 2
+    entries = []
+    t0 = time.time()
+    for i, f in enumerate(files, 1):
+        rec = {"id": os.path.basename(f), "path": f, "features": {}, "errors": {}}
+        try:
+            feats = _extract_from_bndb(f, ext)
+            for fid in sorted(feats):
+                rec["features"][fid] = _fingerprint(feats[fid])
+        except Exception as e:
+            rec["errors"]["bndb"] = "%s: %s" % (type(e).__name__, e)
+        entries.append(rec)
+        print("[bndb] %3d/%d %-40s nfeat=%2d  %.1fs" % (
+            i, len(files), os.path.basename(f)[:40], len(rec["features"]), time.time() - t0))
+    man = {
+        "schema": "codefender-bn-baseline/1",
+        "source": "bndb",
+        "created": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "env": _env_info(args.license),
+        "bndb_dir": os.path.abspath(args.dir),
+        "samples": entries,
+    }
+    out = os.path.abspath(args.out)
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    with open(out, "w", encoding="utf-8") as f:
+        json.dump(man, f, ensure_ascii=False, indent=1)
+    print("[bndb] 写入 %s：%d 个 bndb / %d 个特征指纹"
+          % (out, len(entries), sum(len(e["features"]) for e in entries)))
+    return 0
+
+
+def cmd_verify_bndb(args):
+    """校验 bndb 锚定的 D/E 特征是否逐位不变。"""
+    _ensure_deps(args.pkgs)
+    _activate_license(args.license)
+    import binaryninja as bn
+    BinjaExtractor = _load_extractor()
+    with open(args.manifest, "r", encoding="utf-8") as f:
+        man = json.load(f)
+    ext = BinjaExtractor.__new__(BinjaExtractor)
+    ext.bn = bn
+    ext._headless = True
+    n_feat = 0
+    n_bad = 0
+    bad = 0
+    for i, e in enumerate(man["samples"], 1):
+        try:
+            feats = _extract_from_bndb(e["path"], ext)
+        except Exception as ex:
+            print("[verify] %3d/%d FAIL %s: %s" % (i, len(man["samples"]), e["id"], ex))
+            bad += 1
+            continue
+        diffs = []
+        for fid, ref in e["features"].items():
+            n_feat += 1
+            if fid not in feats:
+                diffs.append((fid, "缺失"))
+                continue
+            cur = _fingerprint(feats[fid])
+            if cur["sha256"] != ref["sha256"]:
+                diffs.append((fid, "sha256 不一致"))
+        if diffs:
+            bad += 1
+            n_bad += len(diffs)
+            print("[verify] %3d/%d FAIL %s" % (i, len(man["samples"]), e["id"]))
+            for fid, why in diffs:
+                print("           - %s: %s" % (fid, why))
+        else:
+            print("[verify] %3d/%d OK   %s" % (i, len(man["samples"]), e["id"][:40]))
+    print("")
+    print("样本 %d 个，其中 %d 个有差异；共比对 %d 个特征，差异 %d 个"
+          % (len(man["samples"]), bad, n_feat, n_bad))
+    if bad:
+        print("结论: FAIL 特征未逐位不变（Phase 1 的验收不通过）")
+        return 1
+    print("结论: OK 特征逐位不变")
+    return 0
 def main():
     ap = argparse.ArgumentParser(description="BN 基线特征快照（golden fixture）")
     sub = ap.add_subparsers(dest="cmd")
@@ -538,6 +706,8 @@ def main():
     pc.add_argument("--arrays", default=None, help="全量数组输出目录（建议放仓库外）")
     pc.add_argument("--pkgs", default=None, help="numpy/pefile 所在目录")
     pc.add_argument("--license", default=None, help="BN 许可文件（默认自动找）")
+    pc.add_argument("--fast-only", action="store_true",
+                    help="只抽 fast 路径(A/B/C/F/G/H)；D/E 的确定性门禁用 bndb 模式")
     pc.add_argument("--require-de", action="store_true",
                     help="要求 D/E 视角必须采集成功（BN 不可用时直接失败，用于 CI 门禁）")
     pc.set_defaults(func=cmd_capture)
@@ -546,7 +716,20 @@ def main():
     pv.add_argument("--manifest", required=True)
     pv.add_argument("--pkgs", default=None)
     pv.add_argument("--license", default=None, help="BN 许可文件（默认自动找）")
+    pv.add_argument("--fast-only", action="store_true",
+                    help="只验 fast 路径特征（与 capture --fast-only 对应）")
     pv.set_defaults(func=cmd_verify)
+    pb = sub.add_parser("bndb", help="从 .bndb 采集 D/E 特征指纹（确定性锚点）")
+    pb.add_argument("--dir", required=True, help="含 .bndb 的目录")
+    pb.add_argument("--out", required=True)
+    pb.add_argument("--pkgs", default=None)
+    pb.add_argument("--license", default=None)
+    pb.set_defaults(func=cmd_bndb)
+    pvb = sub.add_parser("verify-bndb", help="校验 bndb 锚定的 D/E 特征")
+    pvb.add_argument("--manifest", required=True)
+    pvb.add_argument("--pkgs", default=None)
+    pvb.add_argument("--license", default=None)
+    pvb.set_defaults(func=cmd_verify_bndb)
     args = ap.parse_args()
     if not getattr(args, "func", None):
         ap.print_help()

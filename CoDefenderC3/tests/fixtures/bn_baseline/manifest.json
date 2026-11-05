@@ -1,24 +1,19 @@
 {
  "schema": "codefender-bn-baseline/1",
- "created": "2026-11-05T20:46:41",
+ "created": "2026-11-05T21:39:27",
  "env": {
-  "python": "3.10.10",
-  "platform": "Windows-10-10.0.19045",
-  "numpy": "1.26.4",
-  "binaryninja": "5.2.8722",
+  "python": "3.12.14",
+  "platform": "Windows-10-10.0.19045-SP0",
+  "numpy": "2.3.5",
+  "binaryninja": null,
   "bn_license": {
-   "available": true,
-   "source": "C:\\Users\\lenovo\\AppData\\Roaming\\Binary Ninja\\license.dat",
-   "license_count": 1,
-   "serial": "0fe0e1fe9acbc4670fa5f0905be71890",
-   "tried": [
-    "C:\\Users\\lenovo\\AppData\\Roaming\\Binary Ninja\\license.dat"
-   ]
+   "available": false,
+   "reason": "无法 import binaryninja"
   },
-  "bn_licensed": true,
+  "bn_licensed": false,
   "bn_functional": {
    "usable": false,
-   "reason": "Exception: Unable to create new BinaryView"
+   "reason": "无法 import binaryninja: No module named 'binaryninja'"
   },
   "bn_usable": false
  },
@@ -161,8 +156,8 @@
     "C04": {
      "dim": 256,
      "dtype": "float32",
-     "sha256": "addc86639f6f38e399b3eeec6a172adc2e4f740978134faf3d607cde43036b81",
-     "sum": 11.8284,
+     "sha256": "3f2272fe68ea1dba89eabce6107b953b91d26cd79c2928470f9bc2126bfca214",
+     "sum": 11.828402,
      "nz": 175
     },
     "F01": {
@@ -176,7 +171,7 @@
      "dim": 196608,
      "dtype": "float32",
      "sha256": "f00c9f0a10059edad7dcf6985b49500533ce57a9b714b41282e5da4f19c72e06",
-     "sum": 30575.517578,
+     "sum": 30575.515625,
      "nz": 148256
     },
     "F03": {
@@ -244,9 +239,8 @@
     }
    },
    "errors": {
-    "de": "OSError: [WinError -529697949] Windows Error 0xe06d7363"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\000028670db2a674.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\000028670db2a67449efeaa1a6e96afe1124094bb6123144780c9eca19767b61"
+   }
   },
   {
    "id": "001830912328a236",
@@ -468,9 +462,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\001830912328a236.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\001830912328a236128244726a75b32f7d668afbb6c4130f7f0a9d80433d697e"
+   }
   },
   {
    "id": "002eae3bb1e9592d",
@@ -692,9 +685,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\002eae3bb1e9592d.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\002eae3bb1e9592dd233df1b67a975294a5de91cbc86dc47c8077991118b15b8"
+   }
   },
   {
    "id": "00469f797a5c872b",
@@ -841,14 +833,14 @@
      "dim": 65536,
      "dtype": "float32",
      "sha256": "2222238a864747fc620b498e46b0cbf96f84439fbd46d111adc7799bcfa5f9c8",
-     "sum": 27702.490234,
+     "sum": 27702.492188,
      "nz": 55988
     },
     "F02": {
      "dim": 196608,
      "dtype": "float32",
      "sha256": "f0f9ea365f8b7ca4a70633b13b2513653261d3a869c7192b7f7326a67633a276",
-     "sum": 87800.976562,
+     "sum": 87800.984375,
      "nz": 169866
     },
     "F03": {
@@ -862,7 +854,7 @@
      "dim": 65536,
      "dtype": "float32",
      "sha256": "4009ebdf0b9c0678e8e94aeb06e98b3ba042e10232669c5b514173adc45472c9",
-     "sum": 13461.822266,
+     "sum": 13461.823242,
      "nz": 59898
     },
     "G01": {
@@ -916,9 +908,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\00469f797a5c872b.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\00469f797a5c872bb6e7eed7cda8b10442347ecc78ad8bbfdddf9f8097e9550f"
+   }
   },
   {
    "id": "005a2d8d07d61a5e",
@@ -1140,9 +1131,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\005a2d8d07d61a5e.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\005a2d8d07d61a5e579b0433280f4c01b8548cc889e4a06c2781f89c889fd5cf"
+   }
   },
   {
    "id": "006f6e316cd1d08e",
@@ -1296,14 +1286,14 @@
      "dim": 196608,
      "dtype": "float32",
      "sha256": "c1ec4644d43cabf4d3cc4462b0a1acef2c5244f22c4ba907c568f3dd9a881adc",
-     "sum": 22121.507812,
+     "sum": 22121.505859,
      "nz": 48887
     },
     "F03": {
      "dim": 65536,
      "dtype": "float32",
      "sha256": "1b1e7dea6087008bf5faf3e4514144bc2e7494706d8474b89a38935eb04eda70",
-     "sum": 1794.054932,
+     "sum": 1794.05481,
      "nz": 14109
     },
     "F04": {
@@ -1364,9 +1354,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\006f6e316cd1d08e.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\006f6e316cd1d08e57e8ffd77db18d062eb67bfb51f391bf670f2b87e4080a5f"
+   }
   },
   {
    "id": "0084992f8fcbbdc1",
@@ -1520,7 +1509,7 @@
      "dim": 196608,
      "dtype": "float32",
      "sha256": "fce670f9c9cb81ee27af904413cd82b9cde4879531cf717dfdd07defce0c8ad7",
-     "sum": 913.231384,
+     "sum": 913.231445,
      "nz": 2439
     },
     "F03": {
@@ -1588,9 +1577,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\0084992f8fcbbdc1.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\0084992f8fcbbdc13f02db4c61ff387095c02e9a0791fc5e425cf06d38930a45"
+   }
   },
   {
    "id": "0099d841c61318e8",
@@ -1737,7 +1725,7 @@
      "dim": 65536,
      "dtype": "float32",
      "sha256": "e60a0ae4b277238c11a5f16d2cc485c72b8f95b63f3a5acbf216247ec3274625",
-     "sum": 26575.740234,
+     "sum": 26575.742188,
      "nz": 54975
     },
     "F02": {
@@ -1812,9 +1800,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\0099d841c61318e8.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\0099d841c61318e850a17a5f9062c49136f4add2d3260c34510bd4f9421500ac"
+   }
   },
   {
    "id": "00b25562138bea14",
@@ -1968,7 +1955,7 @@
      "dim": 196608,
      "dtype": "float32",
      "sha256": "e9f63704de702c1a4cb64b1520de5d2ef2e924f0a47a247d3e39897d482f58e0",
-     "sum": 73893.710938,
+     "sum": 73893.703125,
      "nz": 162905
     },
     "F03": {
@@ -1982,7 +1969,7 @@
      "dim": 65536,
      "dtype": "float32",
      "sha256": "0ec3e5708d94d56ec1e098907858022e48163e06d786b81805240e82136d9e8f",
-     "sum": 19809.636719,
+     "sum": 19809.634766,
      "nz": 63433
     },
     "G01": {
@@ -2036,9 +2023,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\00b25562138bea14.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\00b25562138bea14776b82445621885e9c84c8627d8fa159613847f7d8a205eb"
+   }
   },
   {
    "id": "00c931e16cf1a517",
@@ -2192,14 +2178,14 @@
      "dim": 196608,
      "dtype": "float32",
      "sha256": "b08b4cdfa012ae011ec311225dfca883f982e8bdb5f604845cd04d96b1ccef0a",
-     "sum": 34935.871094,
+     "sum": 34935.867188,
      "nz": 80317
     },
     "F03": {
      "dim": 65536,
      "dtype": "float32",
      "sha256": "10c0a97db689e57c57f8442ba3fbdf8dc6fba373bbccf4b9aa543d75ac296fce",
-     "sum": 1455.144897,
+     "sum": 1455.144775,
      "nz": 12240
     },
     "F04": {
@@ -2260,9 +2246,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\00c931e16cf1a517.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\00c931e16cf1a5179c24d36ddd502df73b8e4286a079e185ea4f9b820d345557"
+   }
   },
   {
    "id": "00ded96137001075",
@@ -2416,14 +2401,14 @@
      "dim": 196608,
      "dtype": "float32",
      "sha256": "f822358c25ff80f507df8cc3a463614d6de581d11eeddf7ae9680ad703c420d1",
-     "sum": 16578.726562,
+     "sum": 16578.724609,
      "nz": 45692
     },
     "F03": {
      "dim": 65536,
      "dtype": "float32",
      "sha256": "c64a44f9e0d41eb1ccb20ba34bcf0862d5761b506a5eab55cafc166b62c15ad7",
-     "sum": 399.397034,
+     "sum": 399.396973,
      "nz": 1249
     },
     "F04": {
@@ -2484,9 +2469,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\00ded96137001075.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\00ded96137001075171b9a676089717332fb35ebe24527fe6e9c221085a94916"
+   }
   },
   {
    "id": "00f76e52a31a5a61",
@@ -2708,9 +2692,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\00f76e52a31a5a61.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\00f76e52a31a5a616845f059fd9b8e773b9a6dde7c4dfbedb01e549170d7c1a4"
+   }
   },
   {
    "id": "010ff63e198f5e6d",
@@ -2932,9 +2915,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\010ff63e198f5e6d.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\010ff63e198f5e6dbdfcf6bf753a7e3d28017420a7b2460d153fe51d19c853f2"
+   }
   },
   {
    "id": "01294e961f062e1c",
@@ -3081,7 +3063,7 @@
      "dim": 65536,
      "dtype": "float32",
      "sha256": "99eb0617317526754c14d4ae9494b2dc33d86fe94c8efcb390597b10fe7977c9",
-     "sum": 7964.646973,
+     "sum": 7964.647461,
      "nz": 21938
     },
     "F02": {
@@ -3095,7 +3077,7 @@
      "dim": 65536,
      "dtype": "float32",
      "sha256": "98567c10bf137415f02ef6de2e32735459179f6eae920487563a364feadc7986",
-     "sum": 2500.811523,
+     "sum": 2500.811768,
      "nz": 8353
     },
     "F04": {
@@ -3156,9 +3138,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\01294e961f062e1c.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\01294e961f062e1cd9bc6461075df4cf615c8f12f7c7c51626e787d200199e2b"
+   }
   },
   {
    "id": "01424061567c1953",
@@ -3312,14 +3293,14 @@
      "dim": 196608,
      "dtype": "float32",
      "sha256": "17637649a00dbb0b33858f8bf46d07c918a9cc77512e0dfa822f34d5dede2d05",
-     "sum": 74526.15625,
+     "sum": 74526.148438,
      "nz": 174423
     },
     "F03": {
      "dim": 65536,
      "dtype": "float32",
      "sha256": "0c89209f349115e0ef43496eb60f960b3bfb41ad0b6e1e6e1a396591a35df195",
-     "sum": 1984.965942,
+     "sum": 1984.966064,
      "nz": 44139
     },
     "F04": {
@@ -3380,9 +3361,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\01424061567c1953.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\01424061567c1953f22d39d2158545e4dcd08fe62e4677f29d3c1e4a4bced835"
+   }
   },
   {
    "id": "015befb2ed552f58",
@@ -3604,9 +3584,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\015befb2ed552f58.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\015befb2ed552f58ed2a28010f2c8ceabfb2270a85d5f9c7dc2c5150b5589cdd"
+   }
   },
   {
    "id": "01742049534047b9",
@@ -3753,28 +3732,28 @@
      "dim": 65536,
      "dtype": "float32",
      "sha256": "6162f54ef30f9ac1700ab49dda93322b0d15ecde37e665d73fe1691c1f0cd632",
-     "sum": 27531.177734,
+     "sum": 27531.175781,
      "nz": 58664
     },
     "F02": {
      "dim": 196608,
      "dtype": "float32",
      "sha256": "d6cd2d78fcedd593aeb1505af289a65f50dc707dc0a4fc615958007a25cb6681",
-     "sum": 84194.5,
+     "sum": 84194.492188,
      "nz": 179171
     },
     "F03": {
      "dim": 65536,
      "dtype": "float32",
      "sha256": "c4adbc832c4960a33e691d621023153c3313bfdacb7ce39e1d7bf1eb1f23dd3d",
-     "sum": 1942.369995,
+     "sum": 1942.370117,
      "nz": 62534
     },
     "F04": {
      "dim": 65536,
      "dtype": "float32",
      "sha256": "638d8063f25115f661c79b16979ad74d819f003710315ca1f84643e902e1a7f1",
-     "sum": 36803.410156,
+     "sum": 36803.40625,
      "nz": 65144
     },
     "G01": {
@@ -3828,9 +3807,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\01742049534047b9.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\01742049534047b956328b9a0ca57f720e957edb684a6a0d70acc992e2b684fc"
+   }
   },
   {
    "id": "018bdd9af1fc7ba4",
@@ -3969,7 +3947,7 @@
     "C04": {
      "dim": 256,
      "dtype": "float32",
-     "sha256": "97c79db24ca3607d7f731aaed42c37d7c57d7eafe6de89b6aab958f71fffc02a",
+     "sha256": "628ddb7b949601c8c959e608d01dc045a1777084fa46baec83abc624d54773f7",
      "sum": 11.218316,
      "nz": 163
     },
@@ -3984,7 +3962,7 @@
      "dim": 196608,
      "dtype": "float32",
      "sha256": "9f92c5463c6781a1e92d1716ec0fd839189a40a4945582d7ac604c816bbd0fa3",
-     "sum": 88623.773438,
+     "sum": 88623.757812,
      "nz": 177829
     },
     "F03": {
@@ -4052,9 +4030,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\018bdd9af1fc7ba4.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\018bdd9af1fc7ba45ea421fc64b18d2a3f6abab2e6a080cc65d28b7f5accb774"
+   }
   },
   {
    "id": "01a1acc1afc03cf3",
@@ -4208,7 +4185,7 @@
      "dim": 196608,
      "dtype": "float32",
      "sha256": "1ec47c20185205ed18ba421e1a9a3fd1080a5b363b1d9b794617e3484efbb31b",
-     "sum": 61684.851562,
+     "sum": 61684.859375,
      "nz": 142776
     },
     "F03": {
@@ -4276,9 +4253,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\01a1acc1afc03cf3.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\01a1acc1afc03cf31c54a625d6e73cd24d6876d50a6f041d82f9552fdc880fba"
+   }
   },
   {
    "id": "01c0b7cc67ff224b",
@@ -4417,7 +4393,7 @@
     "C04": {
      "dim": 256,
      "dtype": "float32",
-     "sha256": "56f0e2dceee873da3d5d724c6e0d207649b8edebd6f97ca26d09ff663caa591f",
+     "sha256": "62573f814e1a767ecb778b86cd1860258514caf042795ab0bf9c32d5b79283bb",
      "sum": 14.948267,
      "nz": 251
     },
@@ -4432,7 +4408,7 @@
      "dim": 196608,
      "dtype": "float32",
      "sha256": "f23cb4009b38d278f2d7c12127f5332323618045162cedcf5bce63d8f753d86d",
-     "sum": 24769.542969,
+     "sum": 24769.539062,
      "nz": 53382
     },
     "F03": {
@@ -4500,9 +4476,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\01c0b7cc67ff224b.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\01c0b7cc67ff224b4be8cac5c5769b7f2ee3554b25d0e73e2dcf28fdebef094e"
+   }
   },
   {
    "id": "01d82ca3a1398746",
@@ -4663,7 +4638,7 @@
      "dim": 65536,
      "dtype": "float32",
      "sha256": "55fbfd23da49c505105029a21bddcf335fa42da09a64641af5133331b3052754",
-     "sum": 2142.35376,
+     "sum": 2142.353516,
      "nz": 21208
     },
     "F04": {
@@ -4724,9 +4699,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\01d82ca3a1398746.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\01d82ca3a1398746d5caaa4fd6a2017741b4f17131172e3a538c81996b0a805a"
+   }
   },
   {
    "id": "01e98b6a763f4a9f",
@@ -4880,7 +4854,7 @@
      "dim": 196608,
      "dtype": "float32",
      "sha256": "7dfe8362e0c59e171ee38cba145fb4dd9b292793ae33760b2e0319b781bd6bec",
-     "sum": 51094.3125,
+     "sum": 51094.304688,
      "nz": 154076
     },
     "F03": {
@@ -4948,9 +4922,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\01e98b6a763f4a9f.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\01e98b6a763f4a9fd329cd0179fa8c5f82c067c54cb88b0b11ba325e6b9d6b3d"
+   }
   },
   {
    "id": "020a0cb9baabd2c2",
@@ -5111,7 +5084,7 @@
      "dim": 65536,
      "dtype": "float32",
      "sha256": "d2ad205955b359417fb8e7b34baa918670c5727ac2c7c52e621a48ffa7280aac",
-     "sum": 3160.291748,
+     "sum": 3160.291992,
      "nz": 8927
     },
     "F04": {
@@ -5172,9 +5145,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\020a0cb9baabd2c2.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\020a0cb9baabd2c26feb71d10a4ce3535f2b532f76da767f69211115c43c3ded"
+   }
   },
   {
    "id": "02204be1334a5bb4",
@@ -5396,9 +5368,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\02204be1334a5bb4.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\02204be1334a5bb43184bdb7988516cd45b0281f63ecb35bad8384f4d83c2b2a"
+   }
   },
   {
    "id": "0235c37e4a21c64b",
@@ -5545,7 +5516,7 @@
      "dim": 65536,
      "dtype": "float32",
      "sha256": "50286f3c6b7ded397e705bd8720c8ee41feaf61ecde123d968d8af0ab50a6031",
-     "sum": 26758.277344,
+     "sum": 26758.275391,
      "nz": 58399
     },
     "F02": {
@@ -5566,7 +5537,7 @@
      "dim": 65536,
      "dtype": "float32",
      "sha256": "307063fee260e7cc71ccc0725eacedf777e3493947ef1a54a5b207db99bfc0e8",
-     "sum": 20358.763672,
+     "sum": 20358.761719,
      "nz": 63474
     },
     "G01": {
@@ -5620,9 +5591,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\0235c37e4a21c64b.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\0235c37e4a21c64b8076693b294fca0455f279fa8770d378a1fc40b77bc6c1bb"
+   }
   },
   {
    "id": "037b4f9c0e3935ab",
@@ -5769,14 +5739,14 @@
      "dim": 65536,
      "dtype": "float32",
      "sha256": "43f54d7ce23fc317158547024277fed3779850ace553aa6727bd735b2e2ba35f",
-     "sum": 25664.994141,
+     "sum": 25664.992188,
      "nz": 58832
     },
     "F02": {
      "dim": 196608,
      "dtype": "float32",
      "sha256": "362edef539a399c5fce6493daf4e60704ff0ee9a888b481fac276b4191a3769c",
-     "sum": 45505.5625,
+     "sum": 45505.558594,
      "nz": 107606
     },
     "F03": {
@@ -5844,9 +5814,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\037b4f9c0e3935ab.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\037b4f9c0e3935ab155dfcbeb24395f3211d4ec9ed9901bb9598cd41fa98a9b0"
+   }
   },
   {
    "id": "05c41852132c3de6",
@@ -5993,7 +5962,7 @@
      "dim": 65536,
      "dtype": "float32",
      "sha256": "9e4722d8e848333ad9b7f11ac8af0e5120ee39c378d4d538162183e9c813c077",
-     "sum": 15634.185547,
+     "sum": 15634.18457,
      "nz": 51456
     },
     "F02": {
@@ -6007,7 +5976,7 @@
      "dim": 65536,
      "dtype": "float32",
      "sha256": "c31907509d12c75642763e39ed88634a1b5e338014fbc739e0e5ce2b2e9752fe",
-     "sum": 1909.43335,
+     "sum": 1909.433228,
      "nz": 25205
     },
     "F04": {
@@ -6068,9 +6037,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\05c41852132c3de6.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\05c41852132c3de6313b9625c838f2e51dcfd9280af44e0478c41bfc0efd24e3"
+   }
   },
   {
    "id": "07a3f464e479003a",
@@ -6217,21 +6185,21 @@
      "dim": 65536,
      "dtype": "float32",
      "sha256": "5ee440842d1860f1d5f219a4f25dcc105eeb6cbeafa742a584c22a2dc51ebaba",
-     "sum": 23410.554688,
+     "sum": 23410.552734,
      "nz": 51812
     },
     "F02": {
      "dim": 196608,
      "dtype": "float32",
      "sha256": "f201e42df463e87951e4b6e9614ed7aa08e608d1dddfba4a3f0236b86515ddd4",
-     "sum": 34202.339844,
+     "sum": 34202.335938,
      "nz": 73509
     },
     "F03": {
      "dim": 65536,
      "dtype": "float32",
      "sha256": "ae5ecb771fdf0297dec544eaa8609dcad772d421d9d6fc51177a1c1480d31fb5",
-     "sum": 3586.027832,
+     "sum": 3586.028076,
      "nz": 31489
     },
     "F04": {
@@ -6292,9 +6260,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\07a3f464e479003a.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\07a3f464e479003a9c598cb8a8feab17cc55298d74de34315ae78c31256fb9c7"
+   }
   },
   {
    "id": "09c44cc1cbc7e714",
@@ -6516,9 +6483,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\09c44cc1cbc7e714.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\09c44cc1cbc7e714767565aa6db85d6d8d2a714323588a01e6d4b66dc15f7471"
+   }
   },
   {
    "id": "0b8a70425144c3f6",
@@ -6740,9 +6706,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\0b8a70425144c3f6.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\0b8a70425144c3f658f64d8c60654af777b207c2ff27d2f8bbdfe26a981c7334"
+   }
   },
   {
    "id": "0ba9dc1c4a71e9f7",
@@ -6964,9 +6929,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\0ba9dc1c4a71e9f7.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\0ba9dc1c4a71e9f779060aeb5e27b2d6ebd19cfb6a8978ca807094be9661d5e3"
+   }
   },
   {
    "id": "0cf99feafab7f893",
@@ -7127,7 +7091,7 @@
      "dim": 65536,
      "dtype": "float32",
      "sha256": "516620af34108f3c3be2abaca4dc41c63f02db7ed1c45bcb801e46be6763f243",
-     "sum": 1137.269531,
+     "sum": 1137.269409,
      "nz": 7677
     },
     "F04": {
@@ -7188,9 +7152,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\0cf99feafab7f893.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\0cf99feafab7f8939d93d0f61c2060580ee1b0573c02827c60f74a7cd6f4587f"
+   }
   },
   {
    "id": "0dc53a6c3e95331a",
@@ -7412,9 +7375,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\0dc53a6c3e95331a.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\0dc53a6c3e95331af9b5619f3dd457903fdc4a6c6b48943e26fb35261e2f79ab"
+   }
   },
   {
    "id": "101059c3f9705f60",
@@ -7636,9 +7598,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\101059c3f9705f60.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\101059c3f9705f6051397bf160709202f627319bbbae1052a3f28d8d8caad35d"
+   }
   },
   {
    "id": "16e13f83bf6278ae",
@@ -7785,14 +7746,14 @@
      "dim": 65536,
      "dtype": "float32",
      "sha256": "4d2761c24dd97ba95056a3e0343dc1266fef98320510d8287dc0fc53f5d1f121",
-     "sum": 25624.794922,
+     "sum": 25624.792969,
      "nz": 56177
     },
     "F02": {
      "dim": 196608,
      "dtype": "float32",
      "sha256": "103f589ad96dec9b7d0a67513c2c971772e757e2006c1d6291ba5ec0f7c552af",
-     "sum": 30991.287109,
+     "sum": 30991.28125,
      "nz": 72431
     },
     "F03": {
@@ -7860,9 +7821,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\16e13f83bf6278ae.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\16e13f83bf6278aed3fb200f72b057605c29853d28eb51235de3f416868dd485"
+   }
   },
   {
    "id": "175bd975b3f910a5",
@@ -8001,7 +7961,7 @@
     "C04": {
      "dim": 256,
      "dtype": "float32",
-     "sha256": "63be999374c99fe671e6a8b4d0625f17e72544ee7ed9f0cea302086eb9587eb1",
+     "sha256": "faa6cd3d572cc4ebf713046fc06f8d2a173d6644c7d63434ad61f7514fe60bdc",
      "sum": 14.392351,
      "nz": 238
     },
@@ -8009,14 +7969,14 @@
      "dim": 65536,
      "dtype": "float32",
      "sha256": "45b61c7018474481d60ec7b250f0ad395f0067b90f713c906198005477dd3113",
-     "sum": 22882.746094,
+     "sum": 22882.744141,
      "nz": 54803
     },
     "F02": {
      "dim": 196608,
      "dtype": "float32",
      "sha256": "fc8adc92caa61d49074ddede1628e28ac5ca11e3935bd3869765a31b560cb0b9",
-     "sum": 86303.671875,
+     "sum": 86303.65625,
      "nz": 181164
     },
     "F03": {
@@ -8084,9 +8044,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\175bd975b3f910a5.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\175bd975b3f910a5df32357833ebf59e521f23a32aec38c1e1c1d4f97366d8b2"
+   }
   },
   {
    "id": "1b5ae2e4e641bfaf",
@@ -8247,7 +8206,7 @@
      "dim": 65536,
      "dtype": "float32",
      "sha256": "79683b71c659be746f31cd5f60bcb8188908d2af7e9b63bed59716f092064b29",
-     "sum": 1543.458374,
+     "sum": 1543.458496,
      "nz": 4983
     },
     "F04": {
@@ -8308,9 +8267,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\1b5ae2e4e641bfaf.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\1b5ae2e4e641bfaf319440ee2410fb2f1d1ffd621bff404f1b44729bfa658bae"
+   }
   },
   {
    "id": "1c15236b7e933415",
@@ -8464,7 +8422,7 @@
      "dim": 196608,
      "dtype": "float32",
      "sha256": "342f154806bf561ae1a9a4911e729893c39251efa84d5709c3f871342cb8feb7",
-     "sum": 77913.71875,
+     "sum": 77913.703125,
      "nz": 175889
     },
     "F03": {
@@ -8532,9 +8490,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\1c15236b7e933415.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\1c15236b7e933415488bc16d721ebebfea242a73d84aa569e91989c46a073f74"
+   }
   },
   {
    "id": "1da96723d2a3e8e3",
@@ -8756,9 +8713,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\1da96723d2a3e8e3.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\1da96723d2a3e8e305f41fa531eb75be0eb49f1555c58c873d35f9f9d8159b3b"
+   }
   },
   {
    "id": "246fa0f69487f49d",
@@ -8897,36 +8853,36 @@
     "C04": {
      "dim": 256,
      "dtype": "float32",
-     "sha256": "611925658ff6fae93110e5062936bd8f7d01e130f67ea1a311c3a89c0c21a6a9",
-     "sum": 12.105188,
+     "sha256": "aecbbcd3d328ca33c194e7e995e79b5a1c31d40a74d36ad90b1ade8cf475668f",
+     "sum": 12.105189,
      "nz": 180
     },
     "F01": {
      "dim": 65536,
      "dtype": "float32",
      "sha256": "166d907dcfebf1f53066b6aa54489ff49c7dd2e5bdfa3add5b943ad4617bbcf2",
-     "sum": 24774.705078,
+     "sum": 24774.707031,
      "nz": 56272
     },
     "F02": {
      "dim": 196608,
      "dtype": "float32",
      "sha256": "649a615da1ead1c0997436a9bd9041db47659908d81ea3d0657a1a65299afbb7",
-     "sum": 73611.632812,
+     "sum": 73611.640625,
      "nz": 171056
     },
     "F03": {
      "dim": 65536,
      "dtype": "float32",
      "sha256": "6326b03fab4e337b8c7e2ec2c8f29382082d3a15fa60de0ca1fe0e10c9220136",
-     "sum": 2800.755371,
+     "sum": 2800.755127,
      "nz": 65536
     },
     "F04": {
      "dim": 65536,
      "dtype": "float32",
      "sha256": "63ca133321b6184a9daf297ad694ac64cee7b78a31bc1648b6bfecd9d72aaf36",
-     "sum": 38107.519531,
+     "sum": 38107.515625,
      "nz": 64320
     },
     "G01": {
@@ -8980,9 +8936,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\246fa0f69487f49d.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\246fa0f69487f49de3c18693e324726c29fabc6578f65c6d024676fcb7090c85"
+   }
   },
   {
    "id": "2538f397a08f78c7",
@@ -9143,7 +9098,7 @@
      "dim": 65536,
      "dtype": "float32",
      "sha256": "3c54a36e45c7f1a24bc56985ba71f18cf352d2254f658c2089fc5b29fa946277",
-     "sum": 1829.791382,
+     "sum": 1829.791504,
      "nz": 51238
     },
     "F04": {
@@ -9204,9 +9159,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\2538f397a08f78c7.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\2538f397a08f78c7ef872095da10982d0b854333323988e260f288b66f279010"
+   }
   },
   {
    "id": "26fd51a2814fc893",
@@ -9353,7 +9307,7 @@
      "dim": 65536,
      "dtype": "float32",
      "sha256": "ecb920afac62d616a2a1163c236c047cd45e3eb687d7bd8350a664d7e2688471",
-     "sum": 24444.230469,
+     "sum": 24444.232422,
      "nz": 57009
     },
     "F02": {
@@ -9428,9 +9382,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\26fd51a2814fc893.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\26fd51a2814fc8935090014061ee85f4549d595b841cd92489a52c92d042e9d3"
+   }
   },
   {
    "id": "2b5ebfcb39222eac",
@@ -9577,21 +9530,21 @@
      "dim": 65536,
      "dtype": "float32",
      "sha256": "7d53de169f86b90a51aba31a2ff49a266d0e485b01d13014a9360b3d81321eb0",
-     "sum": 26230.794922,
+     "sum": 26230.796875,
      "nz": 49181
     },
     "F02": {
      "dim": 196608,
      "dtype": "float32",
      "sha256": "ff8527fd623a769f97b237c8908941c1cdb49221bad2cdc2487d0781e57e0ebc",
-     "sum": 82956.59375,
+     "sum": 82956.578125,
      "nz": 120976
     },
     "F03": {
      "dim": 65536,
      "dtype": "float32",
      "sha256": "dab1b9fd87d75562be9156d2b7b8b58a86ba7bd0d25bc1c513e66868090e3a27",
-     "sum": 2241.101074,
+     "sum": 2241.101318,
      "nz": 21347
     },
     "F04": {
@@ -9652,9 +9605,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\2b5ebfcb39222eac.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\2b5ebfcb39222eac2be6d6202f1706cd16656bacadb467a72d008e7d9d49662e"
+   }
   },
   {
    "id": "2c9910dd5ee3441a",
@@ -9876,9 +9828,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\2c9910dd5ee3441a.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\2c9910dd5ee3441affb26ee02cb1469b1bcb76dcc200260f761bef7831bcd511"
+   }
   },
   {
    "id": "2efe940aae0ac70e",
@@ -10100,9 +10051,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\2efe940aae0ac70e.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\2efe940aae0ac70e11daeeec5a200a24aa3d208e558bc18109d85a2b97a16f6e"
+   }
   },
   {
    "id": "33be285f609025d3",
@@ -10263,7 +10213,7 @@
      "dim": 65536,
      "dtype": "float32",
      "sha256": "090dea9adc40b7bbb5f243146b3620bca2af543eb58d1e78830712e202e58344",
-     "sum": 1720.303833,
+     "sum": 1720.303711,
      "nz": 7764
     },
     "F04": {
@@ -10324,9 +10274,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\33be285f609025d3.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\33be285f609025d33f505934d55fddf05b76c4ab09ae13c546aeb7f5639a37bd"
+   }
   },
   {
    "id": "356bea8b6e9eb84d",
@@ -10473,7 +10422,7 @@
      "dim": 65536,
      "dtype": "float32",
      "sha256": "dc3c18368c56ac64ea4627884727eb8419d279f2f5b55ed429bd4c67c8b849db",
-     "sum": 28322.382812,
+     "sum": 28322.380859,
      "nz": 59905
     },
     "F02": {
@@ -10494,7 +10443,7 @@
      "dim": 65536,
      "dtype": "float32",
      "sha256": "307b4acef7daabb1eba5da41182d7cb99e3f85031cdf4f9b26bd9be524da801e",
-     "sum": 27479.826172,
+     "sum": 27479.828125,
      "nz": 65396
     },
     "G01": {
@@ -10548,9 +10497,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\356bea8b6e9eb84d.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\356bea8b6e9eb84dfa0dd8674e7c03428c641a47789df605c5bea0730de4aed2"
+   }
   },
   {
    "id": "3880f9ec464dfe78",
@@ -10697,7 +10645,7 @@
      "dim": 65536,
      "dtype": "float32",
      "sha256": "4f4e71c4b12619eca48706d37144ab6c303fdc250734634177f343a430186781",
-     "sum": 24171.242188,
+     "sum": 24171.244141,
      "nz": 57381
     },
     "F02": {
@@ -10718,7 +10666,7 @@
      "dim": 65536,
      "dtype": "float32",
      "sha256": "66a923197dd99735e4b0a0d81521fbf71acde7daa276cd041d7604a724a1cef5",
-     "sum": 26892.601562,
+     "sum": 26892.603516,
      "nz": 64661
     },
     "G01": {
@@ -10772,9 +10720,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\3880f9ec464dfe78.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\3880f9ec464dfe78c16bbd8b9f30560227154c292280337346a30c8fd92871fe"
+   }
   },
   {
    "id": "3e764625100f49ed",
@@ -10996,9 +10943,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\3e764625100f49ed.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\3e764625100f49ed982b0fed1750e2165a276098e874b8ca169c7d2445e4e861"
+   }
   },
   {
    "id": "4276a8b8aae12704",
@@ -11220,9 +11166,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\4276a8b8aae12704.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\4276a8b8aae1270490e484513373baff29bf857bde500f06faa0f9fd85a14a72"
+   }
   },
   {
    "id": "00016329167271ee",
@@ -11369,28 +11314,28 @@
      "dim": 65536,
      "dtype": "float32",
      "sha256": "db3517613b32d02cf0f33344d2dfc17a3948e2ac42694f674173719a7ae8a548",
-     "sum": 26013.142578,
+     "sum": 26013.140625,
      "nz": 55326
     },
     "F02": {
      "dim": 196608,
      "dtype": "float32",
      "sha256": "f8058615acc21a0f51d8aad00336183ab6211261d11383b4504a02c8396535fe",
-     "sum": 89333.210938,
+     "sum": 89333.21875,
      "nz": 185994
     },
     "F03": {
      "dim": 65536,
      "dtype": "float32",
      "sha256": "297e927cb76c9477921bff18521908499fa8503eec792a7d96e0f742008e29ab",
-     "sum": 2989.298828,
+     "sum": 2989.299072,
      "nz": 60374
     },
     "F04": {
      "dim": 65536,
      "dtype": "float32",
      "sha256": "8a8bcefe9ed0295d4a0ef27c54be5ccadfa3152c78d1795054ade7ff8e7c6414",
-     "sum": 20144.392578,
+     "sum": 20144.390625,
      "nz": 64870
     },
     "G01": {
@@ -11444,9 +11389,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\00016329167271ee.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\00016329167271ee1be3039c487515505a914bb3350538ff659bcafbe8aa1d14"
+   }
   },
   {
    "id": "000a3c574c875d19",
@@ -11668,9 +11612,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\000a3c574c875d19.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\000a3c574c875d19538eb58a9aca407f3a7db5f7d561b4e0ee8987b2aeb8da69"
+   }
   },
   {
    "id": "000bbe5ccd43649e",
@@ -11824,7 +11767,7 @@
      "dim": 196608,
      "dtype": "float32",
      "sha256": "d0859a7c5ae1de1ac2cdeb082db840f1d714245b5c34fd09706b6df76d64c6d6",
-     "sum": 95720.914062,
+     "sum": 95720.90625,
      "nz": 167586
     },
     "F03": {
@@ -11892,9 +11835,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\000bbe5ccd43649e.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\000bbe5ccd43649e0c4c8fafc6ceaa89e16dd46716fa2d455dbc8dd59ab5efe1"
+   }
   },
   {
    "id": "000dce9cae78e306",
@@ -12048,7 +11990,7 @@
      "dim": 196608,
      "dtype": "float32",
      "sha256": "899eace6e4dfd43ab325514a6cb893e13773470042c3aff7d25518689ede591c",
-     "sum": 6044.301758,
+     "sum": 6044.302246,
      "nz": 13423
     },
     "F03": {
@@ -12116,9 +12058,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\000dce9cae78e306.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\000dce9cae78e30652519958436caf568ef003f2347d777943b045a3398635d1"
+   }
   },
   {
    "id": "000e64b819fa8ad2",
@@ -12340,9 +12281,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\000e64b819fa8ad2.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\000e64b819fa8ad218d359115fccc57afb045539c128cd639b355b5a5a575c76"
+   }
   },
   {
    "id": "00a0fdecd977dbf4",
@@ -12489,14 +12429,14 @@
      "dim": 65536,
      "dtype": "float32",
      "sha256": "a132ad680c7eff8a4df035628d0fb50747507e866ee654fdea0b2905005d0f5b",
-     "sum": 12609.388672,
+     "sum": 12609.389648,
      "nz": 23654
     },
     "F02": {
      "dim": 196608,
      "dtype": "float32",
      "sha256": "55717117333c9f603afd0bb71183ab6262a1efc5ff3c7cb499f07a4beaf7b79f",
-     "sum": 12609.388672,
+     "sum": 12609.389648,
      "nz": 23654
     },
     "F03": {
@@ -12564,9 +12504,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\00a0fdecd977dbf4.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\00a0fdecd977dbf4e60f9c80ad98193c64a5df9e0663dc70555cb8b150259092"
+   }
   },
   {
    "id": "00a211793f003454",
@@ -12727,14 +12666,14 @@
      "dim": 65536,
      "dtype": "float32",
      "sha256": "55aaf991ce17e9206aa8b3f457c89d0306651f6ea2bc5960563223d1b3985800",
-     "sum": 6691.953125,
+     "sum": 6691.952148,
      "nz": 64530
     },
     "F04": {
      "dim": 65536,
      "dtype": "float32",
      "sha256": "985a8fa0699f3463d1dd5ee4ca081b44e169dc15211e9081de4282854e22586f",
-     "sum": 20445.087891,
+     "sum": 20445.085938,
      "nz": 62826
     },
     "G01": {
@@ -12788,9 +12727,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\00a211793f003454.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\00a211793f0034542023b3c13e83f8e0dae19da1b837cc7d91a5fcfa5f198659"
+   }
   },
   {
    "id": "00a67091bd8003f9",
@@ -12944,7 +12882,7 @@
      "dim": 196608,
      "dtype": "float32",
      "sha256": "1e123f75bbca139e6c697885f7b3356a28d5fb7f9aa67ec2ea6aaa623778372a",
-     "sum": 5315.737793,
+     "sum": 5315.737305,
      "nz": 11951
     },
     "F03": {
@@ -13012,9 +12950,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\00a67091bd8003f9.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\00a67091bd8003f9a5744ff72f707faf140cecca1c92b3a1e976dafdfbd0c009"
+   }
   },
   {
    "id": "00a75e4a8f358b61",
@@ -13175,7 +13112,7 @@
      "dim": 65536,
      "dtype": "float32",
      "sha256": "6bfb5991e55c9a160d94f75bb5a6642022003a3a85be48a98669c5e3950b9cea",
-     "sum": 2443.861572,
+     "sum": 2443.861328,
      "nz": 7331
     },
     "F04": {
@@ -13236,9 +13173,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\00a75e4a8f358b61.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\00a75e4a8f358b617f843df1d5bae3f91494f02bdfd73107ad41db91af3d4c93"
+   }
   },
   {
    "id": "00a94b19e37e1598",
@@ -13460,9 +13396,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\00a94b19e37e1598.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\00a94b19e37e1598f9bc27a666d637cd220f374fdaa315977bfea70b0c445f37"
+   }
   },
   {
    "id": "00a9c4f2d16da7de",
@@ -13616,14 +13551,14 @@
      "dim": 196608,
      "dtype": "float32",
      "sha256": "bf364b86bfd1333bd34ca6f47e789a18c34075860e955be4b4ee648d0dfef800",
-     "sum": 95728.945312,
+     "sum": 95728.921875,
      "nz": 167550
     },
     "F03": {
      "dim": 65536,
      "dtype": "float32",
      "sha256": "44727ad3140846234ae57630dd6644f6338a3ad30d5e822840dfaaf240819aa1",
-     "sum": 7815.44873,
+     "sum": 7815.448242,
      "nz": 49792
     },
     "F04": {
@@ -13684,9 +13619,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\00a9c4f2d16da7de.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\00a9c4f2d16da7de12d460071c4e49e404435ee167b3a7ca7be793dba9e2039f"
+   }
   },
   {
    "id": "00ab8ca1d7c90c8f",
@@ -13840,14 +13774,14 @@
      "dim": 196608,
      "dtype": "float32",
      "sha256": "ac784190c9a3a1eaa5c5f377c826e7febf7976141a0d54ab84bc4f18bafbdb87",
-     "sum": 5287.231934,
+     "sum": 5287.231445,
      "nz": 11858
     },
     "F03": {
      "dim": 65536,
      "dtype": "float32",
      "sha256": "5b123e154fb2cb50c591215170de1301fd4179cc591ff81413540c58cd13f41d",
-     "sum": 2500.655029,
+     "sum": 2500.654785,
      "nz": 7249
     },
     "F04": {
@@ -13908,9 +13842,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\00ab8ca1d7c90c8f.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\00ab8ca1d7c90c8f7ea8835608c958bd457ffa47df35201ad0751954128079ae"
+   }
   },
   {
    "id": "00ae6aa8fe9e0fe3",
@@ -14064,7 +13997,7 @@
      "dim": 196608,
      "dtype": "float32",
      "sha256": "d87bcf735bff81995244e6be431bef1a835cef0cdb75bc60ae3071348bc1b0bb",
-     "sum": 95718.453125,
+     "sum": 95718.4375,
      "nz": 167581
     },
     "F03": {
@@ -14132,9 +14065,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\00ae6aa8fe9e0fe3.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\00ae6aa8fe9e0fe36a3b62c26884998625a5f0ba50019e91164624cd87b994f0"
+   }
   },
   {
    "id": "00af6ae732693f0b",
@@ -14356,9 +14288,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\00af6ae732693f0b.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\00af6ae732693f0b807c2568f2435526c414b6ea1e5a04c1a990a4405d6a7eb7"
+   }
   },
   {
    "id": "00b0d186014b7f4b",
@@ -14580,9 +14511,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\00b0d186014b7f4b.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\00b0d186014b7f4b20ec5dfc46c655d329fef19c8c0543916529c744f013d15a"
+   }
   },
   {
    "id": "00b5e4cf41d16b18",
@@ -14804,9 +14734,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\00b5e4cf41d16b18.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\00b5e4cf41d16b18e10c5af893ddcc2c8a2076cfbacabeb8d25b496bf8955888"
+   }
   },
   {
    "id": "00b7187df3fb58a7",
@@ -14945,8 +14874,8 @@
     "C04": {
      "dim": 256,
      "dtype": "float32",
-     "sha256": "6f63123974e480267e4eb596b7bcb2eda642a6a2fe9b429caf5b8598e76b501d",
-     "sum": 14.455666,
+     "sha256": "c1e33ff443ad0cd2f762ac527c1ca8e36d13b0c0b6a9c1c26e588a476a182cd2",
+     "sum": 14.455667,
      "nz": 245
     },
     "F01": {
@@ -14960,7 +14889,7 @@
      "dim": 196608,
      "dtype": "float32",
      "sha256": "b9fa1c57fb53593b78da3c6a53d97154cb97cf774e43f99a785fc5142ac29142",
-     "sum": 30388.748047,
+     "sum": 30388.746094,
      "nz": 66224
     },
     "F03": {
@@ -15028,9 +14957,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\00b7187df3fb58a7.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\00b7187df3fb58a729895d400957da4db32cb4dea498bee7ff6cacffb6b90a44"
+   }
   },
   {
    "id": "00bb5b650c6cc410",
@@ -15191,7 +15119,7 @@
      "dim": 65536,
      "dtype": "float32",
      "sha256": "b44c05360faf4a8bad53560649350c8be0d44682aa20d099afca21372e2b9c9e",
-     "sum": 2810.388428,
+     "sum": 2810.388672,
      "nz": 25825
     },
     "F04": {
@@ -15252,9 +15180,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\00bb5b650c6cc410.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\00bb5b650c6cc410e50e3d57f502ae906ad4dfb907159f98b433f28a76aa3a6b"
+   }
   },
   {
    "id": "00beea1292e91498",
@@ -15393,8 +15320,8 @@
     "C04": {
      "dim": 256,
      "dtype": "float32",
-     "sha256": "8688f935992da398d7875094ba77cecefba262f1926ce06d80ccf858dfe9edd1",
-     "sum": 15.003969,
+     "sha256": "89895f8c8d4e8f5a94887e80fd7696d6efc5d08e23961da41bf578f3968a0305",
+     "sum": 15.003967,
      "nz": 243
     },
     "F01": {
@@ -15476,9 +15403,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\00beea1292e91498.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\00beea1292e91498208adeead24012ed26531f9772c2c3b365127f5dc9ca1219"
+   }
   },
   {
    "id": "00c6c10955632860",
@@ -15625,7 +15551,7 @@
      "dim": 65536,
      "dtype": "float32",
      "sha256": "f13f4022431e309dc171c8bab394cc817b1c9ef336114d260177a1b7da75c08f",
-     "sum": 27812.257812,
+     "sum": 27812.255859,
      "nz": 55463
     },
     "F02": {
@@ -15639,7 +15565,7 @@
      "dim": 65536,
      "dtype": "float32",
      "sha256": "3407ae7d1d30f190de69e1c90a7078809c71b586907310f3ad888fa705570b45",
-     "sum": 1999.999023,
+     "sum": 1999.999268,
      "nz": 32225
     },
     "F04": {
@@ -15700,9 +15626,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\00c6c10955632860.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\00c6c10955632860c1c6e321a5c3cdc65eabd5e263e1b20cd2ec1accccb594e2"
+   }
   },
   {
    "id": "00ca3969a042c679",
@@ -15856,7 +15781,7 @@
      "dim": 196608,
      "dtype": "float32",
      "sha256": "2ad7439a00a782e191ebcbe5a3cda836ee4e1c04f9ff491204f52aa55b642bf5",
-     "sum": 87983.820312,
+     "sum": 87983.828125,
      "nz": 170287
     },
     "F03": {
@@ -15924,9 +15849,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\00ca3969a042c679.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\00ca3969a042c679f9357fe674fd51f74e65f609fc4a43058e676e2c0796cfb6"
+   }
   },
   {
    "id": "00cd272476489e41",
@@ -16080,14 +16004,14 @@
      "dim": 196608,
      "dtype": "float32",
      "sha256": "9f85f6f8a91d66bfd36dd59e9c6c4a154cf0bf5a731d110f4bdd61738db151dd",
-     "sum": 96932.632812,
+     "sum": 96932.617188,
      "nz": 193143
     },
     "F03": {
      "dim": 65536,
      "dtype": "float32",
      "sha256": "dc71649669e261842899db4f68f49247f6185b1ec34805836dd29c829733336b",
-     "sum": 30465.412109,
+     "sum": 30465.410156,
      "nz": 65536
     },
     "F04": {
@@ -16148,9 +16072,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\00cd272476489e41.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\00cd272476489e41fb7f6a4ccaa0b6e4b922c23033b2dc5bfdb79a13da43a850"
+   }
   },
   {
    "id": "00ce5a810f296871",
@@ -16311,7 +16234,7 @@
      "dim": 65536,
      "dtype": "float32",
      "sha256": "4bff65e3936d7fcd4a782d37c5c6535b9751af6d453e54bcec57bde4f2f0c24d",
-     "sum": 2651.042236,
+     "sum": 2651.041992,
      "nz": 7863
     },
     "F04": {
@@ -16372,9 +16295,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\00ce5a810f296871.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\00ce5a810f296871b8758ddb7345a07d93098cb279b13809fbe9ab378c0f5cf5"
+   }
   },
   {
    "id": "00d04781ba3212b9",
@@ -16521,21 +16443,21 @@
      "dim": 65536,
      "dtype": "float32",
      "sha256": "901a00827b4acfc0160c184500c279b4858f15b96654a92b8d9e8cc3bc508fd9",
-     "sum": 32756.324219,
+     "sum": 32756.322266,
      "nz": 64897
     },
     "F02": {
      "dim": 196608,
      "dtype": "float32",
      "sha256": "effeaf354eaad40cbaf6008c7cac5139c968b4ae20608ac5f85415cdcea81f39",
-     "sum": 98568.054688,
+     "sum": 98568.0625,
      "nz": 195487
     },
     "F03": {
      "dim": 65536,
      "dtype": "float32",
      "sha256": "90053318dc792eac9c6bafdc08ac1b7fe50762cf34a1a641486a00443bd7c133",
-     "sum": 25990.386719,
+     "sum": 25990.384766,
      "nz": 65490
     },
     "F04": {
@@ -16596,9 +16518,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\00d04781ba3212b9.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\00d04781ba3212b9756b68c27a49012d9ea54aaed1bd36d06dcbf81e3997faa8"
+   }
   },
   {
    "id": "00d26c6a8a9fa26d",
@@ -16752,7 +16673,7 @@
      "dim": 196608,
      "dtype": "float32",
      "sha256": "2e2f5afd2e2b82fedff7bd30c54477955cc58c442c7343f6f957e6b4ff8a4e9f",
-     "sum": 4986.525879,
+     "sum": 4986.525391,
      "nz": 11298
     },
     "F03": {
@@ -16820,9 +16741,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\00d26c6a8a9fa26d.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\00d26c6a8a9fa26d405c2227126fc8cc0f3690489c2de03c0eb8063f197c0b5f"
+   }
   },
   {
    "id": "00a2daf2b8998a8c",
@@ -16961,8 +16881,8 @@
     "C04": {
      "dim": 256,
      "dtype": "float32",
-     "sha256": "9a075ba4b3ace0e503b530bd57f276dac84a376b6a72c9dee8038f6ee8fcd925",
-     "sum": 15.340561,
+     "sha256": "b00f8cb5fce5218fcb68e96253b9a88fdf7a514fbf71df4e9ea2c060dfa4473b",
+     "sum": 15.340563,
      "nz": 255
     },
     "F01": {
@@ -17044,9 +16964,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\00a2daf2b8998a8c.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\00a2daf2b8998a8cfb43acb4633e17913fe7db8de6f34d331cfb181342eb48d6"
+   }
   },
   {
    "id": "00a850c851c7beda",
@@ -17214,7 +17133,7 @@
      "dim": 65536,
      "dtype": "float32",
      "sha256": "5d19ea6e489ddfaf49bbe9a7fe26db7d0f18712d7c21e3e7ae24ecc0199cd45a",
-     "sum": 19786.232422,
+     "sum": 19786.234375,
      "nz": 65024
     },
     "G01": {
@@ -17268,9 +17187,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\00a850c851c7beda.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\00a850c851c7bedafcc610a456891e7196cb782ac1b1327c3f413ae05b8c3156"
+   }
   },
   {
    "id": "00b565bb76ccfd44",
@@ -17417,7 +17335,7 @@
      "dim": 65536,
      "dtype": "float32",
      "sha256": "73f6cc761a82bf25e68de3cf57da7a9975ed398ed6a7a737fdaa36e55c8becc9",
-     "sum": 24818.261719,
+     "sum": 24818.259766,
      "nz": 52531
     },
     "F02": {
@@ -17492,9 +17410,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\00b565bb76ccfd44.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\00b565bb76ccfd445e317471442c1c909e48eb944158bab6e727ff445988a7fc"
+   }
   },
   {
    "id": "00ecca337f99f9cf",
@@ -17648,7 +17565,7 @@
      "dim": 196608,
      "dtype": "float32",
      "sha256": "15f521a8d07927aba6640435df5a05393371747df4f9c668e0c44d1749f223c8",
-     "sum": 32836.234375,
+     "sum": 32836.230469,
      "nz": 85490
     },
     "F03": {
@@ -17716,9 +17633,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\00ecca337f99f9cf.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\00ecca337f99f9cfa4c2443fa8529e0f2c19d76986394bc12390afab45256cd8"
+   }
   },
   {
    "id": "00f62f016563413b",
@@ -17865,21 +17781,21 @@
      "dim": 65536,
      "dtype": "float32",
      "sha256": "6f98e612204f9d55147b76138392c6970c3813a1c5571b3453749f5fdb287f83",
-     "sum": 22037.136719,
+     "sum": 22037.138672,
      "nz": 49385
     },
     "F02": {
      "dim": 196608,
      "dtype": "float32",
      "sha256": "083ded9e1b3ff0b4279c4bf2b35f2ad6d3c847bca93a947675bc97beb936ceb0",
-     "sum": 66609.398438,
+     "sum": 66609.390625,
      "nz": 146703
     },
     "F03": {
      "dim": 65536,
      "dtype": "float32",
      "sha256": "864e491d0bd57109c1a282a5a0eea5c45d41cc3c53d019ca16e0855f93a43c03",
-     "sum": 3080.918701,
+     "sum": 3080.918945,
      "nz": 63461
     },
     "F04": {
@@ -17940,9 +17856,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\00f62f016563413b.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\00f62f016563413b5037a4d87c81145b73b7b646be787b0407e825a5d741610c"
+   }
   },
   {
    "id": "030e67d5b115ce83",
@@ -18103,14 +18018,14 @@
      "dim": 65536,
      "dtype": "float32",
      "sha256": "19a3b8f45a9b3bf066a38ca1d926e533d78c0b2b8ea19acaa8e061e730fdb446",
-     "sum": 3241.525146,
+     "sum": 3241.525391,
      "nz": 65104
     },
     "F04": {
      "dim": 65536,
      "dtype": "float32",
      "sha256": "da6ff57925e9763524f06f6bf2943fe43e7cd7fc59df55d228a09687e0e2109a",
-     "sum": 25658.210938,
+     "sum": 25658.208984,
      "nz": 60523
     },
     "G01": {
@@ -18164,9 +18079,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\030e67d5b115ce83.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\030e67d5b115ce83d262a6f15c689cde5f72eedb5d838cd8abc13006fb24d4bc"
+   }
   },
   {
    "id": "0a3abbb04f4ec5b5",
@@ -18388,9 +18302,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\0a3abbb04f4ec5b5.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\0a3abbb04f4ec5b50bee98901a56988771b6205723baf22e4cc290e77a6374be"
+   }
   },
   {
    "id": "0a42aca266b3dff5",
@@ -18529,8 +18442,8 @@
     "C04": {
      "dim": 256,
      "dtype": "float32",
-     "sha256": "03340a1ee99f99af1bdafad34b1b14e07269db413b01b74abcb1ff5aa6970b8d",
-     "sum": 12.327835,
+     "sha256": "a45609fb6ab2facc71b8130651a53f884f9af62631a74d932aef5274fd439fb8",
+     "sum": 12.327837,
      "nz": 186
     },
     "F01": {
@@ -18544,7 +18457,7 @@
      "dim": 196608,
      "dtype": "float32",
      "sha256": "9d8c9ce1eb8db4a580ba88c3947aeeee32ba69c095fe680c4f4a2bc5fd48fa39",
-     "sum": 75532.3125,
+     "sum": 75532.296875,
      "nz": 145918
     },
     "F03": {
@@ -18558,7 +18471,7 @@
      "dim": 65536,
      "dtype": "float32",
      "sha256": "9e66b2a4be3f635330be23ab254044107ef1756aec2a8676a157cb85c237ab97",
-     "sum": 13949.359375,
+     "sum": 13949.360352,
      "nz": 55041
     },
     "G01": {
@@ -18612,9 +18525,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\0a42aca266b3dff5.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\0a42aca266b3dff53fa36bae0a14ed6dd6e73c70bc4750347ec0f896499e0cd8"
+   }
   },
   {
    "id": "0a5e97fca1d5a0c0",
@@ -18761,28 +18673,28 @@
      "dim": 65536,
      "dtype": "float32",
      "sha256": "0ab26800ec7fe2498a73abcbdf6743a725cae3f311666c9b589e8dd7964d654c",
-     "sum": 22530.076172,
+     "sum": 22530.074219,
      "nz": 50915
     },
     "F02": {
      "dim": 196608,
      "dtype": "float32",
      "sha256": "2e88eb9664f31c51db9e30766bb04fa3a468718ceb2bdbe26635930673cfb6e5",
-     "sum": 76418.882812,
+     "sum": 76418.875,
      "nz": 172359
     },
     "F03": {
      "dim": 65536,
      "dtype": "float32",
      "sha256": "f57d8fb6fd134b5bb642e68b8ed39ad713874737268f039a754ce1cb2164ed1c",
-     "sum": 2669.788818,
+     "sum": 2669.789062,
      "nz": 57086
     },
     "F04": {
      "dim": 65536,
      "dtype": "float32",
      "sha256": "957008414876c64e2d306eb6631842bbb36a30f7eac1c8cc39f60aaf863b1fee",
-     "sum": 20648.423828,
+     "sum": 20648.421875,
      "nz": 64979
     },
     "G01": {
@@ -18836,9 +18748,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\0a5e97fca1d5a0c0.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\0a5e97fca1d5a0c03adfb8d6ea60e59959f6fd41bab83801bf54c30fa040935a"
+   }
   },
   {
    "id": "0a62ee2666f7be58",
@@ -18992,21 +18903,21 @@
      "dim": 196608,
      "dtype": "float32",
      "sha256": "8d91a0f14b63fc6528fded3622e01ea53397d6040977fa97d0f2b59a11188211",
-     "sum": 68184.710938,
+     "sum": 68184.695312,
      "nz": 162750
     },
     "F03": {
      "dim": 65536,
      "dtype": "float32",
      "sha256": "0920f350d3bcbb03666c51a31202546f415f3ec42f69a96ba2ddeb7a4c28d515",
-     "sum": 2327.742432,
+     "sum": 2327.742676,
      "nz": 61457
     },
     "F04": {
      "dim": 65536,
      "dtype": "float32",
      "sha256": "450becee8ba01c7cecb36e18062434e16636716ceb90ba3037d92b8507dfca2e",
-     "sum": 24535.990234,
+     "sum": 24535.988281,
      "nz": 60069
     },
     "G01": {
@@ -19060,9 +18971,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\0a62ee2666f7be58.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\0a62ee2666f7be58f7e1bdded70ac6a3df61de9a0e595002a229037f0376d801"
+   }
   },
   {
    "id": "19d43ddacfdfcaca",
@@ -19209,14 +19119,14 @@
      "dim": 65536,
      "dtype": "float32",
      "sha256": "75181bbdf5fb63894bc7b726f65682fd61f3197fb12c6c986857d3752a6dae17",
-     "sum": 23432.693359,
+     "sum": 23432.695312,
      "nz": 54269
     },
     "F02": {
      "dim": 196608,
      "dtype": "float32",
      "sha256": "33af39f19ffb69a0e05b6eaed90800df82ae626f515a508306c6b2f2c6d7b054",
-     "sum": 64068.652344,
+     "sum": 64068.660156,
      "nz": 146699
     },
     "F03": {
@@ -19230,7 +19140,7 @@
      "dim": 65536,
      "dtype": "float32",
      "sha256": "17aaa1a6afea857ffccc748b96a9182272eba2739b8fdbbc8a69a78be6f41bfd",
-     "sum": 10649.385742,
+     "sum": 10649.384766,
      "nz": 39400
     },
     "G01": {
@@ -19284,9 +19194,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\19d43ddacfdfcaca.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\19d43ddacfdfcaca76e6388ca07af80091ab89a8784e1734ea2608d52daa37f4"
+   }
   },
   {
    "id": "356ce0be05980508",
@@ -19508,9 +19417,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\356ce0be05980508.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\356ce0be05980508294a8aa917eed6a2967c1c2eb99818b14e4b821aad13c6a9"
+   }
   },
   {
    "id": "42e6937c1384a6a0",
@@ -19649,8 +19557,8 @@
     "C04": {
      "dim": 256,
      "dtype": "float32",
-     "sha256": "2fbbe833661f72f6b97546278cfbec1483a759ccf17bf3dbbe6006cf80d4da0c",
-     "sum": 15.206688,
+     "sha256": "337542e89e8edc6878edcb03978968b50adf10aa753601f42b772c16f2718c57",
+     "sum": 15.206685,
      "nz": 254
     },
     "F01": {
@@ -19664,7 +19572,7 @@
      "dim": 196608,
      "dtype": "float32",
      "sha256": "605441213f86f5313eee311b180edddbd7eb4a4e3aadb97d999db8a5e2049d3f",
-     "sum": 99145.03125,
+     "sum": 99145.046875,
      "nz": 190693
     },
     "F03": {
@@ -19678,7 +19586,7 @@
      "dim": 65536,
      "dtype": "float32",
      "sha256": "142be00a148900bfb5c499b823f10354c7758577878f298ae1d93a4eb4ee4609",
-     "sum": 19024.310547,
+     "sum": 19024.3125,
      "nz": 65024
     },
     "G01": {
@@ -19732,9 +19640,8 @@
     }
    },
    "errors": {
-    "de": "Exception: Unable to create new BinaryView"
-   },
-   "arrays_file": "D:\\VM_Share\\CoDefenderC3_v9\\_baseline_arrays\\42e6937c1384a6a0.npz"
+    "_mirror": "非 ASCII 路径 → 已镜像到 C:\\Users\\lenovo\\AppData\\Local\\Temp\\bn_fixture_vbunm81m\\42e6937c1384a6a055b11a39633bc280f09c928c1ff595b7fdf6f48c1edd4699"
+   }
   }
  ]
 }

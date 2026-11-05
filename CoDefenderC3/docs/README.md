@@ -1364,7 +1364,15 @@ python tests/baseline_fixture.py verify \
 
 ```
 
-> ⚠ **当前只覆盖 30/39 个特征**（D01-D07、E01-E04 需 BinaryNinja，而本机 BN 许可已过期）。
-> 这同时暴露了一个 **P0 生产问题**：容器用的 `license.txt` 是同一份过期许可，
-> `include_de=true` 时 D/E 视角取不到，**10 个模型静默不参与推理**且 API 不报错。
-> 详见 `docs/BASELINE_FIXTURE.md` 的「许可阻塞」一节。
+> 门禁分**两级**（因为「PE → BN 实时分析」这一步**不确定**，D/E 不能拿 PE 当锚点）：
+>
+> | 门禁 | 锚点 | 覆盖 | 实测 |
+> |---|---|---|---|
+> | G1 | PE | fast 路径 30 个特征 | 2640/2640 逐位一致（跨 numpy 版本也一致） |
+> | G2 | **.bndb** | D/E 路径 9 个特征 | 288/288 逐位一致 |
+>
+> 采集过程中挖出两条关键前置条件（都不是「许可过期」）：
+> ① BN 的许可校验**需要联网**，断网时表现为「Unable to create new BinaryView」，与过期一模一样；
+> ② **BN 打不开路径含非 ASCII 字符的文件** —— 样本库在 `E:\nkproject\00 样本库\...` 这种路径下，
+>    训练侧的 D/E 抽取会 100% 失败（很可能就是历史 `bndb_fail.log` 的真正原因）。
+> 详见 `docs/BASELINE_FIXTURE.md`。

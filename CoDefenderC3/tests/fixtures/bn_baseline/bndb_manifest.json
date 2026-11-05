@@ -1,0 +1,2265 @@
+{
+ "schema": "codefender-bn-baseline/1",
+ "source": "bndb",
+ "created": "2026-11-05T21:37:29",
+ "env": {
+  "python": "3.10.10",
+  "platform": "Windows-10-10.0.19045",
+  "numpy": "1.26.4",
+  "binaryninja": "5.2.8722",
+  "bn_license": {
+   "available": true,
+   "source": "C:\\Users\\lenovo\\AppData\\Roaming\\Binary Ninja\\license.dat",
+   "license_count": 1,
+   "serial": "0fe0e1fe9acbc4670fa5f0905be71890",
+   "tried": [
+    "C:\\Users\\lenovo\\.binaryninja\\license.dat (不存在)",
+    "C:\\Users\\lenovo\\AppData\\Roaming\\Binary Ninja\\license.dat"
+   ]
+  },
+  "bn_licensed": true
+ },
+ "bndb_dir": "D:\\VM_Share\\CoDefenderC3_v8\\minimal_dataset\\.cache\\bndb",
+ "samples": [
+  {
+   "id": "0462d9575679fa53b282481f7a4e9e40.bndb",
+   "path": "D:\\VM_Share\\CoDefenderC3_v8\\minimal_dataset\\.cache\\bndb\\0462d9575679fa53b282481f7a4e9e40.bndb",
+   "features": {
+    "D01": {
+     "dim": 4096,
+     "dtype": "int64",
+     "sha256": "64336508560e21ff2b0d116b0bd1348f525ef34376ff87d2a396a4e43022ef9e",
+     "sum": 226670.0,
+     "nz": 624
+    },
+    "D02": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "b8263b49281e73335fbd9b795f6d19cbb01099482c3926d0389f4aeb3840fe87",
+     "sum": 3.928148,
+     "nz": 22
+    },
+    "D03": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "bdd6ee6e0a60f923edec54f59ef4ce51a938a9fdee6f4e6fe58cb455b84827f9",
+     "sum": 5.765994,
+     "nz": 49
+    },
+    "D04": {
+     "dim": 15,
+     "dtype": "float32",
+     "sha256": "fb564558ea9277472a2fbef9e38c77e94207ce44e22e22920b4ef73a973c393a",
+     "sum": 1.0,
+     "nz": 1
+    },
+    "D05": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "b7f44127577b46bd0eabe06c849c68fb0c3ee5c69605af216f80377b5477df58",
+     "sum": 5292.479004,
+     "nz": 11
+    },
+    "D06": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "a5b68569c98604bc28a02528a10fb6210294d89614da43ab5d9fb4967c32cc10",
+     "sum": 16640.1875,
+     "nz": 10
+    },
+    "D07": {
+     "dim": 6144,
+     "dtype": "float32",
+     "sha256": "d62b6963d62571cd23a71f1892fa43f07f7e0fba63bd3b095010eac12222dbf3",
+     "sum": 31.242641,
+     "nz": 33
+    },
+    "E03": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "d8d0ab4df490a64a234ba4ff8059c9ff9d118f84ad27857c70afa4934788b5bc",
+     "sum": 24619.908203,
+     "nz": 12
+    },
+    "E04": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "55cc767207b1b03a75a2411d17efc883572c1bfc6fad15de63741d7869880004",
+     "sum": 1435.023682,
+     "nz": 7
+    }
+   },
+   "errors": {}
+  },
+  {
+   "id": "0c4031d30f8031d23d56a3c833a97052.bndb",
+   "path": "D:\\VM_Share\\CoDefenderC3_v8\\minimal_dataset\\.cache\\bndb\\0c4031d30f8031d23d56a3c833a97052.bndb",
+   "features": {
+    "D01": {
+     "dim": 4096,
+     "dtype": "int64",
+     "sha256": "5918e7c158bc3d868b8e81723c1526a844503aeedcffc418b158b274d99d5ee2",
+     "sum": 15816.0,
+     "nz": 68
+    },
+    "D02": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "a946853186d543bd333cc894aa7e707c5bc351f6b0337226b5e9fd6b1d25041f",
+     "sum": 1.950277,
+     "nz": 4
+    },
+    "D03": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "6ce54dd85209517f7ebbe5a6e97903f18f8fe9d70f2e3b2f64cbf41da76066d2",
+     "sum": 2.639072,
+     "nz": 8
+    },
+    "D04": {
+     "dim": 15,
+     "dtype": "float32",
+     "sha256": "fb564558ea9277472a2fbef9e38c77e94207ce44e22e22920b4ef73a973c393a",
+     "sum": 1.0,
+     "nz": 1
+    },
+    "D05": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "bae2031d3accbd8193f07ba2bdf18581fb741966a853cdd766487259c27cc359",
+     "sum": 4752.527832,
+     "nz": 11
+    },
+    "D06": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "65c2ce560dc99344577177a5406d7a7f335b325d4f0a4cb566cbca5eeb115b08",
+     "sum": 10676.956055,
+     "nz": 10
+    },
+    "D07": {
+     "dim": 6144,
+     "dtype": "float32",
+     "sha256": "d3784068b4bf143b7166a0539c69dd4a0647575072312289b4e5fc9852d7dfa8",
+     "sum": 3.0,
+     "nz": 3
+    },
+    "E03": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "a08156c02d97a30a0397f53a83c7762fbde40982968278bb828248dfce9a73cf",
+     "sum": 15457.776367,
+     "nz": 12
+    },
+    "E04": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "2c78b9e8249f87f95330d659c9923568ba192b5972bb83f6af00a0c23b542f64",
+     "sum": 1150.403198,
+     "nz": 9
+    }
+   },
+   "errors": {}
+  },
+  {
+   "id": "203a085610c1e64a64ddde4f754b7042.bndb",
+   "path": "D:\\VM_Share\\CoDefenderC3_v8\\minimal_dataset\\.cache\\bndb\\203a085610c1e64a64ddde4f754b7042.bndb",
+   "features": {
+    "D01": {
+     "dim": 4096,
+     "dtype": "int64",
+     "sha256": "3a18e951fdc29e22426c70b3ae8ae7f52fe1cddebd7338438d571cae4a9fa41a",
+     "sum": 1078.0,
+     "nz": 11
+    },
+    "D02": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "b0945f9b1459d376f4678985e866ac9fb8efb760b57d6a180e1813e8fd3b7976",
+     "sum": 1.245807,
+     "nz": 2
+    },
+    "D03": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "598284d9fd80482bbfce396af2cd5f98b32db9051c07f32cb21b8d7786c0bad2",
+     "sum": 1.254521,
+     "nz": 2
+    },
+    "D04": {
+     "dim": 15,
+     "dtype": "float32",
+     "sha256": "fb564558ea9277472a2fbef9e38c77e94207ce44e22e22920b4ef73a973c393a",
+     "sum": 1.0,
+     "nz": 1
+    },
+    "D05": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "4118e5eada5ea0d38a96ea7f2e0052707bf8d78b0c98944cf101604a9e367d3f",
+     "sum": 2497.914795,
+     "nz": 11
+    },
+    "D06": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "ff7369cd270df88d7e24505ebf0b4e29be7eebdb2a2c6374be36d73c633d8991",
+     "sum": 2160.581543,
+     "nz": 10
+    },
+    "D07": {
+     "dim": 6144,
+     "dtype": "float32",
+     "sha256": "de676bae28a480011d3d012db14bef539324e62a841a9627863c689bea168af3",
+     "sum": 0.0,
+     "nz": 0
+    },
+    "E03": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "7f783d4bf8e4b46608100719749bd6bc72cf838457194130a04fa3ec4f99b6a1",
+     "sum": 2562.100586,
+     "nz": 12
+    },
+    "E04": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "96914928d71e8d3d48b393088ad510bd9b258f398b1e03ea05fc17206167f087",
+     "sum": 245.078094,
+     "nz": 9
+    }
+   },
+   "errors": {}
+  },
+  {
+   "id": "2551a8d70ce1b20eddcb228ed7a17b9f.bndb",
+   "path": "D:\\VM_Share\\CoDefenderC3_v8\\minimal_dataset\\.cache\\bndb\\2551a8d70ce1b20eddcb228ed7a17b9f.bndb",
+   "features": {
+    "D01": {
+     "dim": 4096,
+     "dtype": "int64",
+     "sha256": "73761484528c320b6960845c8f11373672825cfc9f11f5cac00814a28f601f8a",
+     "sum": 1548.0,
+     "nz": 14
+    },
+    "D02": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "e1466f6fc404fc427ed2bdf4b5b721e27c1a9c590c75b80236d61ea800f1e4e3",
+     "sum": 1.4492,
+     "nz": 3
+    },
+    "D03": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "d5be5c8eaa325830df45a9a3019fa0d91a4ae84ef7ff768ad6cef26c8d6f27fc",
+     "sum": 1.460782,
+     "nz": 3
+    },
+    "D04": {
+     "dim": 15,
+     "dtype": "float32",
+     "sha256": "fb564558ea9277472a2fbef9e38c77e94207ce44e22e22920b4ef73a973c393a",
+     "sum": 1.0,
+     "nz": 1
+    },
+    "D05": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "7a24d805f4672b5d3d3d2960c822732d5318d27c78037156360f00236c8bc4be",
+     "sum": 3534.839111,
+     "nz": 11
+    },
+    "D06": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "722e109c833e1b101858f4a573202034a99b51acee1fa9f518720e675d35b136",
+     "sum": 1607.604858,
+     "nz": 10
+    },
+    "D07": {
+     "dim": 6144,
+     "dtype": "float32",
+     "sha256": "ec703e54ced7518a4149b9d19f4a47d06c840c6c08254671aabb9cdb6a656efa",
+     "sum": 2.0,
+     "nz": 2
+    },
+    "E03": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "0df9cddf6e75618f62491a6407f9105f9f0bfbe7595b3ef6c753176b2633a703",
+     "sum": 2121.530762,
+     "nz": 12
+    },
+    "E04": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "91f915234570bbcd8fd8a9410d57dcc53e547ed4946b6710cbe3868d40623d10",
+     "sum": 187.154434,
+     "nz": 9
+    }
+   },
+   "errors": {}
+  },
+  {
+   "id": "268af8d769c61ae19bb0cb38fe59c30b.bndb",
+   "path": "D:\\VM_Share\\CoDefenderC3_v8\\minimal_dataset\\.cache\\bndb\\268af8d769c61ae19bb0cb38fe59c30b.bndb",
+   "features": {
+    "D01": {
+     "dim": 4096,
+     "dtype": "int64",
+     "sha256": "c35020473aed1b4642cd726cad727b63fff2824ad68cedd7ffb73c7cbd890479",
+     "sum": 0.0,
+     "nz": 0
+    },
+    "D02": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef",
+     "sum": 0.0,
+     "nz": 0
+    },
+    "D03": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef",
+     "sum": 0.0,
+     "nz": 0
+    },
+    "D04": {
+     "dim": 15,
+     "dtype": "float32",
+     "sha256": "5dcc1b5872dd9ff1c234501f1fefda01f664164e1583c3e1bb3dbea47588ab31",
+     "sum": 0.0,
+     "nz": 0
+    },
+    "D05": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "17b0761f87b081d5cf10757ccc89f12be355c70e2e29df288b65b30710dcbcd1",
+     "sum": 0.0,
+     "nz": 0
+    },
+    "D06": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "2c34ce1df23b838c5abf2a7f6437cca3d3067ed509ff25f11df6b11b582b51eb",
+     "sum": 0.0,
+     "nz": 0
+    },
+    "D07": {
+     "dim": 6144,
+     "dtype": "float32",
+     "sha256": "de676bae28a480011d3d012db14bef539324e62a841a9627863c689bea168af3",
+     "sum": 0.0,
+     "nz": 0
+    },
+    "E03": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "17b0761f87b081d5cf10757ccc89f12be355c70e2e29df288b65b30710dcbcd1",
+     "sum": 0.0,
+     "nz": 0
+    },
+    "E04": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "2c34ce1df23b838c5abf2a7f6437cca3d3067ed509ff25f11df6b11b582b51eb",
+     "sum": 0.0,
+     "nz": 0
+    }
+   },
+   "errors": {}
+  },
+  {
+   "id": "295b7a1acdc634ab2af744728eedbb2d.bndb",
+   "path": "D:\\VM_Share\\CoDefenderC3_v8\\minimal_dataset\\.cache\\bndb\\295b7a1acdc634ab2af744728eedbb2d.bndb",
+   "features": {
+    "D01": {
+     "dim": 4096,
+     "dtype": "int64",
+     "sha256": "01d483595212effaf740072b94b9237fae501c552612e30fb92ada2b20747eaa",
+     "sum": 4894.0,
+     "nz": 24
+    },
+    "D02": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "23369b77af75a49de6a93e4a63f55566221198f06838eb9ec62a3d8b9b9a2453",
+     "sum": 2.199637,
+     "nz": 6
+    },
+    "D03": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "722b89929cd5db71f11cf10ce07cb5b6b1ced380275bcf39c6054e8b5dc3e281",
+     "sum": 2.744885,
+     "nz": 10
+    },
+    "D04": {
+     "dim": 15,
+     "dtype": "float32",
+     "sha256": "fb564558ea9277472a2fbef9e38c77e94207ce44e22e22920b4ef73a973c393a",
+     "sum": 1.0,
+     "nz": 1
+    },
+    "D05": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "24af1f3e46153a92b0abadaa2a8efebc2a7660a26f3c46301a668b42c5ede501",
+     "sum": 7510.371094,
+     "nz": 11
+    },
+    "D06": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "9bc9a54b4541ebf88797bfa1cda9a19cc67e0f21fda2e803587d7791fc939319",
+     "sum": 18648.78125,
+     "nz": 10
+    },
+    "D07": {
+     "dim": 6144,
+     "dtype": "float32",
+     "sha256": "de676bae28a480011d3d012db14bef539324e62a841a9627863c689bea168af3",
+     "sum": 0.0,
+     "nz": 0
+    },
+    "E03": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "806036fd06469e62d3205fbff4f57f1494652d6e9f93ed45ff3a901e88412e11",
+     "sum": 25580.125,
+     "nz": 12
+    },
+    "E04": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "1b58d7f03a300ccd7297c1c70985b515417b5a2e0e1033178760a58ca5d904eb",
+     "sum": 2592.179932,
+     "nz": 7
+    }
+   },
+   "errors": {}
+  },
+  {
+   "id": "3b994cac7f4df4b14066a4a6ff0ac00f.bndb",
+   "path": "D:\\VM_Share\\CoDefenderC3_v8\\minimal_dataset\\.cache\\bndb\\3b994cac7f4df4b14066a4a6ff0ac00f.bndb",
+   "features": {
+    "D01": {
+     "dim": 4096,
+     "dtype": "int64",
+     "sha256": "f669c9b323ad72ea940ecb5a98aee56b7e1e91c7ee8730e604d3c5f352470a67",
+     "sum": 255889.0,
+     "nz": 1720
+    },
+    "D02": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "6c88eabe615fad2fc6aedfacf670e8f9c22901285a6416f6b9d128f0a5588b60",
+     "sum": 2.536343,
+     "nz": 12
+    },
+    "D03": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "96c5a38d675ad8d2e4c2e5a7006ff4565cf39dd3404c5eb0825e6f804d5cdb21",
+     "sum": 3.428026,
+     "nz": 21
+    },
+    "D04": {
+     "dim": 15,
+     "dtype": "float32",
+     "sha256": "fb564558ea9277472a2fbef9e38c77e94207ce44e22e22920b4ef73a973c393a",
+     "sum": 1.0,
+     "nz": 1
+    },
+    "D05": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "e0afc89f145fe5c9d10d98f00860c2f147ae18f9fff3d9eaf45b5666ff6c7a2c",
+     "sum": 86903.625,
+     "nz": 12
+    },
+    "D06": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "24e2d5bc4bcd1acd1437a0db8fd8c6fb7c07b013b1dd359be980d58c2d3bcd44",
+     "sum": 378856.46875,
+     "nz": 10
+    },
+    "D07": {
+     "dim": 6144,
+     "dtype": "float32",
+     "sha256": "37706d0f7b253e2b28ff6a1bdd3486f89362aa520822ec6c4ff470a2268847e2",
+     "sum": 2.0,
+     "nz": 2
+    },
+    "E03": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "339b61a59b5ef3ec71727ee10d1aa9ede010dd7842beb444065bc102fa6d8ab1",
+     "sum": 482174.84375,
+     "nz": 12
+    },
+    "E04": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "050fc0e682a538446f4d346d0052b575b888436f3c150d1979a66844d689d3e7",
+     "sum": 23345.115234,
+     "nz": 10
+    }
+   },
+   "errors": {}
+  },
+  {
+   "id": "54cfe7d114109c48c4bc0811186a2780.bndb",
+   "path": "D:\\VM_Share\\CoDefenderC3_v8\\minimal_dataset\\.cache\\bndb\\54cfe7d114109c48c4bc0811186a2780.bndb",
+   "features": {
+    "D01": {
+     "dim": 4096,
+     "dtype": "int64",
+     "sha256": "6d2ca9518887bc1e35387f5b2d2ecc746c8830fae7a8a995b617b3dc3aa13fe5",
+     "sum": 21129.0,
+     "nz": 62
+    },
+    "D02": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "310bad4aa75e8f33d11a3b897edce38895e7227ca287c31f0237beaf9a2eae96",
+     "sum": 2.747179,
+     "nz": 11
+    },
+    "D03": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "42f3f967cd0355e0dd8bea51bd5c8e9c2827780d422aa06c0104fd768c77e135",
+     "sum": 3.474114,
+     "nz": 17
+    },
+    "D04": {
+     "dim": 15,
+     "dtype": "float32",
+     "sha256": "fb564558ea9277472a2fbef9e38c77e94207ce44e22e22920b4ef73a973c393a",
+     "sum": 1.0,
+     "nz": 1
+    },
+    "D05": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "0cafdc62837bc888af95ed1b18f3d0b1531b97d6b02505727674c9d6dae9c21f",
+     "sum": 1073.659912,
+     "nz": 11
+    },
+    "D06": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "97dc913aedef008c595c72377287cbf553188842d39ce350445d1f17ebfc996b",
+     "sum": 1022.72406,
+     "nz": 10
+    },
+    "D07": {
+     "dim": 6144,
+     "dtype": "float32",
+     "sha256": "df207038c3afb813b69b133b0668141d2d05f6142cc709fc652d3aed4548592d",
+     "sum": 20.414213,
+     "nz": 21
+    },
+    "E03": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "8d7943a6a56876799c58e2acf0f7a66368baea51c2ae1a1b120c975f89875856",
+     "sum": 1096.521973,
+     "nz": 12
+    },
+    "E04": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "622e0c59ee1f849fe511dce2b6fff243eba866aab408fc208c1e6f1db56c5e50",
+     "sum": 124.0,
+     "nz": 2
+    }
+   },
+   "errors": {}
+  },
+  {
+   "id": "6185bb8cb90eed7a3df376c4f4aa88c1.bndb",
+   "path": "D:\\VM_Share\\CoDefenderC3_v8\\minimal_dataset\\.cache\\bndb\\6185bb8cb90eed7a3df376c4f4aa88c1.bndb",
+   "features": {
+    "D01": {
+     "dim": 4096,
+     "dtype": "int64",
+     "sha256": "6d3c3b3b92d12d506f60ab27d138988c6b16eb21d128c4894ff11a6ae219d663",
+     "sum": 76.0,
+     "nz": 1
+    },
+    "D02": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef",
+     "sum": 0.0,
+     "nz": 0
+    },
+    "D03": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef",
+     "sum": 0.0,
+     "nz": 0
+    },
+    "D04": {
+     "dim": 15,
+     "dtype": "float32",
+     "sha256": "fb564558ea9277472a2fbef9e38c77e94207ce44e22e22920b4ef73a973c393a",
+     "sum": 1.0,
+     "nz": 1
+    },
+    "D05": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "6075bb72b998e0a8204662cbd97949cd5b8432c41f851aeab4e4782f08db58fd",
+     "sum": 286.120239,
+     "nz": 11
+    },
+    "D06": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "301a69fff02cdaa7ecd54e8e819160ee29daace86df87ec71b33c5ffac1d81fe",
+     "sum": 139.725113,
+     "nz": 10
+    },
+    "D07": {
+     "dim": 6144,
+     "dtype": "float32",
+     "sha256": "2a772dd6993606c02e5e9fa3979c914795001bfc0500ce4977fff74a5a523df6",
+     "sum": 1.0,
+     "nz": 1
+    },
+    "E03": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "d17a724a19997da78dca9c5c62dca9c79c3bbc6446d367aa9b3183bd5bc982dc",
+     "sum": 110.063866,
+     "nz": 12
+    },
+    "E04": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "96ce4c0cab2cd5e4825e0674715aa137bb9431ed3758791501b198fb9a1c150a",
+     "sum": 7.0,
+     "nz": 2
+    }
+   },
+   "errors": {}
+  },
+  {
+   "id": "623bf56c8dffd3b805ad36da69f3a382.bndb",
+   "path": "D:\\VM_Share\\CoDefenderC3_v8\\minimal_dataset\\.cache\\bndb\\623bf56c8dffd3b805ad36da69f3a382.bndb",
+   "features": {
+    "D01": {
+     "dim": 4096,
+     "dtype": "int64",
+     "sha256": "1be5b03fd6ba5d6609f4c4b339fa6f488b3ebfaafa2e9ae16f421fd3ad1eedef",
+     "sum": 551.0,
+     "nz": 3
+    },
+    "D02": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "e73255a837ff3482fc78dec0a841c38d74de27e1adab001bc1222638422abf5f",
+     "sum": 1.414214,
+     "nz": 2
+    },
+    "D03": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "327389fb31edaf88a4f5b7f1bcda8183b83cb7bba6f43d89ae10c7d31ea75ab2",
+     "sum": 1.0,
+     "nz": 1
+    },
+    "D04": {
+     "dim": 15,
+     "dtype": "float32",
+     "sha256": "fb564558ea9277472a2fbef9e38c77e94207ce44e22e22920b4ef73a973c393a",
+     "sum": 1.0,
+     "nz": 1
+    },
+    "D05": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "bceeb82b4c999736ce54767087ca22946eb1e177cd4dd918df9b59df00dee4a4",
+     "sum": 251.209427,
+     "nz": 11
+    },
+    "D06": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "71e35daf3d4b1491025562070693e591f21369099ecfc032ae564178bdd5f90f",
+     "sum": 166.936722,
+     "nz": 10
+    },
+    "D07": {
+     "dim": 6144,
+     "dtype": "float32",
+     "sha256": "96b8f22db05eef1e5f0799256fcffa87d7f2f02edd84755426139c6bf57471ce",
+     "sum": 1.732051,
+     "nz": 3
+    },
+    "E03": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "439f8cb5f12772c354637fe206880387789e4849eabfc04878367b0b35b94475",
+     "sum": 20.876143,
+     "nz": 10
+    },
+    "E04": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "2764696ce733c62233d7a8a7bb26554413578aca64dfe9bd278ca229cbbded2f",
+     "sum": 4.0,
+     "nz": 2
+    }
+   },
+   "errors": {}
+  },
+  {
+   "id": "6613fb6a3abc343243515fb283a5248e.bndb",
+   "path": "D:\\VM_Share\\CoDefenderC3_v8\\minimal_dataset\\.cache\\bndb\\6613fb6a3abc343243515fb283a5248e.bndb",
+   "features": {
+    "D01": {
+     "dim": 4096,
+     "dtype": "int64",
+     "sha256": "88065649e0716484a9415bfca6204018ca0d4e75aa0b84795b3527015a21444f",
+     "sum": 1154.0,
+     "nz": 12
+    },
+    "D02": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "0a30aaa73fb29429a5e8ce2fa495e2006a15c718f844f48059fa6894aa4ce709",
+     "sum": 1.238365,
+     "nz": 2
+    },
+    "D03": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "135a87ded83f4f67bf007288365e1c51f21eb67f92f33d817bd5cf915780866b",
+     "sum": 1.245807,
+     "nz": 2
+    },
+    "D04": {
+     "dim": 15,
+     "dtype": "float32",
+     "sha256": "fb564558ea9277472a2fbef9e38c77e94207ce44e22e22920b4ef73a973c393a",
+     "sum": 1.0,
+     "nz": 1
+    },
+    "D05": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "de88cd62a9526013ce24e15c1d3c4651e09ecde72c96a1f4c182c6a7d9bfae34",
+     "sum": 2968.766846,
+     "nz": 11
+    },
+    "D06": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "6c2d6be1f9e010f87107f060557479ea597fd3a6f2c922a57519afaf091635ae",
+     "sum": 2022.772705,
+     "nz": 10
+    },
+    "D07": {
+     "dim": 6144,
+     "dtype": "float32",
+     "sha256": "de676bae28a480011d3d012db14bef539324e62a841a9627863c689bea168af3",
+     "sum": 0.0,
+     "nz": 0
+    },
+    "E03": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "09bbc16867842797abe87fab91546c13dcbd59933a9d8ddb8ef56591f8b96577",
+     "sum": 2655.805664,
+     "nz": 12
+    },
+    "E04": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "662ec48e76643f1f5c134e162a6770c03d328dffab3d2eba3c4725762a3e0667",
+     "sum": 204.175507,
+     "nz": 9
+    }
+   },
+   "errors": {}
+  },
+  {
+   "id": "7bdd09ac9383c7d624eb44eabb4a85b0.bndb",
+   "path": "D:\\VM_Share\\CoDefenderC3_v8\\minimal_dataset\\.cache\\bndb\\7bdd09ac9383c7d624eb44eabb4a85b0.bndb",
+   "features": {
+    "D01": {
+     "dim": 4096,
+     "dtype": "int64",
+     "sha256": "60a0dd8aee5d2ecf1b43fc6379c4a2b1aa49626b9ad690022d8eae4af305aa6a",
+     "sum": 38887.0,
+     "nz": 99
+    },
+    "D02": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "7197eb338d9a0df96d405752984ebd6b4e5ce277eccbda7d351253fdb03cd947",
+     "sum": 3.682117,
+     "nz": 19
+    },
+    "D03": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "101726a4232619959c7011610d4d71d6da80e140185b6e19d309b1468d9bb9b9",
+     "sum": 4.843082,
+     "nz": 33
+    },
+    "D04": {
+     "dim": 15,
+     "dtype": "float32",
+     "sha256": "fb564558ea9277472a2fbef9e38c77e94207ce44e22e22920b4ef73a973c393a",
+     "sum": 1.0,
+     "nz": 1
+    },
+    "D05": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "9546a22e920a45fdb72f96b149740aed812b6b6e33cef27c4253c829a8ccbd4f",
+     "sum": 2186.308105,
+     "nz": 11
+    },
+    "D06": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "d3d648448c7d2e1189d975fbb5a2148c3cce12c5e5cd79d5e83433bb3facbd38",
+     "sum": 3962.321289,
+     "nz": 10
+    },
+    "D07": {
+     "dim": 6144,
+     "dtype": "float32",
+     "sha256": "93f215e07a5f5b5c26aceec76ba7e16e2e4052d8f5c94f890b21261775dc2f2d",
+     "sum": 17.0,
+     "nz": 17
+    },
+    "E03": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "549f547e8c568e6ce5c520571b118be987cf1366540beeeb32d7b6d7683dfec6",
+     "sum": 5651.286133,
+     "nz": 12
+    },
+    "E04": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "7ddaa5970878c548d5d11d9ecdc188f6e358d92730d7cf89ffe42c5e157755d6",
+     "sum": 289.003571,
+     "nz": 7
+    }
+   },
+   "errors": {}
+  },
+  {
+   "id": "7dbc8d2db3d2c7ba75b495b9a3b9d4ae.bndb",
+   "path": "D:\\VM_Share\\CoDefenderC3_v8\\minimal_dataset\\.cache\\bndb\\7dbc8d2db3d2c7ba75b495b9a3b9d4ae.bndb",
+   "features": {
+    "D01": {
+     "dim": 4096,
+     "dtype": "int64",
+     "sha256": "cd155088c6bc8e02376aeac8b9cff7c584483b6a409fe68df1473da5ef955133",
+     "sum": 20223.0,
+     "nz": 57
+    },
+    "D02": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "4fcb75570c8c63ee77bc5353b1a3926710e4ae21080135825518c131f9d25715",
+     "sum": 2.810499,
+     "nz": 11
+    },
+    "D03": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "c230bb0e77bcffbb04c67de477a7be149ffc7b757cdceb7d1858c5041ded830d",
+     "sum": 3.568414,
+     "nz": 16
+    },
+    "D04": {
+     "dim": 15,
+     "dtype": "float32",
+     "sha256": "fb564558ea9277472a2fbef9e38c77e94207ce44e22e22920b4ef73a973c393a",
+     "sum": 1.0,
+     "nz": 1
+    },
+    "D05": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "ed47abbd8bdef6ff99677fc1e85ddae566841a608b68b660c491bf86e09a238d",
+     "sum": 1598.055664,
+     "nz": 11
+    },
+    "D06": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "5cace8eb6418b842150ee9641ad047b502c2c08ad58e704188a9506bdc8b6bc7",
+     "sum": 997.661011,
+     "nz": 10
+    },
+    "D07": {
+     "dim": 6144,
+     "dtype": "float32",
+     "sha256": "56ddfb00e9bd92a426587a573bb0c590f113bbb5ac9029421854a11b939e5ec7",
+     "sum": 24.22118,
+     "nz": 28
+    },
+    "E03": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "332334be4567f96bd93ed45e52302edcd540cb37815a2ce28bac7dd0ba7a021a",
+     "sum": 1286.444214,
+     "nz": 12
+    },
+    "E04": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "d5b91ebfb65ac080fc730893c53ab87ec2e18b2a7070ea89ecbdc7f50f955e3e",
+     "sum": 93.0,
+     "nz": 2
+    }
+   },
+   "errors": {}
+  },
+  {
+   "id": "857b5faa5f9454930ec120b0e896dd93.bndb",
+   "path": "D:\\VM_Share\\CoDefenderC3_v8\\minimal_dataset\\.cache\\bndb\\857b5faa5f9454930ec120b0e896dd93.bndb",
+   "features": {
+    "D01": {
+     "dim": 4096,
+     "dtype": "int64",
+     "sha256": "de76b1d1b05d81df4d69b76d41fe244a5169379dc454f6cf79098dc777d9be7b",
+     "sum": 32524.0,
+     "nz": 135
+    },
+    "D02": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "8bc03cd8bca56ea880cdaf0161ed8ca5a8fa79eadc4e901b09eb6cb2f5f83a0f",
+     "sum": 1.967168,
+     "nz": 4
+    },
+    "D03": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "3b30df92fe0e76b1098ce0ada1faf9c967d38a0dbcb777df0573acb4a38f4f92",
+     "sum": 2.708233,
+     "nz": 8
+    },
+    "D04": {
+     "dim": 15,
+     "dtype": "float32",
+     "sha256": "fb564558ea9277472a2fbef9e38c77e94207ce44e22e22920b4ef73a973c393a",
+     "sum": 1.0,
+     "nz": 1
+    },
+    "D05": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "bddbb0b14bce8d76ef51e4378c85a77644a63ef3d2e3fef868c988d609b4f610",
+     "sum": 15687.389648,
+     "nz": 12
+    },
+    "D06": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "35f2704d1e3fb7398a1cd386a1cee3c2c5313500d58e01296a0f1fe0480495ba",
+     "sum": 98424.640625,
+     "nz": 10
+    },
+    "D07": {
+     "dim": 6144,
+     "dtype": "float32",
+     "sha256": "8f932cd04cc65beb093250c1bee61633daf0a76824b95f96881c0908e3916268",
+     "sum": 1.0,
+     "nz": 1
+    },
+    "E03": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "053395092b83eeed48f83f2f47cb7f27478ab1a9be6927ed2839fff4903c2a53",
+     "sum": 148763.390625,
+     "nz": 12
+    },
+    "E04": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "75cffe97b9d23f0ff56ab9c149759bce132edee00a02ff8dfac92ef5ce16bd63",
+     "sum": 6455.691895,
+     "nz": 10
+    }
+   },
+   "errors": {}
+  },
+  {
+   "id": "9094e02c02e5751dc5ca32f052052ae2.bndb",
+   "path": "D:\\VM_Share\\CoDefenderC3_v8\\minimal_dataset\\.cache\\bndb\\9094e02c02e5751dc5ca32f052052ae2.bndb",
+   "features": {
+    "D01": {
+     "dim": 4096,
+     "dtype": "int64",
+     "sha256": "3b58307583d4004b6a64048344912bba057357ac779d6b6fbff15fa6456d5c62",
+     "sum": 114729.0,
+     "nz": 357
+    },
+    "D02": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "1d56d22e8863ad3b97fef0bdd7b268c34f16c2688bb42a0cc1c9c354a68608f4",
+     "sum": 4.037115,
+     "nz": 28
+    },
+    "D03": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "5b272c2cc4203bd122aded110ed22f782813f40b6ee36b7c457e90a0c560b86f",
+     "sum": 5.357241,
+     "nz": 46
+    },
+    "D04": {
+     "dim": 15,
+     "dtype": "float32",
+     "sha256": "fb564558ea9277472a2fbef9e38c77e94207ce44e22e22920b4ef73a973c393a",
+     "sum": 1.0,
+     "nz": 1
+    },
+    "D05": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "2a8fa1e293cfcdb35897faa022f622afb1e4c83849600471335c4c928c7f7580",
+     "sum": 26422.847656,
+     "nz": 11
+    },
+    "D06": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "c270c44f0d633cbabe89bf4480daf8dd617774a7618445728e176894ea1d3580",
+     "sum": 37237.636719,
+     "nz": 10
+    },
+    "D07": {
+     "dim": 6144,
+     "dtype": "float32",
+     "sha256": "ed850953de6a68fcbb8746ab22c262f54299864a824014922a6da9b09e775040",
+     "sum": 22.340136,
+     "nz": 26
+    },
+    "E03": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "9bef0a62101dd51f98441304dfd015e5029087a837de00758c3b7a04715c771b",
+     "sum": 21327.46875,
+     "nz": 12
+    },
+    "E04": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "81d998bd8ea5eb19fb8b2127cce62e547a58b4d7057691fa3ef68322f5262a41",
+     "sum": 1073.086304,
+     "nz": 9
+    }
+   },
+   "errors": {}
+  },
+  {
+   "id": "9ea5780b094349c737e60cea08d8fe24.bndb",
+   "path": "D:\\VM_Share\\CoDefenderC3_v8\\minimal_dataset\\.cache\\bndb\\9ea5780b094349c737e60cea08d8fe24.bndb",
+   "features": {
+    "D01": {
+     "dim": 4096,
+     "dtype": "int64",
+     "sha256": "c35020473aed1b4642cd726cad727b63fff2824ad68cedd7ffb73c7cbd890479",
+     "sum": 0.0,
+     "nz": 0
+    },
+    "D02": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef",
+     "sum": 0.0,
+     "nz": 0
+    },
+    "D03": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef",
+     "sum": 0.0,
+     "nz": 0
+    },
+    "D04": {
+     "dim": 15,
+     "dtype": "float32",
+     "sha256": "5dcc1b5872dd9ff1c234501f1fefda01f664164e1583c3e1bb3dbea47588ab31",
+     "sum": 0.0,
+     "nz": 0
+    },
+    "D05": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "61b5ff405b901e64ed27bbf8f1375f20ef2be2e3bb0262b622537459eb8b5dc0",
+     "sum": 6727.0,
+     "nz": 7
+    },
+    "D06": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "84a12a6b10ec5bfe20e6d6a799a8cbe2804d9cf5d2e810aada3d88aa3f5ab232",
+     "sum": 495.238831,
+     "nz": 10
+    },
+    "D07": {
+     "dim": 6144,
+     "dtype": "float32",
+     "sha256": "de676bae28a480011d3d012db14bef539324e62a841a9627863c689bea168af3",
+     "sum": 0.0,
+     "nz": 0
+    },
+    "E03": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "538633ec02d4ef64baeaa935a2ea59a64aeb1c7f5414b9b53c0a341bc4ca7b68",
+     "sum": 1171.56958,
+     "nz": 11
+    },
+    "E04": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "fae1bef36d16b7a63ee64f6823ca9c1e2af3d845056ecf55b31581bbdfb8caa6",
+     "sum": 2.0,
+     "nz": 2
+    }
+   },
+   "errors": {}
+  },
+  {
+   "id": "a77ad121e58c0cd0ecdbbb89503a15e8.bndb",
+   "path": "D:\\VM_Share\\CoDefenderC3_v8\\minimal_dataset\\.cache\\bndb\\a77ad121e58c0cd0ecdbbb89503a15e8.bndb",
+   "features": {
+    "D01": {
+     "dim": 4096,
+     "dtype": "int64",
+     "sha256": "4bd223d852aee3df2ae3953861980c4658f092b130991e7d6be85b445d69416b",
+     "sum": 112027.0,
+     "nz": 346
+    },
+    "D02": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "8ec5e5585819377f9ac4990737887bbf3b4c830a115be489a2f3417190472090",
+     "sum": 3.787454,
+     "nz": 25
+    },
+    "D03": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "6b80fd6b6d4826bb6411e98b7d1a1f83315b7d2f3222d3dc90364d06c8824761",
+     "sum": 5.065769,
+     "nz": 41
+    },
+    "D04": {
+     "dim": 15,
+     "dtype": "float32",
+     "sha256": "fb564558ea9277472a2fbef9e38c77e94207ce44e22e22920b4ef73a973c393a",
+     "sum": 1.0,
+     "nz": 1
+    },
+    "D05": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "89083adb78816cddca65f38338c10f8214178fbd25b026d8ac88674cbf07c358",
+     "sum": 13022.5,
+     "nz": 11
+    },
+    "D06": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "18cfad496bd61856c8bc5f054171c8c6822fcd8bf14d3e8bb1fa11201cf79cb6",
+     "sum": 23934.607422,
+     "nz": 10
+    },
+    "D07": {
+     "dim": 6144,
+     "dtype": "float32",
+     "sha256": "f9cfb4565f1388e4713167eb24b6dde7d51c4e24b222ae6031e3637d12f5f7e0",
+     "sum": 22.340136,
+     "nz": 26
+    },
+    "E03": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "5f130c565ca2c45d044c76c8d15383ebe0e77bb699884a801cc62cc9c3cb952a",
+     "sum": 20925.34375,
+     "nz": 12
+    },
+    "E04": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "73bcab06386a0c7d24a5b72fc5376b37a52c7510efeb0ba0306b432e5727c42c",
+     "sum": 1055.085083,
+     "nz": 9
+    }
+   },
+   "errors": {}
+  },
+  {
+   "id": "aa4cb22572a8faaf1db4084d294b673a.bndb",
+   "path": "D:\\VM_Share\\CoDefenderC3_v8\\minimal_dataset\\.cache\\bndb\\aa4cb22572a8faaf1db4084d294b673a.bndb",
+   "features": {
+    "D01": {
+     "dim": 4096,
+     "dtype": "int64",
+     "sha256": "c35020473aed1b4642cd726cad727b63fff2824ad68cedd7ffb73c7cbd890479",
+     "sum": 0.0,
+     "nz": 0
+    },
+    "D02": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef",
+     "sum": 0.0,
+     "nz": 0
+    },
+    "D03": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef",
+     "sum": 0.0,
+     "nz": 0
+    },
+    "D04": {
+     "dim": 15,
+     "dtype": "float32",
+     "sha256": "5dcc1b5872dd9ff1c234501f1fefda01f664164e1583c3e1bb3dbea47588ab31",
+     "sum": 0.0,
+     "nz": 0
+    },
+    "D05": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "17b0761f87b081d5cf10757ccc89f12be355c70e2e29df288b65b30710dcbcd1",
+     "sum": 0.0,
+     "nz": 0
+    },
+    "D06": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "2c34ce1df23b838c5abf2a7f6437cca3d3067ed509ff25f11df6b11b582b51eb",
+     "sum": 0.0,
+     "nz": 0
+    },
+    "D07": {
+     "dim": 6144,
+     "dtype": "float32",
+     "sha256": "de676bae28a480011d3d012db14bef539324e62a841a9627863c689bea168af3",
+     "sum": 0.0,
+     "nz": 0
+    },
+    "E03": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "17b0761f87b081d5cf10757ccc89f12be355c70e2e29df288b65b30710dcbcd1",
+     "sum": 0.0,
+     "nz": 0
+    },
+    "E04": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "2c34ce1df23b838c5abf2a7f6437cca3d3067ed509ff25f11df6b11b582b51eb",
+     "sum": 0.0,
+     "nz": 0
+    }
+   },
+   "errors": {}
+  },
+  {
+   "id": "af71e2c959f7dafd5b757360a87090de.bndb",
+   "path": "D:\\VM_Share\\CoDefenderC3_v8\\minimal_dataset\\.cache\\bndb\\af71e2c959f7dafd5b757360a87090de.bndb",
+   "features": {
+    "D01": {
+     "dim": 4096,
+     "dtype": "int64",
+     "sha256": "c35020473aed1b4642cd726cad727b63fff2824ad68cedd7ffb73c7cbd890479",
+     "sum": 0.0,
+     "nz": 0
+    },
+    "D02": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef",
+     "sum": 0.0,
+     "nz": 0
+    },
+    "D03": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef",
+     "sum": 0.0,
+     "nz": 0
+    },
+    "D04": {
+     "dim": 15,
+     "dtype": "float32",
+     "sha256": "5dcc1b5872dd9ff1c234501f1fefda01f664164e1583c3e1bb3dbea47588ab31",
+     "sum": 0.0,
+     "nz": 0
+    },
+    "D05": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "17b0761f87b081d5cf10757ccc89f12be355c70e2e29df288b65b30710dcbcd1",
+     "sum": 0.0,
+     "nz": 0
+    },
+    "D06": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "2c34ce1df23b838c5abf2a7f6437cca3d3067ed509ff25f11df6b11b582b51eb",
+     "sum": 0.0,
+     "nz": 0
+    },
+    "D07": {
+     "dim": 6144,
+     "dtype": "float32",
+     "sha256": "de676bae28a480011d3d012db14bef539324e62a841a9627863c689bea168af3",
+     "sum": 0.0,
+     "nz": 0
+    },
+    "E03": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "17b0761f87b081d5cf10757ccc89f12be355c70e2e29df288b65b30710dcbcd1",
+     "sum": 0.0,
+     "nz": 0
+    },
+    "E04": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "2c34ce1df23b838c5abf2a7f6437cca3d3067ed509ff25f11df6b11b582b51eb",
+     "sum": 0.0,
+     "nz": 0
+    }
+   },
+   "errors": {}
+  },
+  {
+   "id": "b8e46cc2dfe9262710c316b7cb10a84c.bndb",
+   "path": "D:\\VM_Share\\CoDefenderC3_v8\\minimal_dataset\\.cache\\bndb\\b8e46cc2dfe9262710c316b7cb10a84c.bndb",
+   "features": {
+    "D01": {
+     "dim": 4096,
+     "dtype": "int64",
+     "sha256": "0c783b7d571344737a591b8d8e92daf47bb65f93d8ff491ad1008089d1a13464",
+     "sum": 49543.0,
+     "nz": 236
+    },
+    "D02": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "dccd70350eb16c5c213ce741cee6e490f5c2ba0ad40325c0e11a9fd0c179796b",
+     "sum": 3.452187,
+     "nz": 18
+    },
+    "D03": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "f7b78efb241a3c8a584b62cc18e2d317a7ab2fbeba4c311c1668cdd31479cdcc",
+     "sum": 4.916471,
+     "nz": 35
+    },
+    "D04": {
+     "dim": 15,
+     "dtype": "float32",
+     "sha256": "fb564558ea9277472a2fbef9e38c77e94207ce44e22e22920b4ef73a973c393a",
+     "sum": 1.0,
+     "nz": 1
+    },
+    "D05": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "af4eb0c68360050266856ef273b64539a2b6bb267104c6482f5117cc93e02dcc",
+     "sum": 15057.317383,
+     "nz": 11
+    },
+    "D06": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "94030182b6de8b45b50458ccccca4cbf5bbfb7cbbf9fe88e5a4943614c12fd0d",
+     "sum": 4110.549805,
+     "nz": 10
+    },
+    "D07": {
+     "dim": 6144,
+     "dtype": "float32",
+     "sha256": "dc09955403c9deb8e4864f717513b8a27551bd31a98d442459a4fd9d32281cac",
+     "sum": 18.437038,
+     "nz": 33
+    },
+    "E03": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "c1035ea20beacfdd92687961a7a0d896525f48bb4bf34f8daece1524755035ae",
+     "sum": 8772.922852,
+     "nz": 12
+    },
+    "E04": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "edad72c1e8b330193f34b9d0586366d9e1149131af9c6bb63ae5b89697c545cb",
+     "sum": 25.0,
+     "nz": 2
+    }
+   },
+   "errors": {}
+  },
+  {
+   "id": "c67d47366c54c2849593ea5b8841434b.bndb",
+   "path": "D:\\VM_Share\\CoDefenderC3_v8\\minimal_dataset\\.cache\\bndb\\c67d47366c54c2849593ea5b8841434b.bndb",
+   "features": {
+    "D01": {
+     "dim": 4096,
+     "dtype": "int64",
+     "sha256": "c35020473aed1b4642cd726cad727b63fff2824ad68cedd7ffb73c7cbd890479",
+     "sum": 0.0,
+     "nz": 0
+    },
+    "D02": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef",
+     "sum": 0.0,
+     "nz": 0
+    },
+    "D03": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef",
+     "sum": 0.0,
+     "nz": 0
+    },
+    "D04": {
+     "dim": 15,
+     "dtype": "float32",
+     "sha256": "5dcc1b5872dd9ff1c234501f1fefda01f664164e1583c3e1bb3dbea47588ab31",
+     "sum": 0.0,
+     "nz": 0
+    },
+    "D05": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "1d54a96b77526542478d6ab2f4b9cebe8069561c47eb10fcf2daa2036104dbad",
+     "sum": 545.08551,
+     "nz": 8
+    },
+    "D06": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "8cdf91bc5c16dd3df38e27af585e9967435c309906df23fd3a793a6d7338fddd",
+     "sum": 229.396637,
+     "nz": 10
+    },
+    "D07": {
+     "dim": 6144,
+     "dtype": "float32",
+     "sha256": "de676bae28a480011d3d012db14bef539324e62a841a9627863c689bea168af3",
+     "sum": 0.0,
+     "nz": 0
+    },
+    "E03": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "cbe1245c34c6a0c77306ce508f550e5db3c2399de033c55b6349f735111e08ab",
+     "sum": 86.851357,
+     "nz": 12
+    },
+    "E04": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "96eb799af65bb18e4ab32c73cebcd79f3935c8452fd42f31286854f1ecfb3754",
+     "sum": 8.0,
+     "nz": 2
+    }
+   },
+   "errors": {}
+  },
+  {
+   "id": "c8c467ffdafb3e112163ca309240b3be.bndb",
+   "path": "D:\\VM_Share\\CoDefenderC3_v8\\minimal_dataset\\.cache\\bndb\\c8c467ffdafb3e112163ca309240b3be.bndb",
+   "features": {
+    "D01": {
+     "dim": 4096,
+     "dtype": "int64",
+     "sha256": "fed825c196b19ef5868063c79929b12e9876a125b9f7de15b53de556e19f94f5",
+     "sum": 2202.0,
+     "nz": 20
+    },
+    "D02": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "99d75b02795b611054f886a86e7bb101da1bf3c4c7815dd690414dafd3a423fe",
+     "sum": 1.401233,
+     "nz": 3
+    },
+    "D03": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "0766fedfe67b4f1c0a59c06bb006ef89d83320c8104306eaeb73d0cf493a7a63",
+     "sum": 1.407441,
+     "nz": 3
+    },
+    "D04": {
+     "dim": 15,
+     "dtype": "float32",
+     "sha256": "fb564558ea9277472a2fbef9e38c77e94207ce44e22e22920b4ef73a973c393a",
+     "sum": 1.0,
+     "nz": 1
+    },
+    "D05": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "841005652f5aae6b8a35ca439fa76e684842e8b7d1cf5432428979a728917811",
+     "sum": 2197.431885,
+     "nz": 11
+    },
+    "D06": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "c1d2d49f4673435cb533140014cf76a6bf07e4a0f1e0ffc9547e2f95a92092cd",
+     "sum": 1192.25708,
+     "nz": 10
+    },
+    "D07": {
+     "dim": 6144,
+     "dtype": "float32",
+     "sha256": "8370ffc02f804efb10d3c9f5cf25b4d70b6b6a36d0275c2447c3c4c4f5321ba7",
+     "sum": 17.0,
+     "nz": 17
+    },
+    "E03": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "0a371584db88817b02281d42b3dbc4597f648ea77a059d4bd3d9a74bd96d35d7",
+     "sum": 397.295044,
+     "nz": 12
+    },
+    "E04": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "6ca8f4103ca70a1a2386b923a72e908a5a685a5b00afc75d05463b3b7b4377b0",
+     "sum": 52.02174,
+     "nz": 9
+    }
+   },
+   "errors": {}
+  },
+  {
+   "id": "ca4d11cedc10b80309870f622b17fd25.bndb",
+   "path": "D:\\VM_Share\\CoDefenderC3_v8\\minimal_dataset\\.cache\\bndb\\ca4d11cedc10b80309870f622b17fd25.bndb",
+   "features": {
+    "D01": {
+     "dim": 4096,
+     "dtype": "int64",
+     "sha256": "03a2221cff30e1c9c4a2dfabab7fa47e14669cb2f0498fa341eecde518926d93",
+     "sum": 658620.0,
+     "nz": 1773
+    },
+    "D02": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "974bc0971f2d4d6dc0df485dfdfffb0a9882b84fca1de88840145dc4086da108",
+     "sum": 5.225914,
+     "nz": 41
+    },
+    "D03": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "db8b59796f0b616094410b0e3d268b9afac21f78b6f126e48a3deabccc665a23",
+     "sum": 7.861423,
+     "nz": 90
+    },
+    "D04": {
+     "dim": 15,
+     "dtype": "float32",
+     "sha256": "fb564558ea9277472a2fbef9e38c77e94207ce44e22e22920b4ef73a973c393a",
+     "sum": 1.0,
+     "nz": 1
+    },
+    "D05": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "9c2b0707e112e8a89a1207e1bda6185ab247e8c54a182b9d6846ceda48a1c51d",
+     "sum": 22442.363281,
+     "nz": 12
+    },
+    "D06": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "fc4b105618ef4b7ca23ed076df94b278ccf7d034922322abacd1718e756f6d8e",
+     "sum": 65799.242188,
+     "nz": 10
+    },
+    "D07": {
+     "dim": 6144,
+     "dtype": "float32",
+     "sha256": "e3a07fc3c88d4c80d6c3ad70de1d0e375538b2c3c1b3ce38d82d2fb396d5d45d",
+     "sum": 15.511709,
+     "nz": 18
+    },
+    "E03": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "d945d69ded7680c2738922c9f99b624be58c7e18bf6dd1ac1fb3651ad0d068ed",
+     "sum": 96265.3125,
+     "nz": 12
+    },
+    "E04": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "c8521d22f3c9617a065d9deac128b91fb882bdc0476fcf43c4ccb8522d922d61",
+     "sum": 6965.192383,
+     "nz": 8
+    }
+   },
+   "errors": {}
+  },
+  {
+   "id": "dc361ab1b1e10ad937c459ec86980761.bndb",
+   "path": "D:\\VM_Share\\CoDefenderC3_v8\\minimal_dataset\\.cache\\bndb\\dc361ab1b1e10ad937c459ec86980761.bndb",
+   "features": {
+    "D01": {
+     "dim": 4096,
+     "dtype": "int64",
+     "sha256": "0220a77ca083a5d3319fbb3735b54b38ff1ea5af930f0d4d108b3292af84d555",
+     "sum": 9356.0,
+     "nz": 104
+    },
+    "D02": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "9982fda2c5e850424e22063bc05b6ce27b0f45caca0318b33780d6f35ef52b19",
+     "sum": 1.658055,
+     "nz": 4
+    },
+    "D03": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "9251f214d8c92b729bd49d0c546d5b07e4a9a7449aab75985f9f782a57c5c21c",
+     "sum": 2.022819,
+     "nz": 8
+    },
+    "D04": {
+     "dim": 15,
+     "dtype": "float32",
+     "sha256": "fb564558ea9277472a2fbef9e38c77e94207ce44e22e22920b4ef73a973c393a",
+     "sum": 1.0,
+     "nz": 1
+    },
+    "D05": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "2a55890d0e61045734e80ee0da730fc6f7903f24aa87999cc9a9fa6a1fb460bd",
+     "sum": 6098.959961,
+     "nz": 11
+    },
+    "D06": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "780f5b1cbeef8bfc46b22d57c9f126fe9d0cb3ac9c23010fddbbf32c8d401cb9",
+     "sum": 8894.249023,
+     "nz": 10
+    },
+    "D07": {
+     "dim": 6144,
+     "dtype": "float32",
+     "sha256": "b7f213ad06554249eb2fd913ab5e306955b367b1d463ac3feb891696274dd58d",
+     "sum": 2.0,
+     "nz": 2
+    },
+    "E03": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "5a8ff8888008bdfc97d7942b12f849db8c35b933ec4fe1d8139a0bb3bb9f2a44",
+     "sum": 12681.584961,
+     "nz": 12
+    },
+    "E04": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "10586bb578c59ddf28dfe81c429aeca3c48bf248224c6213a3c2c76aebad4756",
+     "sum": 517.175903,
+     "nz": 9
+    }
+   },
+   "errors": {}
+  },
+  {
+   "id": "dd66223e01bc621e6fa3bf5802f6985e.bndb",
+   "path": "D:\\VM_Share\\CoDefenderC3_v8\\minimal_dataset\\.cache\\bndb\\dd66223e01bc621e6fa3bf5802f6985e.bndb",
+   "features": {
+    "D01": {
+     "dim": 4096,
+     "dtype": "int64",
+     "sha256": "3a18e951fdc29e22426c70b3ae8ae7f52fe1cddebd7338438d571cae4a9fa41a",
+     "sum": 1078.0,
+     "nz": 11
+    },
+    "D02": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "b0945f9b1459d376f4678985e866ac9fb8efb760b57d6a180e1813e8fd3b7976",
+     "sum": 1.245807,
+     "nz": 2
+    },
+    "D03": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "598284d9fd80482bbfce396af2cd5f98b32db9051c07f32cb21b8d7786c0bad2",
+     "sum": 1.254521,
+     "nz": 2
+    },
+    "D04": {
+     "dim": 15,
+     "dtype": "float32",
+     "sha256": "fb564558ea9277472a2fbef9e38c77e94207ce44e22e22920b4ef73a973c393a",
+     "sum": 1.0,
+     "nz": 1
+    },
+    "D05": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "09ca9d6cdee94bd8e6c4e51ac207a8249f7925411305afc19c1fba8a7c4c194c",
+     "sum": 1352.03772,
+     "nz": 11
+    },
+    "D06": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "6f8bde39defb54eb818015130e1cf6ce09868ecd1b2013a0db6a6c63849026a2",
+     "sum": 997.460327,
+     "nz": 10
+    },
+    "D07": {
+     "dim": 6144,
+     "dtype": "float32",
+     "sha256": "de676bae28a480011d3d012db14bef539324e62a841a9627863c689bea168af3",
+     "sum": 0.0,
+     "nz": 0
+    },
+    "E03": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "f8b5c9d788be4e2fe1eb545769773d0c8f23e8da83746e94458cce4f62f0aa73",
+     "sum": 1106.471558,
+     "nz": 12
+    },
+    "E04": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "33b0f6a5a5d6a449a109e168dbedd3ae3370605dacbde2b2fe5cc672c319269f",
+     "sum": 153.014496,
+     "nz": 7
+    }
+   },
+   "errors": {}
+  },
+  {
+   "id": "e069753fee9aa517c85c85fad44ecd61.bndb",
+   "path": "D:\\VM_Share\\CoDefenderC3_v8\\minimal_dataset\\.cache\\bndb\\e069753fee9aa517c85c85fad44ecd61.bndb",
+   "features": {
+    "D01": {
+     "dim": 4096,
+     "dtype": "int64",
+     "sha256": "6b587f2c04fa7ccd84398af29822b07616cc6156131d988304375d3c7201890e",
+     "sum": 125196.0,
+     "nz": 371
+    },
+    "D02": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "de610ba37c66aac3534157f174e1b0c624007e6deb5f5e44a8286b0ca15ce20d",
+     "sum": 3.974647,
+     "nz": 25
+    },
+    "D03": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "c37161ddf48bf94e6abb521345ce679c7a21dbfa7efb1efc1a4a2c0843cee55e",
+     "sum": 5.671595,
+     "nz": 50
+    },
+    "D04": {
+     "dim": 15,
+     "dtype": "float32",
+     "sha256": "fb564558ea9277472a2fbef9e38c77e94207ce44e22e22920b4ef73a973c393a",
+     "sum": 1.0,
+     "nz": 1
+    },
+    "D05": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "15decc0e5c76a0e35da569c5ed873bb17cc1055444b791a04fb07b54d2e66c36",
+     "sum": 4877.626465,
+     "nz": 12
+    },
+    "D06": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "9d4a447271e7f6b0d484ccde96d4fb46801dcafbcc1b3534392d401d010e63fb",
+     "sum": 17722.951172,
+     "nz": 10
+    },
+    "D07": {
+     "dim": 6144,
+     "dtype": "float32",
+     "sha256": "6a31617d8144a9b7f0a2198b9c32a7e5df9b70ab721f43b078ce99eb4b3aae65",
+     "sum": 25.414213,
+     "nz": 26
+    },
+    "E03": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "100e1732faa800980198da395c3fd2a039f0572fd59d3499df6817b06a560d53",
+     "sum": 23931.873047,
+     "nz": 12
+    },
+    "E04": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "8e290affca06345ae4a4be4e6c3650b31983e4877a200b9259309983ce8cddc8",
+     "sum": 995.145935,
+     "nz": 10
+    }
+   },
+   "errors": {}
+  },
+  {
+   "id": "e0ec7fe45bb680df5bd988a0eb06aff0.bndb",
+   "path": "D:\\VM_Share\\CoDefenderC3_v8\\minimal_dataset\\.cache\\bndb\\e0ec7fe45bb680df5bd988a0eb06aff0.bndb",
+   "features": {
+    "D01": {
+     "dim": 4096,
+     "dtype": "int64",
+     "sha256": "009d21305e4f918ee2bdc299e6aaefd4c549d023a4536c080c7b89ea7b3e7c14",
+     "sum": 436081.0,
+     "nz": 1157
+    },
+    "D02": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "f50535a67f33d957f29925c3ed30970f3c04bbe72027e1b37ce8a2ef6e531457",
+     "sum": 4.236669,
+     "nz": 29
+    },
+    "D03": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "162ae5bd9facbabdd804eb801da03f432c582ca3bb2714d6354247bfd715b189",
+     "sum": 6.249838,
+     "nz": 61
+    },
+    "D04": {
+     "dim": 15,
+     "dtype": "float32",
+     "sha256": "fb564558ea9277472a2fbef9e38c77e94207ce44e22e22920b4ef73a973c393a",
+     "sum": 1.0,
+     "nz": 1
+    },
+    "D05": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "24c4ae9a3c88498249533db98de6a14da34542bd1d3c77ba1a89500133a46600",
+     "sum": 13764.217773,
+     "nz": 11
+    },
+    "D06": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "c2aaf4d99aa5441747aea7f4f899cb04f2fb859a75d319a0d9860ed1ab2ee835",
+     "sum": 27956.839844,
+     "nz": 10
+    },
+    "D07": {
+     "dim": 6144,
+     "dtype": "float32",
+     "sha256": "7c4c1fd7ee17df55069c43cc9ec60b04c39a2cbec942c0d6cee742e363914a2f",
+     "sum": 17.584282,
+     "nz": 20
+    },
+    "E03": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "d6f2a536c01f60c77c6166a073fa0b11195d0bbd6cd5bc2f1c4c7eb9430ef15c",
+     "sum": 40549.84375,
+     "nz": 12
+    },
+    "E04": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "4b8595b6d9bb5d1312738ff8e73ac8cbe1e96793eca0e8a13db9ba13c187fc79",
+     "sum": 2853.069336,
+     "nz": 7
+    }
+   },
+   "errors": {}
+  },
+  {
+   "id": "e1c20b1f66bbdf65d55b5016f3b29891.bndb",
+   "path": "D:\\VM_Share\\CoDefenderC3_v8\\minimal_dataset\\.cache\\bndb\\e1c20b1f66bbdf65d55b5016f3b29891.bndb",
+   "features": {
+    "D01": {
+     "dim": 4096,
+     "dtype": "int64",
+     "sha256": "217c48b31576cb047742375a06bf9db4fd96bfdbe1e2be5086521763e0b57044",
+     "sum": 490100.0,
+     "nz": 1545
+    },
+    "D02": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "9ac6e08cccd561dc97f766d652b56a69e395c14a368d3f223017c7cc7eb9042d",
+     "sum": 1.43181,
+     "nz": 4
+    },
+    "D03": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "1d80af7e75df5b993bb796d5dd42c765309f0fcd5ba15f18ebd097aa2f2f134e",
+     "sum": 1.656544,
+     "nz": 7
+    },
+    "D04": {
+     "dim": 15,
+     "dtype": "float32",
+     "sha256": "fb564558ea9277472a2fbef9e38c77e94207ce44e22e22920b4ef73a973c393a",
+     "sum": 1.0,
+     "nz": 1
+    },
+    "D05": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "223129728544754741f7a7c53c331d0cdc616a761cc665f43dd499421786a930",
+     "sum": 25731.644531,
+     "nz": 12
+    },
+    "D06": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "de0fee0816940b476675fee5bbea195a980c9d5f9ff6abaf96927b5792f746d5",
+     "sum": 67024.515625,
+     "nz": 10
+    },
+    "D07": {
+     "dim": 6144,
+     "dtype": "float32",
+     "sha256": "588b1b7446545a53094b529b70889714a6c2fe2b533eb43fcf240bfb546c3539",
+     "sum": 1.0,
+     "nz": 1
+    },
+    "E03": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "a6ffbd183779ec33cd67c0abf443decd343a1738035ac63a5554c606323aa0af",
+     "sum": 82231.117188,
+     "nz": 12
+    },
+    "E04": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "bc52e47406db178dfe8b85073b2f51b37f1c574606c6e844e5c521dea7255e37",
+     "sum": 6621.152344,
+     "nz": 8
+    }
+   },
+   "errors": {}
+  },
+  {
+   "id": "ebb13f1460da34238e54bcfcea382148.bndb",
+   "path": "D:\\VM_Share\\CoDefenderC3_v8\\minimal_dataset\\.cache\\bndb\\ebb13f1460da34238e54bcfcea382148.bndb",
+   "features": {
+    "D01": {
+     "dim": 4096,
+     "dtype": "int64",
+     "sha256": "47de41058a6b4efdf287bbdfa2c13535d0ae26864c27834eb41c71d5c03ed33b",
+     "sum": 34171.0,
+     "nz": 85
+    },
+    "D02": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "ef418eff2cf718ff3ddb58bc8ae7bbcd262863f056fa76f66da577fd145da59c",
+     "sum": 2.566254,
+     "nz": 11
+    },
+    "D03": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "ac7347f9636ba852ffb92eebbaec8ee842fb19227344787b5e0c512c5653ccbd",
+     "sum": 2.70682,
+     "nz": 13
+    },
+    "D04": {
+     "dim": 15,
+     "dtype": "float32",
+     "sha256": "fb564558ea9277472a2fbef9e38c77e94207ce44e22e22920b4ef73a973c393a",
+     "sum": 1.0,
+     "nz": 1
+    },
+    "D05": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "04e1ac7cf9541a73546c4c27e3efa24f926d438e058f82e9789e0414fa103baa",
+     "sum": 1464.965088,
+     "nz": 11
+    },
+    "D06": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "dbcba5b561494b5d6a6b40e3d62ad1af61a19bfa9e4e5f41f6d3fbc5b4e0b895",
+     "sum": 1470.189209,
+     "nz": 10
+    },
+    "D07": {
+     "dim": 6144,
+     "dtype": "float32",
+     "sha256": "60a4b9b877c133aefaa7347342935d31da0878edbabe9ed4cbe9cf19763a1c9f",
+     "sum": 44.193859,
+     "nz": 49
+    },
+    "E03": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "d15fbfda541f08278a6daf30a9bdadac1b416cd99cbd5ec13a6680c906e5a9a2",
+     "sum": 1939.682983,
+     "nz": 12
+    },
+    "E04": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "9d60e4555045b42a236084efe9e9a5c420f3006b33c2d7d052ba59e1a8aff358",
+     "sum": 69.0,
+     "nz": 2
+    }
+   },
+   "errors": {}
+  },
+  {
+   "id": "f3c8f05bbc51e00f5a67eb1ddea0755b.bndb",
+   "path": "D:\\VM_Share\\CoDefenderC3_v8\\minimal_dataset\\.cache\\bndb\\f3c8f05bbc51e00f5a67eb1ddea0755b.bndb",
+   "features": {
+    "D01": {
+     "dim": 4096,
+     "dtype": "int64",
+     "sha256": "0b0e7b6b6142dac8a961efb3d5428658219f7d748f24cc61d700823bd40fce85",
+     "sum": 29889.0,
+     "nz": 82
+    },
+    "D02": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "530014c804f02a2038d9e982d4a491cfcf475b7e8dbd33a87dedd59f797ec053",
+     "sum": 3.226355,
+     "nz": 16
+    },
+    "D03": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "83529564649044af6ffd9460edb8ff7365dbf7c943c4af7529b446d7dcf970fe",
+     "sum": 4.136032,
+     "nz": 25
+    },
+    "D04": {
+     "dim": 15,
+     "dtype": "float32",
+     "sha256": "fb564558ea9277472a2fbef9e38c77e94207ce44e22e22920b4ef73a973c393a",
+     "sum": 1.0,
+     "nz": 1
+    },
+    "D05": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "e3d9d90ee31a2a367468d1df89583430d30f94aaa88d2fb4da0889898a825c23",
+     "sum": 1719.426636,
+     "nz": 11
+    },
+    "D06": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "0655c134e0b7bd9ca51506e1d97fdf4a03b6182f4e795152d276a14eb7b69b75",
+     "sum": 3106.756836,
+     "nz": 10
+    },
+    "D07": {
+     "dim": 6144,
+     "dtype": "float32",
+     "sha256": "579f6d0636785ce92eed4df041db6b9314b16afae9cde5f76a1fec3eb4ada40b",
+     "sum": 22.683281,
+     "nz": 24
+    },
+    "E03": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "1df61dd40939a7ed2097c95b4004d8d405835cf917f3650b52777bbe00057744",
+     "sum": 4300.913574,
+     "nz": 12
+    },
+    "E04": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "c2f01be26d5f01860f8dfea33b3520a08edca67d1833716632919823bffe9c18",
+     "sum": 162.033707,
+     "nz": 9
+    }
+   },
+   "errors": {}
+  },
+  {
+   "id": "f4bc2430640facdf2c8ed2c3eb7775a5.bndb",
+   "path": "D:\\VM_Share\\CoDefenderC3_v8\\minimal_dataset\\.cache\\bndb\\f4bc2430640facdf2c8ed2c3eb7775a5.bndb",
+   "features": {
+    "D01": {
+     "dim": 4096,
+     "dtype": "int64",
+     "sha256": "541b4ca9c6d2cf6adc69e1ad6038ae34185e685842d91b2c311a071ebd4c7465",
+     "sum": 19522.0,
+     "nz": 70
+    },
+    "D02": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "b9dc52e1c7f8bffc9d1046a119184730758518bede0067eaad3b7b4586e06dee",
+     "sum": 1.878152,
+     "nz": 6
+    },
+    "D03": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "9e889e451a97e08bd1efa224e6135b50a23352f61e2d773d4a503b8abd7eaaf2",
+     "sum": 2.121289,
+     "nz": 8
+    },
+    "D04": {
+     "dim": 15,
+     "dtype": "float32",
+     "sha256": "fb564558ea9277472a2fbef9e38c77e94207ce44e22e22920b4ef73a973c393a",
+     "sum": 1.0,
+     "nz": 1
+    },
+    "D05": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "dc84c3b48db3efa38b94c08bd93eaef80455c2b3a496eac09c5c5e6b015d4b4c",
+     "sum": 3375.569824,
+     "nz": 11
+    },
+    "D06": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "bd7ccb97b99c9657d8365a132e2e876326ac3728a0ae5c92c835353d2dfd83b4",
+     "sum": 3981.243896,
+     "nz": 10
+    },
+    "D07": {
+     "dim": 6144,
+     "dtype": "float32",
+     "sha256": "349eb7806bffc1b81e7e4e719b1bddcbc6b58ff4fdbe6cc1facc7a51426f17e7",
+     "sum": 12.0,
+     "nz": 12
+    },
+    "E03": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "fcdca48713228536528c74898743473918810728c8aac80299de9e016e6525fb",
+     "sum": 4649.141602,
+     "nz": 10
+    },
+    "E04": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "2397a3d240c2ff5e81b72a5f3b698339291bca865bdc3a0fde46ff463bc5dc4f",
+     "sum": 881.359558,
+     "nz": 9
+    }
+   },
+   "errors": {}
+  },
+  {
+   "id": "fef5ee025361b605bd94fff6d3df99ee.bndb",
+   "path": "D:\\VM_Share\\CoDefenderC3_v8\\minimal_dataset\\.cache\\bndb\\fef5ee025361b605bd94fff6d3df99ee.bndb",
+   "features": {
+    "D01": {
+     "dim": 4096,
+     "dtype": "int64",
+     "sha256": "66823671a536d0d0b0fe329f68a6546aca3a6087096c9d7b100962371d36a8c6",
+     "sum": 10358.0,
+     "nz": 64
+    },
+    "D02": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "b959a75ffc0eabf253b9d750ed40467bc5623ae2455daa50ee0604d7af16c475",
+     "sum": 2.333714,
+     "nz": 8
+    },
+    "D03": {
+     "dim": 256,
+     "dtype": "float32",
+     "sha256": "f0dc16268d5fe1eb2b90df2540624f41c64d35e30d0844ff2c795cd4f5f234a8",
+     "sum": 2.881592,
+     "nz": 13
+    },
+    "D04": {
+     "dim": 15,
+     "dtype": "float32",
+     "sha256": "fb564558ea9277472a2fbef9e38c77e94207ce44e22e22920b4ef73a973c393a",
+     "sum": 1.0,
+     "nz": 1
+    },
+    "D05": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "72e64c8291e794dee56f8322624116e3514aab7f0180deb21759691a99b21569",
+     "sum": 24435.902344,
+     "nz": 11
+    },
+    "D06": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "411624d665f814f8d904d9b37824f207373594aa39536123c5d310b3b96bdaf8",
+     "sum": 18884.441406,
+     "nz": 10
+    },
+    "D07": {
+     "dim": 6144,
+     "dtype": "float32",
+     "sha256": "de676bae28a480011d3d012db14bef539324e62a841a9627863c689bea168af3",
+     "sum": 0.0,
+     "nz": 0
+    },
+    "E03": {
+     "dim": 12,
+     "dtype": "float32",
+     "sha256": "af629da2feaabd2e8fcd549e11a16f720b27edcf2bcae16f631537451b56a1a2",
+     "sum": 21009.195312,
+     "nz": 12
+    },
+    "E04": {
+     "dim": 10,
+     "dtype": "float32",
+     "sha256": "8bcdd70187208480df3d717f00a2cc748614755bc5a130e46293f59871742aa4",
+     "sum": 622.0,
+     "nz": 7
+    }
+   },
+   "errors": {}
+  }
+ ]
+}
