@@ -1,0 +1,40 @@
+CoDefenderC3 API smoke test
+  BASE_URL = http://localhost:8000
+  TIMEOUT  = 90s
+
+== 0/6 可达性
+  [PASS] reachable                          HTTP 200
+
+== 1/6 探针
+  [PASS] /livez                             alive, uptime=00:00:03
+  [FAIL] /readyz                            503 模型未加载（还在 startup？看 docker logs）
+
+== 2/6 健康 / 档位
+  [PASS] /health                            env=dev engine_mode=model_only require_hash_db=False
+         model_path=D:\VM_Share\CoDefenderC3_v8\CoDefenderC3\ensemble.pkl
+         hash counts: sha256=null md5=null fuzzy=null
+  [note] model_path 不是 /app/ensemble.pkl → 这不是容器内的服务（宿主 dev 实例？）
+
+== 3/6 运行时指标
+  [PASS] /metrics                           total_requests=4
+
+== 4/6 模型档案
+  [PASS] /model-info                        status=loaded model_count=33 view_count=15 file=D:\VM_Share\CoDefenderC3_v8\CoDefenderC3\ensemble.pkl
+
+== 5/6 运行时配置
+  [PASS] /admin/config                      engine_mode=model_only
+
+== 6/6 推理（可选）
+  [SKIP] /predict-single                    未指定 --sample
+  [SKIP] /predict-directory                 未指定 --dir
+
+============================================================
+  PASS 6   FAIL 1   SKIP 2
+============================================================
+  failed:
+    - /readyz                        503 模型未加载（还在 startup？看 docker logs）
+
+  手工未覆盖的写操作（按需执行）：
+    curl -s -X POST "http://localhost:8000/reload-model" | python3 -m json.tool
+    curl -s -X POST "http://localhost:8000/update-signatures?week_id=2026W41" -F "file=@<csv路径>" | python3 -m json.tool
+    Swagger: http://localhost:8000/docs      OpenAPI: http://localhost:8000/openapi.json
