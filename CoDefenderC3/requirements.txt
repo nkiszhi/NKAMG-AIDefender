@@ -90,3 +90,5 @@ tqdm>=4.60              # MalGraph 生产模型：models/MalGraph_2022/{utils,Vo
 #   app.py 把 config.ROOT/scaner 插到 sys.path 最前，下列 import 命中的是【本地文件】：
 #       import tlsh      → scaner/tlsh.py       （官方算法纯 Python 移植，勿装 PyPI tlsh 扩展）
 #       import filetype  → scaner/filetype.py   （本地实现，勿装 PyPI filetype）
+# SMDA 反汇编后端（替代 BinaryNinja，BSD-3，无商业授权）
+smda>=4.3.10

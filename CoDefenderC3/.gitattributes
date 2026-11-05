@@ -1,0 +1,4 @@
+# 启动脚本必须是 LF：CRLF 会让 shebang 失效
+*.sh text eol=lf
+*.ini text eol=lf
+Dockerfile* text eol=lf

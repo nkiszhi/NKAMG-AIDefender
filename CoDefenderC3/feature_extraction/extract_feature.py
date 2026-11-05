@@ -29,6 +29,11 @@ import numpy as np
 # BinaryNinja import (deferred to allow module-level import without crash)
 _BN = None
 
+def _disasm_backend() -> str:
+    """反汇编后端：smda（默认）/ bn。"""
+    return os.environ.get("CODEFENDER_DISASM_BACKEND", "smda").strip().lower() or "smda"
+
+
 def _env_int(name: str, default: int) -> int:
     """Helper to read integer from environment variable."""
     try:
@@ -77,31 +82,8 @@ NGRAM_DIM      = 256              # n-gram TF-IDF output dim (D02-D03)
 ENTROPY_BINS   = 256              # entropy histogram bins (B04)
 BLOCK_SIZE     = 1024             # entropy block size
 
-# x86 instruction categories (15 classes, D04)
-INSN_CATEGORIES = {
-    "arithmetic": {"add","sub","mul","imul","div","idiv","inc","dec","neg","adc","sbb"},
-    "logic":      {"and","or","xor","not","shl","shr","sar","sal","rol","ror","rcl","rcr"},
-    "transfer":   {"mov","movzx","movsx","lea","xchg","cmov","movaps","movdqa"},
-    "branch":     {"jmp","je","jne","jz","jnz","jg","jl","jge","jle","ja","jb","jae","jbe",
-                   "call","ret","loop","int"},
-    "stack":      {"push","pop","pusha","popa","pushf","popf","enter","leave"},
-    "string":     {"movs","cmps","scas","lods","stos","rep","repe","repne"},
-    "flag":       {"stc","clc","cmc","std","cld","sti","cli","lahf","sahf"},
-    "float":      {"fld","fst","fstp","fadd","fsub","fmul","fdiv","fcom","fxch"},
-    "simd":       {"addps","mulps","subps","divps","paddb","paddw","paddd","pxor",
-                   "xmm","ymm","zmm"},
-    "system":     {"syscall","sysenter","rdtsc","cpuid","rdmsr","wrmsr","hlt","in","out"},
-    "nop":        {"nop"},
-    "interrupt":  {"int","int3","iret"},
-    "io":         {"in","out","ins","outs"},
-    "prefix":     {"lock","rep","repz","repnz","cs","ds","es","fs","gs","ss"},
-}
-# Flatten for lookup
-_CAT_LOOKUP = {}
-for cat, mnemonics in INSN_CATEGORIES.items():
-    for m in mnemonics:
-        _CAT_LOOKUP[m] = cat
-_CAT_NAMES = list(INSN_CATEGORIES.keys()) + ["other"]  # 15 categories
+# x86 instruction categories (15 classes, D04) —— 与 SMDA 后端共用（顶层模块，避免包依赖）
+from insn_categories import INSN_CATEGORIES, CAT_LOOKUP as _CAT_LOOKUP, CAT_NAMES as _CAT_NAMES
 
 
 # ═══════════════════════════════════════
@@ -478,7 +460,14 @@ class BinjaExtractor:
     # ─── 仅提取 D+E (需要 BinaryNinja 反汇编) ──────
 
     def extract_de_only(self, pe_path: str) -> Dict[str, np.ndarray]:
-        """只提取 D01-D07 + E01-E04 (需要 BinaryNinja)。"""
+        """只提取 D01-D07 + E01-E04。
+
+        后端由 CODEFENDER_DISASM_BACKEND 决定：smda（默认，无需商业授权、不挂死）
+        或 bn（BinaryNinja，需要 license）。
+        """
+        if _disasm_backend() == "smda":
+            from feature_extraction.smda_extract import SmdaExtractor
+            return SmdaExtractor(timeout=_env_int("CODEFENDER_SMDA_TIMEOUT", 120)).extract_de(pe_path)
         self._ensure_bn()
         if self.bn is None:
             raise RuntimeError("BinaryNinja not available for D/E extraction")

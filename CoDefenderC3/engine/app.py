@@ -43,6 +43,7 @@ from feature_extraction.extract_feature import BinjaExtractor
 from feature_extraction.unified import FeatureType, extract_feature
 from models.ensemble import MultiModelEnsemble, _input_dtype
 from engine.inference import compute_identifiers, _is_valid_pe
+from engine.view_masking import apply_view_mask
 from engine.result_formatter import format_scan_result
 
 # nkrepo 哈希库（SHA256 + MD5 预检）：scaner 目录入 sys.path 后顶层导入。
@@ -598,9 +599,35 @@ def _expected_dim_for_model(ens: MultiModelEnsemble, model_name: str) -> Optiona
 
 
 def _infer_expected_view_dims(ens: MultiModelEnsemble) -> Dict[str, int]:
+    """推断每个视角的期望输入维度。
+
+    优先级（2026-10-29 修正）：
+      ① V1_byte → RAW_LEN：字节视图长度由视图构造器固定（np.zeros(RAW_LEN)），
+         与模型内部结构无关。此前用「第一个 nn.Linear 的 in_features」推断，
+         MalConv 的 fc1.in_features = 128（其实是卷积核数）→ 视图被截成 128
+         字节，kernel=500 的卷积直接报错。
+      ② 有显式特征定义的视角 → 特征维度之和（即训练时的维度）。
+         同理，IMCFN 的 classifier.in_features = 25088、InceptionV3 的 fc = 2048
+         都不是图像视图的输入维度，会把 V8_color 截成 25088 → reshape 失败。
+      ③ 其余视角（EMBER 切片）→ 才从模型内部推断。
+    """
     dims: Dict[str, int] = {}
 
     for vname, model_names in ens.view_groups.items():
+        if vname == "V1_byte":
+            dims[vname] = RAW_LEN
+            continue
+
+        cfg = config.VIEW_GROUPS.get(vname, {})
+        binja_ids = list(cfg.get("binja_features", []))
+        if binja_ids:
+            fallback = 0
+            for fid in binja_ids:
+                fallback += int(FEATURE_DIMS.get(fid, 0))
+            if fallback > 0:
+                dims[vname] = fallback
+                continue
+
         cand: List[int] = []
         for mname in model_names:
             d = _expected_dim_for_model(ens, mname)
@@ -608,20 +635,6 @@ def _infer_expected_view_dims(ens: MultiModelEnsemble) -> Dict[str, int]:
                 cand.append(d)
         if cand:
             dims[vname] = Counter(cand).most_common(1)[0][0]
-            continue
-
-        if vname == "V1_byte":
-            dims[vname] = RAW_LEN
-            continue
-
-        cfg = config.VIEW_GROUPS.get(vname, {})
-        binja_ids = cfg.get("binja_features", [])
-        if binja_ids:
-            fallback = 0
-            for fid in binja_ids:
-                fallback += int(FEATURE_DIMS.get(fid, 0))
-            if fallback > 0:
-                dims[vname] = fallback
 
     return dims
 
@@ -713,10 +726,14 @@ def _extract_views_for_single_sample(
             if available_ids:
                 dtype = np.int32 if vn in INT_VIEWS else np.float32
                 parts = [_to_numpy_1d(feats[fid], dtype) for fid in available_ids]
+                parts, masked_ids = apply_view_mask(vn, available_ids, parts)
                 row = np.concatenate(parts)
                 source = f"binja:{','.join(available_ids)}"
                 if missing_ids:
                     reason = f"partial_binja_features_missing:{','.join(missing_ids)}"
+                if masked_ids:
+                    source += f"+masked({','.join(masked_ids)})"
+                    reason = (f"{reason}; " if reason else "") + f"masked_hashed_features:{','.join(masked_ids)}"
             else:
                 reason = f"missing_binja_features:{','.join(missing_ids)}"
                 if (not include_de or extracted_features is not None) and any(fid.startswith(("D", "E")) for fid in missing_ids):
@@ -928,7 +945,16 @@ def _predict_per_model(
                 continue
 
             x_model = x_view
-            expected_model_dim = _expected_dim_for_model(ens, mname)
+            # 原始字节 / 图像类视角：视图长度才是权威输入，不能按「第一个
+            # nn.Linear 的 in_features」截断——
+            #   MalConv      fc1.in_features=128（其实是卷积核数）→ 截成 128 < kernel 500 → 卷积报错
+            #   InceptionV3  AuxLogits.fc1.in_features=768（辅助头）→ 截成 768 → reshape 27×27 失败
+            #   IMCFN        classifier.0.in_features=25088 → 截成 25088 → reshape 91×91×3 失败
+            # 这三类模型的输入长度由视图本身决定（V1_byte=RAW_LEN，V8_*=图像特征），
+            # 模型内部自己做布局/缩放。
+            expected_model_dim = None
+            if not (vname == "V1_byte" or vname.startswith("V8_")):
+                expected_model_dim = _expected_dim_for_model(ens, mname)
             if expected_model_dim is not None:
                 adj_row, dim_note = _coerce_row_dim(
                     np.asarray(x_view).reshape(-1),

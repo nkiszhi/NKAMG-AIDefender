@@ -77,6 +77,10 @@ class IMCFN(nn.Module):
             # flat (B, D) → (B, 3, H, W)
             H = int((x.shape[1] // 3) ** 0.5)
             x = x.reshape(x.size(0), H, H, 3).permute(0, 3, 1, 2)  # (B,H,W,3)→(B,3,H,W)
+        # 视图给的是 256×256×3，而本模型按 224×224 训练（分类头 25088=512×7×7）
+        # → 先缩放到 224 再进 VGG 块，否则 5 次池化后是 8×8，维度对不上
+        if x.shape[2] != 224 or x.shape[3] != 224:
+            x = torch.nn.functional.interpolate(x, size=(224, 224), mode="bilinear", align_corners=False)
         x = self.pool(self.block1(x))
         x = self.pool(self.block2(x))
         x = self.pool(self.block3(x))

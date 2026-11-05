@@ -32,3 +32,16 @@ CoDefenderC3/tmp*/
 CoDefenderC3/models/MalGraph_2022/saved/features.jsonl
 CoDefenderC3/**/*.jsonl
 !CoDefenderC3/models/MalGraph_2022/saved/train_external_function_name_vocab.jsonl
+
+# --- 测评/构建产物（体积大，不入库；脚本保留） ---
+codefender-c3-smda.tar
+CoDefenderC3/ensemble.pkl
+CoDefenderC3/ensemble2.pkl
+benign.csv
+malware.csv
+test_eval/sample_index.json
+test_eval/eval_output/
+test2_eval/eval_output/*.jsonl
+test2_eval/eval_output/*.json
+.tmp/
+.vscode/

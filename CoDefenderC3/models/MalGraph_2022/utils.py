@@ -2,7 +2,10 @@ import os
 import torch
 from torch.utils.data import Dataset
 from torch_geometric.data import Data, Batch, DataLoader
-from binaryninja import BinaryViewType, SymbolType, MediumLevelILOperation
+try:  # BN 可选：SMDA 后端不需要商业授权，缺 BN 也不应阻断导入
+    from binaryninja import BinaryViewType, SymbolType, MediumLevelILOperation
+except Exception:  # pragma: no cover - 无 BN 环境
+    BinaryViewType = SymbolType = MediumLevelILOperation = None
 import hashlib
 import json
 from models.MalGraph_2022.Vocabulary import Vocab
@@ -30,6 +33,11 @@ def extract_cfg_and_fcg(file_path, vocab_dict, binary_view=None):
     """
     bv = binary_view
     try:
+        # SMDA 后端：结构与 BN 版完全同构，直接返回
+        if os.environ.get("CODEFENDER_DISASM_BACKEND", "smda").strip().lower() == "smda":
+            from feature_extraction.smda_extract import SmdaExtractor
+            timeout = int(os.environ.get("CODEFENDER_SMDA_TIMEOUT", "120") or 120)
+            return SmdaExtractor(timeout=timeout).extract_cfg_and_fcg(file_path, vocab_dict)
         # 计算文件哈希
         file_hash = calculate_file_hash(file_path)
         # 打开 PE 文件

@@ -13,7 +13,16 @@ log = logging.getLogger('codefender.stages')
 
 
 def analysis_timeout():
-    return max(1, min(600, int(os.environ.get('CODEFENDER_ANALYSIS_TIMEOUT', '180'))))
+    """BN 分析超时上限。
+
+    历史上限硬编码为 600 秒，导致 >10min 才能分析完的大样本无法拿到 D/E 特征。
+    现改为可配置：CODEFENDER_ANALYSIS_TIMEOUT 指定目标值，
+    CODEFENDER_ANALYSIS_TIMEOUT_MAX 指定允许的上限（默认 3600）。
+    注意：BN 挂死（死循环）的样本无论如何都会耗满该超时——调大上限换来的是
+    「慢但能算完」的样本能拿到 D/E 分数，代价是挂死样本占用扫描槽更久。
+    """
+    cap = max(1, int(os.environ.get('CODEFENDER_ANALYSIS_TIMEOUT_MAX', '3600')))
+    return max(1, min(cap, int(os.environ.get('CODEFENDER_ANALYSIS_TIMEOUT', '180'))))
 
 
 def runtime_limits():

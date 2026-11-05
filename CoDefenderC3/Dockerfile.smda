@@ -1,0 +1,110 @@
+# =============================================================================
+#  CoDefenderC3 —— SMDA 测评镜像（替代 BinaryNinja 版）
+# =============================================================================
+#  与 BinaryNinja 版（Dockerfile）的差异：
+#    · 基础镜像用公开的 python:3.10-slim-bookworm（不依赖内网 multiscan 基础镜像）
+#    · **不含 BinaryNinja**（无需商业授权），反汇编/D-E/MalGraph 全部走 SMDA
+#    · **不含签名库**：哈希预检全关（CODEFENDER_HASH_DB_ENABLED=0），
+#      所有样本都真正走模型——测评口径要求如此
+#    · 权重默认用 ensemble.pkl（构建时从 ensemble2.pkl 复制而来）
+#
+#  构建：
+#    cd CoDefenderC3 && docker build -f Dockerfile.smda -t codefender-c3:smda .
+#  导出（拷到测评服务器）：
+#    docker save codefender-c3:smda | gzip > codefender-c3-smda.tar.gz
+#  运行：
+#    docker run -d --name codefender -p 8000:8000 codefender-c3:smda
+# =============================================================================
+FROM python:3.10-slim-bookworm
+
+# ── 系统依赖：ppdeep / yara-python 需编译（装完即卸载）────────────────
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+        build-essential python3-dev ca-certificates curl; \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+ENV PYTHONUNBUFFERED=1
+
+# ── 1. torch + torchvision（CPU 版，从阿里镜像的 cpu wheels 装）──────────
+# 只用 aliyun 的 cpu wheels（--no-index 禁止回落到 PyPI/CUDA 轮子），
+# 并把 torch/torchvision **钉成同一代**（2.6.0 ↔ 0.21.0）——
+# 两者共享 C++ ABI，混装会在 import torchvision 时报
+# "operator torchvision::nms does not exist"，容器起来 /health 才炸。
+# "+cpu" 是本地版本号，PyPI 上没有 → 只有 aliyun 的 find-links 能满足；
+# 依赖（typing-extensions 等）仍从腾讯源取。
+RUN pip3 install --no-cache-dir --timeout 600 --progress-bar off \
+        --find-links https://mirrors.aliyun.com/pytorch-wheels/cpu/ \
+        -i https://mirrors.cloud.tencent.com/pypi/simple \
+        --trusted-host mirrors.cloud.tencent.com \
+        "torch==2.6.0+cpu" "torchvision==0.21.0+cpu"
+
+# ── 2. torch_geometric（与 torch 解耦，单独装）────────────────────────
+RUN pip3 install --no-cache-dir --timeout 300 --progress-bar off \
+        -i https://mirrors.cloud.tencent.com/pypi/simple \
+        --trusted-host mirrors.cloud.tencent.com \
+        torch_geometric supervisor
+
+# ── 3. 运行时依赖 + SMDA 反汇编后端 ───────────────────────────────────
+COPY requirements.txt ./
+RUN pip3 install --no-cache-dir --timeout 300 --progress-bar off \
+        -i https://mirrors.cloud.tencent.com/pypi/simple \
+        --trusted-host mirrors.cloud.tencent.com \
+        -r requirements.txt smda
+
+# 卸载编译工具（减小镜像）
+RUN set -eux; \
+    apt-get purge -y build-essential python3-dev; \
+    apt-get autoremove -y; \
+    rm -rf /var/lib/apt/lists/*
+
+# ── 4. 构建期自检：torch/torchvision ABI、smda 可用、引擎可导入 ─────────
+RUN python3 -c "import torch, torchvision; from torchvision.ops import nms; \
+print('   torch=%s torchvision=%s' % (torch.__version__, torchvision.__version__)); \
+_b = torch.tensor([[0., 0., 10., 10.], [0., 0., 9., 9.]]); _s = torch.tensor([0.9, 0.8]); \
+print('   torchvision::nms OK ->', nms(_b, _s, 0.5).tolist())" && \
+    python3 -c "import smda; print('   smda', getattr(smda, '__version__', 'ok'))"
+
+# ── 5. 集成模型（~736MB，放代码之前，改代码不重做模型层）────────────────
+COPY ensemble.pkl ./ensemble.pkl
+
+# ── 6. 应用代码 ───────────────────────────────────────────────────────
+COPY config.py model_registry.py insn_categories.py ./
+COPY engine/             ./engine/
+COPY core/               ./core/
+COPY models/             ./models/
+COPY scaner/             ./scaner/
+COPY feature_extraction/ ./feature_extraction/
+COPY start_codefender.smda.sh ./start_codefender.sh
+# 统一行尾：Windows 检出的 CRLF 会让 #!/bin/bash\r 失效（exec ENOENT）
+RUN sed -i 's/\r$//' /app/start_codefender.sh && chmod +x /app/start_codefender.sh
+
+# 代码就位后再做导入自检（engine.app 的导入闭包）
+RUN python3 -c "import sys; sys.path.insert(0, '/app'); import engine.app; print('   engine.app 导入 OK')"
+
+# ── 7. 进程管理 ───────────────────────────────────────────────────────
+COPY supervisord.conf        /etc/supervisord.conf
+COPY codefender.smda.ini     /etc/supervisord.d/codefender.ini
+RUN mkdir -p /var/log/supervisor /etc/supervisord.d
+
+# ── 8. 运行期环境（与 codefender.smda.ini 的 environment= 保持一致）──────
+ENV OPENBLAS_NUM_THREADS=1 \
+    OMP_NUM_THREADS=1 \
+    MKL_NUM_THREADS=1 \
+    NUMEXPR_NUM_THREADS=1 \
+    CODEFENDER_MODEL_PATH=/app/ensemble.pkl \
+    CODEFENDER_ENV=prod \
+    CODEFENDER_RUNTIME_CFG_DISABLE=1 \
+    CODEFENDER_DISASM_BACKEND=smda \
+    CODEFENDER_ANALYSIS_TIMEOUT=600 \
+    CODEFENDER_REQUEST_TIMEOUT=900 \
+    CODEFENDER_HARD_TIMEOUT=960 \
+    CODEFENDER_MAX_CONCURRENT=8 \
+    BN_WORKER_THREADS=8 \
+    CODEFENDER_HASH_DB_ENABLED=0 \
+    CODEFENDER_FUZZY_DB_ENABLED=0 \
+    CODEFENDER_REQUIRE_HASH_DB=0
+
+EXPOSE 8000
+CMD ["/usr/local/bin/supervisord", "-c", "/etc/supervisord.conf"]
