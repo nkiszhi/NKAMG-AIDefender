@@ -310,3 +310,119 @@ extract_de_from_ir_batch                → ok=3 fail=0
 
 * [`docs/FEATURE_HASH_STABILITY.md`](FEATURE_HASH_STABILITY.md) —— W0：跨进程 hash 一致性
 * [`docs/BASELINE_FIXTURE.md`](BASELINE_FIXTURE.md) —— W1：两级门禁与 BN 的两个前置条件
+## 10. Phase 2（SMDA 后端）与跨后端对比
+
+### 10.1 交付物
+
+| 文件 | 内容 |
+|---|---|
+| `feature_extraction/backend_smda.py` | SMDA → ProgramIR 适配器（与 backend_bn.py 同构） |
+| `tests/compare_ir_backends.py` | 跨后端对比工具：bn / smda / compare 三个子命令 |
+
+### 10.2 SMDA 后端的三个关键点
+
+1. 地址基准：SMDA 对原生 PE 给的函数/块偏移**已经是 VA**（不是 RVA）；
+   而对 .NET（IL 模式）给的是很小的 IL 偏移。适配器用 addr_mode="auto" 自动判定
+   （取所有函数偏移的最小值与 imagebase 比较），避免把 VA 再加一次 base
+   （踩过：一度把地址整体抬高了一个 imagebase，导致地址重合率算成 0%）。
+2. 强制原生后端：SMDA 会自动识别 .NET 程序集并按 **CIL/IL** 反汇编
+   （助记符是 ldarg.0/call/castclass），与 BN 的原生 x86 视角完全不可比。
+   适配器默认 backend="intel" 强制走原生后端。
+3. 助记符口径：SMDA 的 block.instructions[].mnemonic 直接就是助记符，无需处理。
+
+### 10.3 跨后端对比结果（12 个原生样本，非 .NET）
+
+字段级：
+
+| | BN | SMDA |
+|---|---|---|
+| 函数数（合计） | 2841 | 2101（少 26%） |
+| 指令数 | 与 SMDA 几乎一致（21046/19624、22271/23242、3000/2985、1211/1210） | |
+| 函数起始地址重合 | — | **71.6%**（2035/2841） |
+
+特征级（同一特征层喂两份 IR，余弦相似度）：
+
+| 特征 | 平均余弦 | 判读 |
+|---|---|---|
+| E03 CFG 统计 | **0.927** | 高度一致 |
+| D04 指令类别分布 | **0.905** | 高度一致 |
+| D05 函数统计 | **0.891** | 高度一致 |
+| D06 基本块统计 | **0.888** | 高度一致 |
+| D03 opcode trigram | 0.814 | 较一致 |
+| D02 opcode bigram | 0.790 | 较一致 |
+| E04 调用图统计 | 0.683 | 中等 |
+| D01 opcode 序列 | 0.641 | 中等（顺序敏感） |
+| D07 每函数嵌入 | 0.562 | 中等偏低（顺序 + 函数划分敏感） |
+
+12/12 样本的每个特征都不逐位相同（预期：后端不同）。
+
+### 10.4 结论
+
+* **SMDA 可以替换 BN**：结构类特征（E03/D04/D05/D06）余弦 0.89~0.93，
+  指令序列类 0.56~0.81 → 特征语义高度接近，迁移的分布漂移是温和的；
+* 差异最大的两个是 D01（指令序列）与 D07（每函数嵌入）—— 顺序敏感 + 函数划分差异；
+* SMDA 发现的函数比 BN 少 26%，但七成函数的起始地址完全相同 → 函数发现能力略弱，覆盖率尚可；
+* 指令量几乎一致 → 差距主要在「怎么切函数/块」，不在「看到多少代码」。
+
+### 10.5 跑法
+
+```bash
+# ① BN-IR（需 BN + 联网，用 bnpython3 跑）
+"C:\\Program Files\\Vector35\\BinaryNinja\\bnpython3.exe" tests\\compare_ir_backends.py bn \\
+    --pe a.exe --out-dir _ir_bn
+
+# ② SMDA-IR（普通 python，无需网络）
+python tests/compare_ir_backends.py smda --pe a.exe --out-dir _ir_smda
+
+# ③ 对比
+python tests/compare_ir_backends.py compare --bn-dir _ir_bn --smda-dir _ir_smda
+```
+
+
+## 11. 生产缺陷：opcode 类特征取不到助记符
+
+这是 Phase 2 的对照实验**顺带挖出来的既有生产问题**，与 SMDA 迁移无关，但影响很大。
+
+### 症状
+
+`feature_extraction/extract_feature.py::_extract_disassembly._parse_mnemonic` 取
+`tokens[0].text`。而 BN 5.x 的 `DisassemblyTextLine.tokens[0]` 是**空串**（缩进/地址占位）：
+
+```
+tokens = ["", "lea", "     ", "rax", ", ", "["]
+                       ^^^^ 真正的助记符在 tokens[1]
+line.il_instruction.mnemonic == "lea"        ← 正确取法
+```
+
+于是 `if m:` 把几乎所有指令都过滤掉了。实测（BN 原生 API 直接验证）：
+
+| | 修正前（生产现状） | 修正后（backend_bn.py） |
+|---|---|---|
+| 有指令的基本块 | **11.6%** | 100% |
+| 指令总数 | **3767** | 约 10 万 |
+| 平均每块指令 | **0.12** | 4~5 |
+
+### 影响
+
+D01（opcode 序列）、D02/D03（n-gram）、D04（类别分布）、D07（每函数嵌入）
+以及 D05 的「指令总数 / 去重助记符数」这几项，**在生产上基本是空的**。
+直接受害的模型：**OpcodeLSTM、OpcodeTransformer、OpcodeStatNet、AsmEmbedNet**
+—— 它们的输入几乎全是常量/噪声。
+
+### 为什么 Phase 2 之前没发现
+
+因为 BN 的分析是**不确定**的（同一 PE 两次分析结果不同），特征指纹本来就不稳定，
+「空」与「变」混在一起看不出来。直到把两个后端放在一起比，
+「BN 只有 0.12 条指令/块 vs SMDA 5.25 条/块」才暴露出来。
+
+### 处理建议（需要单独决策）
+
+* 本轮**没有改生产代码**（`extract_feature.py` 未动）—— 改它会变更现有特征语义；
+* `backend_bn.py`（新模块，无生产引用）已按正确口径取助记符；
+* 建议像 W0 那样**单独立项**：先修 `extract_feature.py` 的 `_parse_mnemonic`、
+  重训出干净基线，**再**切 SMDA —— 否则两件事混在一起，Phase 7 无法归因
+  （到底是「修好了 opcode 特征」还是「换了后端」导致指标变化）。
+
+> 顺带修正第 7.2 节的一个说法：那里的「BN 的 .bndb 序列化有损」，
+> 实际上主要不是序列化的问题，而是**助记符取法缺陷** —— 修正取法后，
+> 两条路径的指令数就几乎一致了。

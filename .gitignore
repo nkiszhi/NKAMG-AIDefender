@@ -74,3 +74,15 @@ _oci/
 /_*.cmd
 /_*.py
 /_m*.txt
+
+# ── Phase 2 跨后端对比的临时产物（不入库）──────────────────────
+/_ir_bn/
+/_ir_smda/
+/_pe_ascii/
+/_pe_native/
+/_w310/
+/_w312/
+/_wheels310/
+/_wheels312/
+/_native.json
+/_bn_pick.json

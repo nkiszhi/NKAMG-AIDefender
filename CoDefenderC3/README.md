@@ -115,6 +115,7 @@ PYTHONIOENCODING=utf-8 python -u CoDefenderC3/train/verify_trained_ensemble.py -
 | [`tests/fixtures/bn_baseline/`](tests/fixtures/bn_baseline/) | BN 基线特征快照（88 样本 / 2640 个特征指纹）—— Phase 1 的验收基准 |
 | [`feature_extraction/ir.py`](feature_extraction/ir.py) | **ProgramIR** 数据类（后端中立的中间表示，Phase 1 的核心契约） |
 | [`feature_extraction/backend_bn.py`](feature_extraction/backend_bn.py) / [`features_from_ir.py`](feature_extraction/features_from_ir.py) | BN→IR 适配器 / IR→特征层（Phase 1 第 2、4 步，**已验证逐位等价**） |
+| [`feature_extraction/backend_smda.py`](feature_extraction/backend_smda.py) | **SMDA→IR 适配器**（Phase 2）—— 跨后端特征余弦 0.56~0.93 |
 
 ### `docs/` 索引
 

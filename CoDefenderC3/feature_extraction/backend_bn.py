@@ -40,9 +40,29 @@ except ImportError:                                 # 直接按文件加载时�
 def _parse_mnemonic(line) -> str:
     """从一条指令行里取助记符。
 
-    与 extract_feature.py::_extract_disassembly._parse_mnemonic 逐字一致：
-    兼容 DisassemblyLine（有 .tokens）、ILInstruction（元组）、以及裸文本。
+    ⚠ 与生产代码 extract_feature.py::_parse_mnemonic **刻意不同**。
+
+    生产代码取 tokens[0].text，而 BN 5.x 的 DisassemblyTextLine.tokens[0] 是**空串**
+    （缩进/地址占位），真正的助记符在 tokens[1] 或 line.il_instruction.mnemonic：
+
+        tokens = ["", "lea", "     ", "rax", ", ", "["]
+        il_instruction.mnemonic == "lea"
+
+    于是生产的 opcode 类特征（D01/D02/D03/D04/D07）在实测里几乎全空：
+    30537 个基本块里只有 11.6% 带指令，平均每块 0.12 条指令。
+    本适配器按 IR 契约取**真实助记符**（il_instruction.mnemonic 优先）。
+
+    注：extract_feature.py 的同一处缺陷仍未修（那是生产代码，改它会变更现有特征语义，
+    需要单独决策 —— 见 docs/IR_CONTRACT.md 的「生产缺陷」一节）。
     """
+    try:
+        ins = getattr(line, "il_instruction", None)
+        if ins is not None:
+            m = getattr(ins, "mnemonic", None)
+            if m:
+                return str(m).strip().lower()
+    except Exception:
+        pass
     try:
         if hasattr(line, "tokens"):
             tokens = line.tokens
@@ -51,8 +71,11 @@ def _parse_mnemonic(line) -> str:
         else:
             tokens = line
         if tokens and len(tokens) > 0:
-            text = tokens[0].text if hasattr(tokens[0], "text") else str(tokens[0])
-            return text.strip().lower()
+            for tk in tokens:
+                text = tk.text if hasattr(tk, "text") else str(tk)
+                text = (text or "").strip().lower()
+                if text:                      # 跳过前导空 token
+                    return text
     except Exception:
         pass
     return ""
