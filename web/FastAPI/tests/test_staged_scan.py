@@ -129,6 +129,19 @@ class StagedScanTests(unittest.TestCase):
             else:
                 process.kill.assert_called_once()
 
+    def test_unconfigured_analysis_backend_uses_legacy_binaryninja(self):
+        worker = load_module('analysis_worker_backend', 'CoDefenderC3/engine/analysis_worker.py')
+        self.assertEqual(worker.selected_backend({}), 'bn')
+        self.assertEqual(worker.selected_backend({'CODEFENDER_DISASM_BACKEND': 'smda'}), 'smda')
+        self.assertEqual(worker.selected_backend({'CODEFENDER_DISASM_BACKEND': ''}), 'bn')
+
+    def test_failed_analysis_child_uses_backend_neutral_error(self):
+        process = SimpleNamespace(pid=999999, returncode=1)
+        process.wait = lambda **_kwargs: None
+        with patch.object(staged.subprocess, 'Popen', return_value=process):
+            with self.assertRaisesRegex(RuntimeError, 'Disassembly extraction process failed'):
+                staged.isolated_analysis('sample.exe', timeout=1)
+
     def test_upgrade_is_idempotent_and_preserves_model_code(self):
         source = (ROOT / 'CoDefenderC3/engine/app.py').read_text(encoding='utf-8')
         fragment = (ROOT / 'CoDefenderC3/docker/runtime_endpoints.py').read_text(encoding='utf-8')

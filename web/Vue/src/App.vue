@@ -350,8 +350,15 @@ const modelRows = computed(() => Object.entries(modelResults.value).map(([model,
   model,
   probability: data.probability,
   result: data.result,
-  reason: data.reason
+  reason: displayModelReason(data.reason)
 })))
+
+function displayModelReason(reason) {
+  if (typeof reason === 'string' && reason.toLowerCase().includes('extraction process failed')) {
+    return '深度特征提取进程启动或运行失败；相关模型暂未取得结果，其他已完成模型结果仍可参考。'
+  }
+  return reason
+}
 
 const modelCount = computed(() => modelRows.value.length)
 const maliciousCount = computed(() => modelRows.value.filter(row => row.result === 'Malicious').length)

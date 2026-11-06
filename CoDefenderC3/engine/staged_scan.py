@@ -63,10 +63,10 @@ def isolated_analysis(path, timeout=180, on_slow=None):
                 process.wait()
                 raise
         elapsed = round(time.monotonic() - started, 3)
-        log.info('BinaryNinja process finished seconds=%.3f returncode=%s', elapsed, process.returncode)
+        log.info('Disassembly process finished seconds=%.3f returncode=%s', elapsed, process.returncode)
         if process.returncode:
             # Do not return raw stderr, which can contain private runtime paths/license data.
-            raise RuntimeError('BinaryNinja extraction process failed; inspect model runtime configuration')
+            raise RuntimeError('Disassembly extraction process failed; inspect model runtime configuration')
         # The pickle is generated only by our own local child in a private temporary directory.
         with open(output, 'rb') as handle:
             result = pickle.load(handle)
