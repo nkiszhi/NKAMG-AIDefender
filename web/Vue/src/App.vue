@@ -550,7 +550,24 @@ async function uploadFile(file) {
 
 async function restoreDetectionTask() {
   const taskId = localStorage.getItem(TASK_KEY)
-  if (taskId) await pollDetectionTask(taskId)
+  if (!taskId) return
+  try {
+    const { data } = await apiService.get(`${apiBaseUrl.value}/detect/tasks/${taskId}`, { timeout: 10000 })
+    if (['completed', 'failed', 'cancelled'].includes(data?.status)) {
+      clearSavedTask()
+      loading.value = false
+      resetResult()
+      return
+    }
+  } catch (error) {
+    if (error.response?.status === 404 && localStorage.getItem(TASK_PHASE_KEY) !== 'uploading') {
+      clearSavedTask()
+      loading.value = false
+      resetResult()
+      return
+    }
+  }
+  await pollDetectionTask(taskId)
 }
 
 function clearSavedTask() {
@@ -587,9 +604,7 @@ async function pollDetectionTask(taskId) {
       const task = response.data || {}
       if (task.status === 'completed') {
         setDetectionResult(task.result || {})
-        // Keep the ID until a new upload, so refreshing a completed report
-        // also restores it during the server's configured retention period.
-        localStorage.setItem(TASK_PHASE_KEY, 'accepted')
+        clearSavedTask()
         ElMessage.success('检测完成')
         return
       }
