@@ -32,6 +32,28 @@ C01-C04 的两套实现。**下列视角组的模型权重作废，必须重训*
 
 ---
 
+## 0.5 D/E 中间产物缓存：CODEFENDER_DE_CACHE 开关
+
+D/E 特征（V6_*/V7_graph）需要 BinaryNinja。抽取分两段：PE → 中间产物 → 特征。
+中间产物有两种格式：
+
+| CODEFENDER_DE_CACHE | 中间产物 | 位置 | 单样本体积 | 抽特征需要 BN？ |
+|---|---|---|---|---|
+| bndb（**默认**） | BN 私有数据库 | .cache/bndb/*.bndb | 6.0 MB | **需要** |
+| ir | ProgramIR（后端中立） | .cache/ir/*.ir.json.gz | **105 KB** | **不需要** |
+
+切到 IR 缓存的好处：中间产物小 58 倍；BN 许可过期时也能重抽 D/E 特征。
+代价：现有数据集的 .cache/bndb 不会被自动复用（格式不同），首次切换需重新生成。
+
+```bash
+export CODEFENDER_DE_CACHE=ir      # Linux / WSL
+set CODEFENDER_DE_CACHE=ir         # Windows cmd
+```
+
+详见 [`../docs/IR_CONTRACT.md`](../docs/IR_CONTRACT.md) 第 7 节。
+
+---
+
 ## 1. 为什么是这些文件搬进来、那些留在根
 
 判断标准只有一条：**是否被推理服务（`engine/`）依赖**。

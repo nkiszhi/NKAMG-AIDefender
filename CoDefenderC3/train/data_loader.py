@@ -251,6 +251,14 @@ class PELoader:
         self.cache_dir = os.path.join(self.data_dir, ".cache")
         self._sample_cache = os.path.join(self.cache_dir, "per_sample")
         self._bndb_cache = os.path.join(self.cache_dir, "bndb")
+        # ── D/E 中间产物缓存类型 ──────────────────────────────
+        #   "bndb"（默认）: BN 私有数据库, 6.0 MB/样本, 只有 BN 能读
+        #   "ir"          : ProgramIR（后端中立）, 105 KB/样本, 抽特征不再需要 BN 许可
+        # 见 feature_extraction/ir_cache.py 与 docs/IR_CONTRACT.md
+        self._de_cache_kind = os.environ.get("CODEFENDER_DE_CACHE", "bndb").lower()
+        if self._de_cache_kind not in ("bndb", "ir"):
+            self._de_cache_kind = "bndb"
+        self._ir_cache = os.path.join(self.cache_dir, "ir")
         self._month_cache = os.path.join(self.cache_dir, "per_month")
 
     def load(self):
@@ -296,7 +304,32 @@ class PELoader:
 
     def _is_valid_bndb(self, path):
         """检查 bndb 是否存在。"""
-        return os.path.exists(self._bndb_cache_path(path))
+        return os.path.exists(self._de_cache_path(path))
+
+    def _de_cache_path(self, path):
+        """D/E 中间产物的缓存路径（按当前缓存类型）。"""
+        if self._de_cache_kind == "ir":
+            return os.path.join(self._ir_cache,
+                               hashlib.md5(path.encode()).hexdigest() + ".ir.json.gz")
+        return self._de_cache_path(path)
+
+    def _is_valid_de_cache(self, path):
+        """D/E 中间产物是否已存在（按当前缓存类型）。"""
+        return os.path.exists(self._de_cache_path(path))
+
+    def _gen_de_cache(self, ext, pairs, **kw):
+        """按当前缓存类型生成 D/E 中间产物（bndb 或 IR）。"""
+        if self._de_cache_kind == "ir":
+            from feature_extraction.ir_cache import generate_irs_batch
+            return generate_irs_batch(pairs, **kw)
+        return ext.generate_bndbs_batch(pairs, **kw)
+
+    def _extract_de(self, ext, pe_paths, cache_paths, npz_paths, **kw):
+        """按当前缓存类型从中间产物抽 D/E 特征。"""
+        if self._de_cache_kind == "ir":
+            from feature_extraction.ir_cache import extract_de_from_ir_batch
+            return extract_de_from_ir_batch(pe_paths, cache_paths, npz_paths, **kw)
+        return ext.extract_de_from_bndb_batch(pe_paths, cache_paths, npz_paths, **kw)
 
     def _has_sample_cache(self, path):
         return os.path.exists(self._sample_cache_path(path))
@@ -346,9 +379,9 @@ class PELoader:
             #    样本永远不重生成 → 最终以「无 bndb」被写成 de_fail 永久失败。
             #    去掉后语义更硬：有文件就不做，没文件就补。
             need_bndb = [p for p in need_binja
-                         if not self._is_valid_bndb(p)
+                         if not self._is_valid_de_cache(p)
                          and p not in bndb_fail]
-            n_have_bndb = sum(1 for p in need_binja if self._is_valid_bndb(p))
+            n_have_bndb = sum(1 for p in need_binja if self._is_valid_de_cache(p))
             n_skip_fail = sum(1 for p in need_binja if p in bndb_fail)
             n_slow_known = sum(1 for p in need_bndb if p in slow_counts)
 
@@ -398,8 +431,8 @@ class PELoader:
                 if first_round:
                     print(f"    首轮: {len(first_round)} 个, {bndb_workers} 并行, "
                           f"batch_size={bs_first}, 单批超时 {pf_first}s/文件 + {t_base}s ...")
-                    ok1, fail1 = ext.generate_bndbs_batch(
-                        [(p, self._bndb_cache_path(p)) for p in first_round],
+                    ok1, fail1 = self._gen_de_cache(ext,
+                        [(p, self._de_cache_path(p)) for p in first_round],
                         n_workers=bndb_workers, batch_size=bs_first,
                         per_file_timeout=pf_first, timeout_base=t_base)
                     ok_set |= ok1
@@ -410,12 +443,12 @@ class PELoader:
                 # ② 补救轮: 未成功的 + 已知慢样本 → batch_size=1 + 放宽超时
                 retry = [p for p in need_bndb
                          if p not in ok_set
-                         and not os.path.exists(self._bndb_cache_path(p))]
+                         and not os.path.exists(self._de_cache_path(p))]
                 if retry:
                     print(f"    补救轮: {len(retry)} 个, batch_size=1, "
                           f"单文件超时 {pf_retry}s ...")
-                    ok2, fail2 = ext.generate_bndbs_batch(
-                        [(p, self._bndb_cache_path(p)) for p in retry],
+                    ok2, fail2 = self._gen_de_cache(ext,
+                        [(p, self._de_cache_path(p)) for p in retry],
                         n_workers=bndb_workers, batch_size=1,
                         per_file_timeout=pf_retry, timeout_base=t_base)
                     ok_set |= ok2
@@ -431,7 +464,7 @@ class PELoader:
                     if p in ok_set:
                         slow_counts.pop(p, None)   # 成功 → 清慢样本计数
                         continue
-                    bp = self._bndb_cache_path(p)
+                    bp = self._de_cache_path(p)
                     if os.path.exists(bp):
                         try: os.remove(bp)
                         except: pass
@@ -475,8 +508,8 @@ class PELoader:
                 print(f"  D/E 阶段1: 全部 bndb 已存在或已记录{extra}")
 
             # ── 阶段2: bndb → D/E (持久化 Worker, 增量断点续传) ──
-            have_bndb = [p for p in need_binja if self._is_valid_bndb(p)]
-            no_bndb = [p for p in need_binja if not self._is_valid_bndb(p)]
+            have_bndb = [p for p in need_binja if self._is_valid_de_cache(p)]
+            no_bndb = [p for p in need_binja if not self._is_valid_de_cache(p)]
 
             # 无 bndb 的样本永远不可能提取 D/E → 直接标记永久失败
             if no_bndb:
@@ -529,7 +562,7 @@ class PELoader:
                 _purge_thread.start()
                 def _purge_bndb(pe_path):
                     if _purge:
-                        _purge_q.put(self._bndb_cache_path(pe_path))
+                        _purge_q.put(self._de_cache_path(pe_path))
 
                 def _on_ok(pe_path):
                     with _log_fh_lock:
@@ -538,9 +571,9 @@ class PELoader:
                     _purge_bndb(pe_path)
 
                 try:
-                    ok_set, fail_reasons = ext.extract_de_from_bndb_batch(
+                    ok_set, fail_reasons = self._extract_de(ext,
                         have_bndb,
-                        [self._bndb_cache_path(p) for p in have_bndb],
+                        [self._de_cache_path(p) for p in have_bndb],
                         [self._sample_cache_path(p) for p in have_bndb],
                         n_workers=de_workers, on_ok=_on_ok)
                 finally:
@@ -568,9 +601,9 @@ class PELoader:
                             _log_fh2.flush()
                         _purge_bndb(pe_path)
                     try:
-                        ok2, fail2 = ext.extract_de_from_bndb_batch(
+                        ok2, fail2 = self._extract_de(ext,
                             retry,
-                            [self._bndb_cache_path(p) for p in retry],
+                            [self._de_cache_path(p) for p in retry],
                             [self._sample_cache_path(p) for p in retry],
                             n_workers=de_workers, on_ok=_on_ok2)
                     finally:
@@ -741,7 +774,7 @@ class PELoader:
                 else:
                     out[line] = out.get(line, 0) + 1
         return {p: n for p, n in out.items()
-                if not os.path.exists(self._bndb_cache_path(p))}
+                if not os.path.exists(self._de_cache_path(p))}
 
     def _write_slow_log(self, counts):
         """原子重写 bndb_slow.log（每行 `<pe_path>\\t<次数>`）。"""

@@ -1297,6 +1297,9 @@ CoDefenderC3_v8/
 ├── ir.py                      # ProgramIR 数据类（后端中立中间表示，Phase 1）
 ├── backend_bn.py             # BN → ProgramIR 适配器（Phase 1 第 2 步）
 ├── features_from_ir.py       # ProgramIR → D/E 特征（Phase 1 第 4 步）
+├── ir_cache.py              # IR 缓存批量 API（第 5 步: PE→IR→特征）
+├── _ir_worker.py            # PE → IR 批量子进程
+├── _ir_de_worker.py         # IR → D/E 特征 → npz 持久化 worker
 ├── tests/                      # 回归测试（W0 特征哈希 11 项 + IR 契约 17 项）
 ├── baseline_fixture.py         # BN 基线快照采集/校验（W1）
 ├── fixtures/bn_baseline/        # 基线快照：88 样本 / 2640 特征指纹
@@ -1400,9 +1403,12 @@ python tests/baseline_fixture.py verify \
 * [`feature_extraction/backend_bn.py`](../feature_extraction/backend_bn.py) —— BN → IR 适配器（Phase 1 第 2 步）
 * [`feature_extraction/features_from_ir.py`](../feature_extraction/features_from_ir.py) —— IR → D/E 特征（第 4 步）
 * [`tests/test_ir_contract.py`](../tests/test_ir_contract.py) —— 17 项契约测试，含 mock 后端（适配器行为规范）
-* [`tests/verify_ir_equivalence.py`](../tests/verify_ir_equivalence.py) —— 等价性验证（bndb→IR→特征 vs bndb→特征）
+* [`tests/verify_ir_equivalence.py`](../tests/verify_ir_equivalence.py) —— 等价性验证（bndb→IR→特征 vs bndb→特征）
+* [`feature_extraction/ir_cache.py`](../feature_extraction/ir_cache.py) —— IR 缓存批量 API（第 5 步）
+* [`tests/verify_de_pipeline_equivalence.py`](../tests/verify_de_pipeline_equivalence.py) —— D/E 管线等价性（PE→IR→特征 vs PE→bndb→特征）
 
-✅ **第 2+4 步已验收**：32 个 bndb × 9 个特征 = 288 个指纹，**0 差异**（IR 路径与原路径逐位一致）。
+✅ **第 2+4 步已验收**：32 个 bndb × 9 个特征 = 288 个指纹，**0 差异**（IR 路径与原路径逐位一致）。
+✅ **第 5 步已接线**：`train/data_loader.py` 支持 `CODEFENDER_DE_CACHE=ir`（默认仍是 `bndb`，生产行为不变）。
 
 💾 附带收益：IR 缓存（gz）平均 105 KB/样本，比 .bndb 的 6.0 MB **小 58 倍**；
 6k 样本的缓存从 35 GB 降到 0.6 GB。

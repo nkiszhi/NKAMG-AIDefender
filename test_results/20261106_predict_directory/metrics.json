@@ -1,0 +1,27 @@
+{
+  "mode_hash_and_model": {
+    "N": 600,
+    "TP": 300,
+    "FN": 0,
+    "FP": 27,
+    "TN": 273,
+    "accuracy": 95.5,
+    "precision": 91.74311926605505,
+    "recall": 100,
+    "specificity": 91,
+    "f1": 95.69377990430623
+  },
+  "mode_model_only": {
+    "N": 600,
+    "TP": 256,
+    "FN": 44,
+    "FP": 27,
+    "TN": 273,
+    "accuracy": 88.16666666666667,
+    "precision": 90.45936395759718,
+    "recall": 85.33333333333334,
+    "specificity": 91,
+    "f1": 87.82161234991423
+  },
+  "differences": 44
+}

@@ -160,7 +160,7 @@ canonical JSON（sort_keys=True），助记符表压缩：
 | 2 | `backend_bn.py`：`bv → ProgramIR` | ✅ 完成 | 内含 mock 适配器规范（测试里） |
 | 3 | `backend_smda.py`：SMDA → IR | ⬜ Phase 2 | 与 BN 的 IR 做字段级对比 |
 | 4 | `features_from_ir.py`：IR → D/E 特征 | ✅ 完成 | **逐位等价已验证（见下）** |
-| 5 | 训练管线接 IR 缓存，替掉 .bndb | ⬜ 未做 | D/E 覆盖率不降 + 缓存体积 |
+| 5 | 训练管线接 IR 缓存，替掉 .bndb | ✅ 已实现（开关式，默认关闭） | `CODEFENDER_DE_CACHE=ir` 开启；见第 7 节 |
 
 ### ✅ 第 2+4 步的验收结果（2026-11-06）
 
@@ -207,6 +207,92 @@ bndb ──[backend_bn]──> IR ──[特征层]──> 特征      ← 与�
   否则 IR 会长成「另一个 IDA」，缓存体积和实现成本都会失控。
 * **不在 IR 里放后端特有的东西** —— 例如 BN 的 SymbolType、SMDA 的指令 id。
   后端特有信息只能出现在 `backend` / `backend_version` 字段里。
+
+## 7. 第 5 步落地情况（2026-11-06）
+
+### 7.1 接线方式
+
+| 组件 | 说明 |
+|---|---|
+| `feature_extraction/ir_cache.py` | `generate_irs_batch()` / `extract_de_from_ir_batch()`，语义与 bndb 版一一对应 |
+| `feature_extraction/_ir_worker.py` | PE → IR 的批量子进程（与 `_bndb_worker.py` 同构） |
+| `feature_extraction/_ir_de_worker.py` | IR → D/E 特征 → npz 的持久化 worker（不加载 BN） |
+| `train/data_loader.py` | 新增 `CODEFENDER_DE_CACHE` 开关：`bndb`（默认）/ `ir` |
+
+**默认仍是 `bndb`** —— 生产行为零改变。要切换：
+
+```bash
+export CODEFENDER_DE_CACHE=ir
+```
+
+切过去之后：
+
+* D/E 中间产物从 `.cache/bndb/*.bndb` 变成 `.cache/ir/*.ir.json.gz`；
+* 抽特征不再需要 BN（IR 是纯数据）→ BN 许可过期时也能重抽 D/E 特征；
+* 中间产物体积小 58 倍（105 KB vs 6.0 MB）；
+* 现有数据集的 `.cache/bndb` 不会被自动复用（格式不同），首次切换需重新生成。
+
+### 7.2 两条路径的等价性边界（重要，别误读）
+
+| 比较方式 | 结论 |
+|---|---|
+| 同一中间产物（同一个 .bndb）→ 抽特征 | ✅ 逐位一致（G2 门禁：32 个 bndb × 9 个特征 = 288/288） |
+| 同一个 PE → 各自走两条路径 | ⚠ 不完全一致 |
+
+为什么后者不一致？根因是 **BN 自己的 .bndb 序列化是"有损"的**：
+
+```
+PE ─[BN 分析]─> 内存里的 bv          （无损）
+  ├─ IR 路径：直接从这个 bv 提取        → 忠实于分析结果
+  └─ bndb 路径：create_database → 重开 → 提取   ← 经过 BN 的存盘/读盘往返
+```
+
+实测（3 个真实样本，同一次分析下逐特征比对）：
+
+| 样本 | 结果 |
+|---|---|
+| s0 | ✅ 9 个特征全部一致 |
+| s1 | ⏭ 跳过 —— BN 的 create_database() 原生崩溃（0xC0000409） |
+| s2 | ⚠ D01 / D02 / D03 / D05 / D07 不一致；D04 / D06 / E03 / E04 一致 |
+
+差异集中在**顺序/结构类**特征（指令序列 D01、n-gram D02/D03、函数统计 D05、
+函数嵌入 D07），**统计类**特征（D04 类别分布、D06 块统计、E03 CFG、E04 调用图）不受影响。
+
+> 这不影响切换决策：W0 已经要求这 6 组视角的模型全部重训，
+> 所以 D/E 特征本来就会变一次。而且 IR 路径更忠实于 BN 的分析结果
+>（没有有损的存盘往返），长期看是改进而非退步。
+>
+> 但要如实记录：**历史训练数据里的 D/E 特征来自"有损"的 bndb 快照**，
+> 新数据来自 IR，两者不可直接混用。
+
+### 7.3 实测中踩到的三个坑（都写进了代码注释）
+
+1. **bnpython3.exe 不支持 python 的 -c**（只接受脚本文件）——
+   验证脚本最初用 `sp.run([sys.executable, "-c", code, ...])` 起子进程，
+   全部报 `Unknown option -c`。改成落临时脚本文件才通。
+2. **同一 PE 的两个 view 不能并存** —— 父进程持有 view 时，子进程再开一个
+   会触发 BN 原生崩溃（0xC0000409，无 Python traceback）。
+   所以「同一次分析下两条路径对比」必须整体放进一个子进程。
+3. **BN 的 create_database() 会偶发原生崩溃** —— 生产管线早就知道
+   （`_bndb_worker.py` 的"零连坐"设计），补救轮用 `batch_size=1` 重跑。
+   IR 路径不需要 create_database，反而少一个崩溃点。
+
+### 7.4 批量 API 验证
+
+```
+generate_irs_batch(批, batch_size=2)   → ok=2 fail=1（BN 原生崩溃）
+generate_irs_batch(补救轮, batch=1)    → ok=1 fail=0      → 合计 3/3
+extract_de_from_ir_batch                → ok=3 fail=0
+  → 三个 npz 都含 10 个特征（D01-D07 + E03 + E04）
+```
+
+### 7.5 切换前建议先做的验证
+
+* 在**小数据集**上跑一遍 `CODEFENDER_DE_CACHE=ir`，对比 D/E 覆盖率；
+* 确认 `.cache/ir` 的体积符合预期；
+* 确认 IR 路径下 MalGraph 的 `features.jsonl` 生成正常（图特征同样走 BN）；
+* 再切全量。**BN 许可续期后**，D/E 特征重抽不再需要 BN 许可 —— 这正是
+  这次改造最实在的运维收益。
 
 ## 8. 风险与开放问题
 
