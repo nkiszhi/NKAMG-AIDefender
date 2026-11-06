@@ -44,6 +44,8 @@ from feature_extraction.unified import FeatureType, extract_feature
 from models.ensemble import MultiModelEnsemble, _input_dtype
 from engine.inference import compute_identifiers, _is_valid_pe
 from engine.result_formatter import format_scan_result
+from engine.naming import name_for_hash_hit
+from engine.projection import project_directory, project_single
 
 # nkrepo 哈希库（SHA256 + MD5 预检）：scaner 目录入 sys.path 后顶层导入。
 # 注意目录名用 scaner（非 scanner），避免与 scanner.py 模块同名遮蔽。
@@ -1605,7 +1607,7 @@ def _build_hash_hit_result(md5_hex: str, sha256_hex: str, crc32: str,
         "Status": 1, "StatusLabel": "Malicious", "IsMalicious": True, "Score": 1.0,
         "Source": source,
         "ScanResult": {
-            "VirusName": hit.get("name") or "KnownMalware",  # v4 库不存名称, 命中统一显示通用标签
+            "VirusName": name_for_hash_hit(),  # 命中统一 "Malicious"（不暴露库内签名名）
             "Packed": {"IsPacked": False, "PackerName": "", "IsArchive": False, "ArchiveName": ""},
             "PerModelScores": {}, "PerModelPreds": {},
             "DriftEvidence": {"surface": 0.0, "structure": 0.0, "global": 0.0},
@@ -2561,7 +2563,7 @@ async def predict_single(
     # ── SHA256 + MD5 哈希库预检：命中直接返回 Malicious，跳过模型（毫秒级短路）──
     precheck = _hash_precheck(content, file.filename, len(content))
     if precheck is not None:
-        return precheck
+        return project_single(precheck)
 
     ens = _load_ensemble()
     expected_view_dims = _infer_expected_view_dims(ens)
@@ -2587,7 +2589,7 @@ async def predict_single(
                 ),
                 timeout=REQUEST_TIMEOUT,
             )
-            return result
+            return project_single(result)
         except asyncio.TimeoutError:
             raise HTTPException(
                 status_code=504,
@@ -3091,10 +3093,10 @@ async def predict_directory(
             },
         }
 
-        return {
+        return project_directory({
             "Summary": summary,
             "Results": results,
-        }
+        })
     except HTTPException:
         raise
     except Exception as e:
