@@ -1707,12 +1707,11 @@ def _build_hash_hit_result(md5_hex: str, sha256_hex: str, crc32: str,
         "Status": 1, "StatusLabel": "Malicious", "IsMalicious": True, "Score": 1.0,
         "Source": source,
         "ScanResult": {
-            "VirusName": hit.get("name") or "KnownMalware",  # v4 库不存名称, 命中统一显示通用标签
             "Packed": {"IsPacked": False, "PackerName": "", "IsArchive": False, "ArchiveName": ""},
             "PerModelScores": {}, "PerModelPreds": {},
             "DriftEvidence": {"surface": 0.0, "structure": 0.0, "global": 0.0},
             "SampleDriftType": "normal", "AnomalyScore": 0.0, "IsDriftCandidate": False,
-            # HashMatch 不暴露 name/size —— 双哈希库 v4 起不存检出名称 (统一 KnownMalware);
+            # HashMatch 不暴露 name/size: the public verdict is Malicious;
             # fuzzy 库虽存 name/size 但命中即恶意, 大小无比对价值, 口径与双哈希库一致。
             # fuzzy 命中额外带 fuzzy_type/sha256 (关联的原始样本哈希) 透出。
             "HashMatch": {k: v for k, v in hit.items() if k not in ("name", "size")},

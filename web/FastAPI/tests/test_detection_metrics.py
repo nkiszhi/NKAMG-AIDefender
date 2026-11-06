@@ -16,10 +16,11 @@ class DetectionMetricsTests(unittest.TestCase):
         self.store = DetectionTaskStore(self.path, 60)
 
     def result(self, label, sha='a' * 64):
-        return {'sha256': sha, 'detection_mode': 'models', 'exe_result': {'集成结果': {'result': label}}}
+        labels = {'恶意': 'Malicious', '安全': 'Benign'}
+        return {'sha256': sha, 'detection_mode': 'models', 'exe_result': {'集成结果': {'result': labels.get(label, label)}}}
 
     def test_upload_results_and_duplicates_survive_report_cleanup_and_restart(self):
-        for task_id, label in [('a', '恶意'), ('b', '安全'), ('c', '疑似漂移')]:
+        for task_id, label in [('a', '恶意'), ('b', '安全'), ('c', '没有有效判定')]:
             self.store.create(task_id, 'test', Path(self.folder.name) / task_id, 8, 'a' * 64)
             self.store.complete(task_id, self.result(label))
             self.store.complete(task_id, self.result(label))

@@ -38,9 +38,10 @@ def finish(connection, task_id, result=None, status='completed'):
         else:
             models = result.get('exe_result') or result.get('results') or {}
             label = (models.get('集成结果') or {}).get('result')
-            verdict = {'恶意': 'malicious', '安全': 'benign'}.get(label, 'inconclusive')
+            verdict = {'Malicious': 'malicious', '恶意': 'malicious',
+                       'Benign': 'benign', '安全': 'benign'}.get(label, 'inconclusive')
             partial = int(any(
-                isinstance(value, dict) and value.get('result') not in ('恶意', '安全')
+                isinstance(value, dict) and value.get('result') not in ('Malicious', 'Benign', '恶意', '安全')
                 for key, value in models.items() if key not in ('集成结果', '签名库预检')
             ))
     # One terminal outcome per request ID, even after report expiry or retries.

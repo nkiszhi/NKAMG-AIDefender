@@ -287,10 +287,7 @@ def _parse_v8_response(data: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
                              'status': item.get('status'), 'reason': item.get('reason', '')}
 
     final = dict(data)
-    final["virus_name"] = scan.get("VirusName", "")
     ensemble = _format_model_result(final, "CoDefender集成模型")
-    if data.get("Status") == 2:
-        ensemble["result"] = "疑似漂移"
     if not scores:
         if data.get("IsMalicious") is not True:
             raise ValueError("模型服务返回空预测结果")
@@ -303,20 +300,16 @@ def _parse_v8_response(data: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
 def _build_ensemble(final_raw: Dict[str, Any], results: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
     probability = _extract_probability(final_raw)
     result = _extract_result(final_raw, probability)
-    virus_name = _extract_virus_name(final_raw)
-
     if probability is None:
         valid_probs = [item["probability"] for item in results.values() if item.get("probability") is not None]
         if valid_probs:
             probability = sum(valid_probs) / len(valid_probs)
-            result = "恶意" if probability > settings.threshold else "安全"
+            result = "Malicious" if probability > settings.threshold else "Benign"
 
     ensemble = {
         "probability": round(probability, 4) if probability is not None else None,
         "result": result,
     }
-    if virus_name:
-        ensemble["virus_name"] = virus_name
     return ensemble
 
 
@@ -339,15 +332,10 @@ def _iter_model_items(model_results: Any) -> Iterable[Tuple[str, Dict[str, Any]]
 def _format_model_result(raw_result: Dict[str, Any], fallback_name: str) -> Dict[str, Any]:
     probability = _extract_probability(raw_result)
     result = _extract_result(raw_result, probability)
-    virus_name = _extract_virus_name(raw_result)
-
     formatted = {
         "probability": round(probability, 4) if probability is not None else None,
         "result": result,
     }
-    if virus_name:
-        formatted["virus_name"] = virus_name
-
     raw_name = _read_first(raw_result, ["model", "model_name", "Model", "ModelName", "name"], fallback_name)
     if raw_name:
         formatted["model_name"] = str(raw_name)
@@ -413,29 +401,17 @@ def _extract_probability(data: Dict[str, Any]) -> Optional[float]:
     return None
 
 
-def _extract_result(data: Dict[str, Any], probability: Optional[float]) -> str:
+def _extract_result(data: Dict[str, Any], probability: Optional[float]) -> Optional[str]:
     is_malware = _read_first(data, ["is_malware", "isMalware", "IsMalware", "IsMalicious", "malicious", "is_malicious"])
     if isinstance(is_malware, bool):
-        return "恶意" if is_malware else "安全"
+        return "Malicious" if is_malware else "Benign"
 
     label = str(_read_first(data, ["label", "Label", "result", "Result", "verdict", "Verdict", "Status"], "")).strip().lower()
     if label in ("malware", "malicious", "virus", "detected", "infected", "bad", "恶意"):
-        return "恶意"
+        return "Malicious"
     if label in ("benign", "safe", "clean", "undetected", "normal", "good", "安全", "正常"):
-        return "安全"
+        return "Benign"
 
     if probability is None:
-        return "预测失败"
-    return "恶意" if probability > settings.threshold else "安全"
-
-
-def _extract_virus_name(data: Dict[str, Any]) -> str:
-    value = _read_first(
-        data,
-        [
-            "virus_name", "VirusName", "threat_name", "ThreatName", "malware_name",
-            "MalwareName", "family", "Family", "name", "Name",
-        ],
-        "",
-    )
-    return "" if value is None else str(value)
+        return None
+    return "Malicious" if probability > settings.threshold else "Benign"

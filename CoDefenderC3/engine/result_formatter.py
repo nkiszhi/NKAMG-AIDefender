@@ -4,7 +4,6 @@ engine/result_formatter — 扫描结果格式化
 单样本检测结果的标准输出结构。
 """
 import numpy as np
-from engine.virus_namer import generate_virus_name
 
 
 def _to_native(obj):
@@ -28,7 +27,7 @@ def _evidence_to_level_dict(evidence_row, level_names):
     return result
 
 
-_STATUS_LABELS = {0: "Benign", 1: "Malicious", 2: "DriftSuspect"}
+_STATUS_LABELS = {0: "Benign", 1: "Malicious"}
 
 
 def _status_label(status: int) -> str:
@@ -52,12 +51,7 @@ def format_scan_result(evidence: dict, identifiers: dict, pack_info: dict, model
     is_drift = bool(is_drift_candidate[0]) if hasattr(is_drift_candidate, "__len__") else bool(is_drift_candidate)
     anomaly = float(anomaly_score[0]) if hasattr(anomaly_score, "__len__") else float(anomaly_score)
 
-    if pred == 1:
-        status = 1
-    elif is_drift:
-        status = 2
-    else:
-        status = 0
+    status = 1 if pred == 1 else 0
 
     pms = per_model_scores[0] if per_model_scores.ndim == 2 else per_model_scores
     pmp = per_model_preds[0] if per_model_preds.ndim == 2 else per_model_preds
@@ -68,18 +62,8 @@ def format_scan_result(evidence: dict, identifiers: dict, pack_info: dict, model
     drift_values = drift_evidence[0] if drift_evidence.ndim == 2 else drift_evidence
     drift_evidence_dict = _evidence_to_level_dict(drift_values, level_names)
 
-    virus_name = ""
-    if status > 0:
-        virus_name = generate_virus_name(
-            drift_type=drift_type,
-            per_model_scores=pms,
-            model_names=model_names,
-            sha256=identifiers.get("SHA256", ""),
-        )
-
     # ---- 组装 ScanResult ----
     scan_result = {
-        "VirusName": virus_name,
         "Packed": {
             "IsPacked": pack_info.get("packed", False),
             "PackerName": pack_info.get("packer_name", ""),

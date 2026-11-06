@@ -130,13 +130,10 @@
             <el-tag :type="uploadResult.is_pe ? 'success' : 'warning'">
               {{ uploadResult.is_pe ? 'PE结构：有效' : '检测失败：非 PE 文件' }}
             </el-tag>
-            <el-tag v-if="uploadResult.database_hit" type="danger">恶意：命中 NKAMG 样本库</el-tag>
+            <el-tag v-if="uploadResult.database_hit" type="danger">Malicious · 命中 NKAMG 样本库</el-tag>
             <el-tag v-else-if="uploadResult.is_pe && uploadResult.detection_mode === 'models'" type="info">样本库：未命中</el-tag>
-            <el-tag v-if="ensembleResult" :type="ensembleResult.result === '恶意' ? 'danger' : ensembleResult.result === '安全' ? 'success' : 'warning'">
-              多模型结果：{{ ensembleResult.result }}
-            </el-tag>
-            <el-tag v-if="ensembleResult?.virus_name" type="warning">
-              病毒名称：{{ ensembleResult.virus_name }}
+            <el-tag v-if="ensembleResult && ['Malicious', 'Benign'].includes(ensembleResult.result)" :type="ensembleResult.result === 'Malicious' ? 'danger' : 'success'">
+              {{ ensembleResult.result }}
             </el-tag>
           </div>
         </div>
@@ -212,8 +209,8 @@
         <template v-else>
         <div class="summary-row">
           <el-tag size="large" type="info">{{ uploadResult.partial ? '检测中 · 已返回部分结果' : '检测结束' }} · 共 {{ modelCount }} 个模型</el-tag>
-          <el-tag size="large" type="danger">恶意: {{ maliciousCount }}</el-tag>
-          <el-tag size="large" type="success">安全: {{ safeCount }}</el-tag>
+          <el-tag size="large" type="danger">Malicious: {{ maliciousCount }}</el-tag>
+          <el-tag size="large" type="success">Benign: {{ safeCount }}</el-tag>
           <el-tag v-if="incompleteCount" size="large" type="warning">未取得有效结果: {{ incompleteCount }}</el-tag>
         </div>
         <el-table :data="modelRows" border stripe class="model-table">
@@ -227,13 +224,13 @@
           </el-table-column>
           <el-table-column label="结果" width="120">
             <template #default="{ row }">
-              <el-tag :type="row.result === '恶意' ? 'danger' : row.result === '安全' ? 'success' : 'info'">
-                {{ row.result }}
+              <el-tag :type="row.result === 'Malicious' ? 'danger' : row.result === 'Benign' ? 'success' : 'info'">
+                {{ ['Malicious', 'Benign'].includes(row.result) ? row.result : (row.result || '—') }}
               </el-tag>
             </template>
           </el-table-column>
           <el-table-column prop="reason" label="说明" min-width="180">
-            <template #default="{ row }">{{ row.reason || row.virus_name || '-' }}</template>
+            <template #default="{ row }">{{ row.reason || '-' }}</template>
           </el-table-column>
         </el-table>
         </template>
@@ -353,14 +350,13 @@ const modelRows = computed(() => Object.entries(modelResults.value).map(([model,
   model,
   probability: data.probability,
   result: data.result,
-  virus_name: data.virus_name,
   reason: data.reason
 })))
 
 const modelCount = computed(() => modelRows.value.length)
-const maliciousCount = computed(() => modelRows.value.filter(row => row.result === '恶意').length)
-const safeCount = computed(() => modelRows.value.filter(row => row.result === '安全').length)
-const incompleteCount = computed(() => modelRows.value.filter(row => !['恶意', '安全'].includes(row.result)).length)
+const maliciousCount = computed(() => modelRows.value.filter(row => row.result === 'Malicious').length)
+const safeCount = computed(() => modelRows.value.filter(row => row.result === 'Benign').length)
+const incompleteCount = computed(() => modelRows.value.filter(row => !['Malicious', 'Benign'].includes(row.result)).length)
 
 onMounted(async () => {
   window.addEventListener('pagehide', notifyPageLeave)
@@ -598,7 +594,7 @@ async function pollDetectionTask(taskId) {
         const labels = { waiting: '等待中', running: '正在检测', timeout: '超时', error: '失败', unavailable: '不可用', skipped: '已跳过' }
         const results = Object.fromEntries(task.progress.models.map(item => [item.model, {
           probability: item.status === 'ok' ? item.score : null,
-          result: item.status === 'ok' ? (item.prediction === 1 ? '恶意' : '安全') : (labels[item.status] || '等待中'),
+          result: item.status === 'ok' ? (item.prediction === 1 ? 'Malicious' : 'Benign') : (labels[item.status] || '等待中'),
           reason: item.reason || ''
         }]))
         const firstProgress = !uploadResult.value
