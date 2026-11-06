@@ -1,7 +1,7 @@
 """Disposable analysis feature process (BinaryNinja or SMDA).
 
 No model service imports or license rewriting.
-后端由 CODEFENDER_DISASM_BACKEND 决定：smda（默认，无需商业授权、不挂死）或 bn。
+后端由 CODEFENDER_DISASM_BACKEND 决定：传统镜像默认使用已安装的 bn；SMDA 镜像显式设置 smda。
 """
 import pickle
 import sys
@@ -24,6 +24,11 @@ def load_analysis_view(bn, sample_path):
     return bv
 
 
+def selected_backend(environ=None):
+    environ = os.environ if environ is None else environ
+    return environ.get('CODEFENDER_DISASM_BACKEND', 'bn').strip().lower() or 'bn'
+
+
 def main():
     # A second watchdog prevents an orphaned native-analysis process if its parent exits.
     def hard_stop():
@@ -35,7 +40,7 @@ def main():
     watchdog.daemon = True
     watchdog.start()
     sample_path, output_path = sys.argv[1:3]
-    backend = os.environ.get('CODEFENDER_DISASM_BACKEND', 'smda').strip().lower() or 'smda'
+    backend = selected_backend()
     if backend == 'smda':
         _run_smda(sample_path, output_path, timeout)
         return

@@ -258,7 +258,7 @@ const apiService = axios.create({
 })
 
 const showSection = ref('fileInfo')
-const modelsOpen = ref(['detectionStats'])
+const modelsOpen = ref(['modelCatalog', 'sampleLibrary'])
 const loading = ref(false)
 const maxUploadSize = ref(20 * 1024 * 1024)
 const detectionMessage = ref('正在检测，可刷新页面继续等待')
@@ -350,8 +350,15 @@ const modelRows = computed(() => Object.entries(modelResults.value).map(([model,
   model,
   probability: data.probability,
   result: data.result,
-  reason: data.reason
+  reason: displayModelReason(data.reason)
 })))
+
+function displayModelReason(reason) {
+  if (typeof reason === 'string' && reason.toLowerCase().includes('extraction process failed')) {
+    return '深度特征提取进程启动或运行失败；相关模型暂未取得结果，其他已完成模型结果仍可参考。'
+  }
+  return reason
+}
 
 const modelCount = computed(() => modelRows.value.length)
 const maliciousCount = computed(() => modelRows.value.filter(row => row.result === 'Malicious').length)
@@ -361,6 +368,7 @@ const incompleteCount = computed(() => modelRows.value.filter(row => !['Maliciou
 onMounted(async () => {
   window.addEventListener('pagehide', notifyPageLeave)
   loading.value = Boolean(localStorage.getItem(TASK_KEY))
+  if (loading.value) modelsOpen.value = ['detectionStats']
   await loadConfig()
   try {
     const { data } = await apiService.get(`${apiBaseUrl.value}/upload-policy`, { timeout: 5000 })
@@ -448,7 +456,7 @@ function parseIni(text) {
 function resetResult() {
   uploadResult.value = null
   showSection.value = 'fileInfo'
-  modelsOpen.value = ['detectionStats']
+  modelsOpen.value = ['modelCatalog', 'sampleLibrary']
   void detectionStatsPanel.value?.refresh()
 }
 
@@ -542,7 +550,24 @@ async function uploadFile(file) {
 
 async function restoreDetectionTask() {
   const taskId = localStorage.getItem(TASK_KEY)
-  if (taskId) await pollDetectionTask(taskId)
+  if (!taskId) return
+  try {
+    const { data } = await apiService.get(`${apiBaseUrl.value}/detect/tasks/${taskId}`, { timeout: 10000 })
+    if (['completed', 'failed', 'cancelled'].includes(data?.status)) {
+      clearSavedTask()
+      loading.value = false
+      resetResult()
+      return
+    }
+  } catch (error) {
+    if (error.response?.status === 404 && localStorage.getItem(TASK_PHASE_KEY) !== 'uploading') {
+      clearSavedTask()
+      loading.value = false
+      resetResult()
+      return
+    }
+  }
+  await pollDetectionTask(taskId)
 }
 
 function clearSavedTask() {
@@ -579,9 +604,7 @@ async function pollDetectionTask(taskId) {
       const task = response.data || {}
       if (task.status === 'completed') {
         setDetectionResult(task.result || {})
-        // Keep the ID until a new upload, so refreshing a completed report
-        // also restores it during the server's configured retention period.
-        localStorage.setItem(TASK_PHASE_KEY, 'accepted')
+        clearSavedTask()
         ElMessage.success('检测完成')
         return
       }
