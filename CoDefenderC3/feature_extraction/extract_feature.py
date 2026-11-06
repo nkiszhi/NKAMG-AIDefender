@@ -26,6 +26,27 @@ from collections import Counter, defaultdict
 from typing import Dict, Optional
 import numpy as np
 
+# 跨进程稳定的字符串哈希（feature hashing）
+# 内置 hash(str) 每进程随机 → 训练(子进程)与推理(主进程)桶号不同 → 特征语义错位。
+# 详见 feature_extraction/_stable_hash.py 的说明。
+try:
+    from ._stable_hash import stable_hash          # ① 包内导入: feature_extraction.extract_feature
+except ImportError:
+    try:
+        from _stable_hash import stable_hash        # ② 同目录在 sys.path 上
+    except ImportError:
+        # ③ 兜底: 按本文件路径直接加载（不依赖 sys.path）。
+        #    train/data_loader.py 的 _extract_fast_chunk 就是用 importlib 按路径
+        #    加载本文件的 —— 那种场景下 feature_extraction/ 不在 sys.path 上，
+        #    ②会失败，必须走这一级。
+        import importlib.util as _ilu
+        _spec = _ilu.spec_from_file_location(
+            "_stable_hash",
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "_stable_hash.py"))
+        _sh = _ilu.module_from_spec(_spec)
+        _spec.loader.exec_module(_sh)
+        stable_hash = _sh.stable_hash
+
 # BinaryNinja import (deferred to allow module-level import without crash)
 _BN = None
 
@@ -81,6 +102,9 @@ IMG_SIZE       = 256              # visualization image size (F01-F04)
 NGRAM_DIM      = 256              # n-gram TF-IDF output dim (D02-D03)
 ENTROPY_BINS   = 256              # entropy histogram bins (B04)
 BLOCK_SIZE     = 1024             # entropy block size
+STR_MAX_STRINGS = 5000            # 字符串条数上限 (C01-C04)
+STR_C01_STRINGS = 2000            # C01 参与统计的字符串条数
+STR_C04_STRINGS = 200             # C04 参与 n-gram 统计的字符串条数
 
 # x86 instruction categories (15 classes, D04) —— 与 SMDA 后端共用（顶层模块，避免包依赖）
 from insn_categories import INSN_CATEGORIES, CAT_LOOKUP as _CAT_LOOKUP, CAT_NAMES as _CAT_NAMES
@@ -262,7 +286,7 @@ class BinjaExtractor:
                     for func in entry.imports:
                         name = (func.name or b"").decode("ascii", errors="ignore")
                         if name:
-                            imp[hash(name) % IMPORT_BUCKETS] += 1
+                            imp[stable_hash(name) % IMPORT_BUCKETS] += 1
                 if imp.sum() > 0:
                     imp /= imp.sum()
         except Exception:
@@ -287,18 +311,35 @@ class BinjaExtractor:
 
         return feats
 
-    def _extract_strings_fast(self, raw):
-        """C01-C04: 字符串特征, 纯 regex (不需要 BinaryNinja)。"""
-        import re
+    # ─── C01-C04: 字符串特征（唯一实现）────────────────────────
+    #
+    # ⚠ 2026-11-05 统一：此前存在两套口径互不一致的实现 ——
+    #   _extract_strings_fast（纯 regex，生产路径，train/ 与 engine/ 都用它）
+    #   _extract_strings    （BinaryNinja 全量路径，目前仅离线/调试使用）
+    #   差异：· C02[4] fast = URL 字符串「个数」；BN 版 = 含大写字母字符串「比例」
+    #         · C01    fast 无 log1p；BN 版有 log1p
+    #         · 截断   fast 只取 2000 条；BN 版不截断
+    #   现统一到 _string_features()，两条路径共用 → 同一字符串集合必得同一向量。
+
+    def _string_features(self, strings):
+        """C01-C04: 由字符串列表算出 4 组字符串特征。
+
+        口径（训练侧 extract_fast 与推理侧 extract 共用，勿单方面改）：
+          · 字符串最多取 STR_MAX_STRINGS (5000) 条
+          · C01 只用前 STR_C01_STRINGS (2000) 条
+          · C04 只用前 STR_C04_STRINGS (200) 条
+          · C02[4] = URL 类字符串的**个数**（含 "http" / "www"）
+          · C01/C04 计数后统一 log1p → 归一化
+        """
         feats = {}
-        strings = [s.decode("ascii", errors="ignore")
-                   for s in re.findall(rb'[\x20-\x7e]{4,}', raw[:2*1024*1024])]
+        strings = list(strings)[:STR_MAX_STRINGS]
 
         # C01: String embedding (256d hash trick)
         c01 = np.zeros(256, dtype=np.float32)
-        for s in strings[:2000]:
-            c01[hash(s) % 256] += 1
-        if c01.max() > 0:
+        for s in strings[:STR_C01_STRINGS]:
+            c01[stable_hash(s) % 256] += 1
+        if c01.sum() > 0:
+            c01 = np.log1p(c01)
             c01 /= c01.max() + 1e-8
         feats["C01"] = c01
 
@@ -335,16 +376,22 @@ class BinjaExtractor:
 
         # C04: String n-gram embedding (256d)
         c04 = np.zeros(256, dtype=np.float32)
-        for s in strings[:200]:
+        for s in strings[:STR_C04_STRINGS]:
             for i in range(len(s) - 2):
-                h = hash(s[i:i+3]) % 256
-                c04[h] += 1
+                c04[stable_hash(s[i:i+3]) % 256] += 1
         if c04.sum() > 0:
             c04 = np.log1p(c04)
             c04 /= np.linalg.norm(c04) + 1e-8
         feats["C04"] = c04
 
         return feats
+
+    def _extract_strings_fast(self, raw):
+        """C01-C04: 字符串特征, 纯 regex (不需要 BinaryNinja)。"""
+        import re
+        strings = [s.decode("ascii", errors="ignore")
+                   for s in re.findall(rb'[\x20-\x7e]{4,}', raw[:2*1024*1024])]
+        return self._string_features(strings)
 
     def _extract_hashes_fast(self, raw, pe_obj=None):
         """G01-G04: 哈希特征, 纯 Python。"""
@@ -1111,7 +1158,7 @@ for line in lines:
         # A06: Import Table (IMPORT_BUCKETS d) — hash-bucketed
         imp = np.zeros(IMPORT_BUCKETS, dtype=np.float32)
         for sym in bv.get_symbols_of_type(self.bn.SymbolType.ImportedFunctionSymbol):
-            h = hash(sym.full_name) % IMPORT_BUCKETS
+            h = stable_hash(sym.full_name) % IMPORT_BUCKETS
             imp[h] += 1.0
         if imp.sum() > 0:
             imp /= imp.sum()
@@ -1226,8 +1273,6 @@ for line in lines:
     # ═══════════════════════════════════════
 
     def _extract_strings(self, bv, raw):
-        feats = {}
-
         # Extract printable strings
         # BinaryNinja 5.x: bv.strings 迭代时可能在损坏节区上触发 __getitem__ 错误
         # 回退方案: 从原始字节提取 ASCII 字符串
@@ -1246,62 +1291,8 @@ for line in lines:
             # bv.strings 迭代本身失败 → 从原始字节提取
             import re
             raw_strings = re.findall(rb'[\x20-\x7e]{4,}', raw)
-            raw_strings = [s.decode("ascii", errors="ignore") for s in raw_strings[:5000]]
-        strings = raw_strings
-
-        # C01: String content (variable → 256d embedding via hash trick)
-        c01 = np.zeros(256, dtype=np.float32)
-        for s in strings:
-            h = hash(s) % 256
-            c01[h] += 1
-        if c01.sum() > 0:
-            c01 = np.log1p(c01)
-            c01 /= c01.max() + 1e-8
-        feats["C01"] = c01
-
-        # C02: String statistics (10d)
-        c02 = np.zeros(10, dtype=np.float32)
-        if strings:
-            lens = [len(s) for s in strings]
-            c02[0] = len(strings)
-            c02[1] = np.mean(lens)
-            c02[2] = np.max(lens)
-            c02[3] = np.std(lens)
-            c02[4] = sum(1 for s in strings if any(c.isupper() for c in s)) / len(strings)
-            c02[5] = sum(1 for s in strings if s.startswith("http")) / max(len(strings), 1)
-            c02[6] = sum(1 for s in strings if "\\" in s or "/" in s) / max(len(strings), 1)
-            c02[7] = sum(1 for s in strings if ".dll" in s.lower()) / max(len(strings), 1)
-            c02[8] = sum(1 for s in strings if ".exe" in s.lower()) / max(len(strings), 1)
-            c02[9] = sum(1 for s in strings if any(c.isdigit() for c in s)) / max(len(strings), 1)
-        feats["C02"] = c02
-
-        # C03: Sensitive pattern matching (31d)
-        patterns = [
-            "cmd", "powershell", "reg", "net ", "http", "ftp",
-            "encrypt", "decrypt", "password", "admin", "root",
-            "kernel32", "ntdll", "ws2_32", "advapi32", "shell32",
-            "create", "write", "delete", "execute", "inject",
-            "mutex", "pipe", "socket", "connect", "download",
-            "registry", "service", "process", "thread", "hook",
-        ]
-        c03 = np.zeros(len(patterns), dtype=np.float32)
-        all_text = " ".join(strings).lower()
-        for i, p in enumerate(patterns):
-            c03[i] = float(p in all_text)
-        feats["C03"] = c03
-
-        # C04: String embedding (256d, TF-IDF proxy via char n-grams)
-        c04 = np.zeros(256, dtype=np.float32)
-        for s in strings[:200]:
-            for i in range(len(s) - 2):
-                h = hash(s[i:i+3]) % 256
-                c04[h] += 1
-        if c04.sum() > 0:
-            c04 = np.log1p(c04)
-            c04 /= np.linalg.norm(c04) + 1e-8
-        feats["C04"] = c04
-
-        return feats
+            raw_strings = [s.decode("ascii", errors="ignore") for s in raw_strings[:STR_MAX_STRINGS]]
+        return self._string_features(raw_strings)
 
     # ═══════════════════════════════════════
     #  D: Disassembly via BinaryNinja (Appendix C.3)
@@ -1390,13 +1381,13 @@ for line in lines:
         # ── D01: Opcode sequence ──
         d01 = np.zeros(MAX_OPCODES, dtype=np.int64)
         for i, op in enumerate(all_opcodes[:MAX_OPCODES]):
-            d01[i] = hash(op) % 511 + 1
+            d01[i] = stable_hash(op) % 511 + 1
         feats["D01"] = d01
 
         # ── D02: Opcode bigram ──
         d02 = np.zeros(NGRAM_DIM, dtype=np.float32)
         for i in range(len(all_opcodes) - 1):
-            d02[hash(all_opcodes[i] + "_" + all_opcodes[i+1]) % NGRAM_DIM] += 1
+            d02[stable_hash(all_opcodes[i] + "_" + all_opcodes[i+1]) % NGRAM_DIM] += 1
         if d02.sum() > 0:
             d02 = np.log1p(d02); d02 /= np.linalg.norm(d02) + 1e-8
         feats["D02"] = d02
@@ -1404,7 +1395,7 @@ for line in lines:
         # ── D03: Opcode trigram ──
         d03 = np.zeros(NGRAM_DIM, dtype=np.float32)
         for i in range(len(all_opcodes) - 2):
-            d03[hash("_".join(all_opcodes[i:i+3])) % NGRAM_DIM] += 1
+            d03[stable_hash("_".join(all_opcodes[i:i+3])) % NGRAM_DIM] += 1
         if d03.sum() > 0:
             d03 = np.log1p(d03); d03 /= np.linalg.norm(d03) + 1e-8
         feats["D03"] = d03
@@ -1455,7 +1446,7 @@ for line in lines:
         for fi in range(min(n_funcs, MAX_FUNCTIONS)):
             emb = np.zeros(128, dtype=np.float32)
             for op, cnt in func_data[fi]["ops"].items():
-                emb[hash(op) % 128] += cnt
+                emb[stable_hash(op) % 128] += cnt
             if emb.sum() > 0:
                 emb /= np.linalg.norm(emb) + 1e-8
             d07[fi*128:(fi+1)*128] = emb

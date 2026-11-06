@@ -10,7 +10,10 @@ if sys.platform == 'win32':
     except Exception:
         pass
 
-sys.path.insert(0, 'D:\\VM_Share\\CoDefenderC3_v8\\CoDefenderC3\\feature_extraction')
+# 2026-11-05: 原先硬编码 v8 目录 → 在 v9 里会加载**旧版** extract_feature.py，
+#              D/E 特征口径与本仓库不一致（且 W0 的稳定 hash 改动不生效）。
+#              改为按本文件位置定位同目录。
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import numpy as np
 from extract_feature import BinjaExtractor
 

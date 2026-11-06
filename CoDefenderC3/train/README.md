@@ -5,6 +5,33 @@
 
 ---
 
+## 0. ⚠️ 2026-11-05 起：特征哈希变了，**必须重训**
+
+项目原先用 Python 内置 `hash()` 做 feature hashing，而内置 `hash(str)` **每个进程都不一样** ——
+训练（在子进程抽特征）与推理（在主进程抽特征）对同一个 PE 算出的特征向量**不一样**，
+这 6 组视角的模型基本是在吃噪声。
+
+现已全部改为 `zlib.crc32` 的纯函数哈希（`feature_extraction/_stable_hash.py`），并统一了
+C01-C04 的两套实现。**下列视角组的模型权重作废，必须重训**：
+
+| 特征 | 视角组 | 模型 |
+|---|---|---|
+| A06 | V4_import | DrebinImport, ALOHANet, EmberGBDT_Import |
+| C01 / C04 / C02 | V5_string | RaffFeatureNet, DrebinString |
+| D01 | V6_opcode_seq | OpcodeLSTM, OpcodeTransformer |
+| D02 / D03 | V6_opcode_stat | OpcodeStatNet |
+| D07 | V6_func_embed | AsmEmbedNet |
+
+不受影响：V1_byte、V2_byte_stat、V3_pe_struct、V7_graph。
+
+> 也就是说：**现有的 `ensemble.pkl` 与所有已缓存的 `.npz` 特征都不可信**，
+> 必须重新抽特征 + 重训（建议把这次重训与 SMDA 迁移后的重训**合并成一次**做）。
+>
+> 完整说明见 [`../docs/FEATURE_HASH_STABILITY.md`](../docs/FEATURE_HASH_STABILITY.md)。
+> 守门测试：`python ../tests/test_stable_hash.py`（11 项，含跨进程一致性）。
+
+---
+
 ## 1. 为什么是这些文件搬进来、那些留在根
 
 判断标准只有一条：**是否被推理服务（`engine/`）依赖**。
@@ -58,14 +85,7 @@ python CoDefenderC3/train/<script>.py ...
 | `_cmp_ensemble.py` | 比对两份 pkl 的**数值指纹**（形状 / dtype / 内容 md5），判断能否互换做基线。设备标签不同但 md5 全同 → 数值等价 |
 | `_probe_link_place.py` | 验证 `place_sample()` 的硬链接语义与回退：同盘同 inode / 幂等 / 原子替换 / 跨卷回退 copy2 / 无残留临时名（7 组断言，exit 0 = 全通过） |
 | `_probe_de_coverage.py` | 统计数据集的 D/E 覆盖率并**归类缺口**（秒级、不写盘）：缺口分为「慢样本（重跑自愈）/ 永久失败（需清日志）/ 其他」三类 |
-| `_probe_bndb_fail.py` | 诊断**单个**样本为何生不出 bndb（单样本 batch_size=1 重试），给出后续对策 |
-| `_probe_bndb_slow_retry.py` | 回归验证 bndb 阶段的「慢样本可重试」机制：超时→bndb_slow（非永久）/ 硬失败→bndb_fail / 计数到上限转永久 / 并发与超时参数生效 / `de_done` 覆盖写修复（14 组断言）。加 `--with-bn` 追加真实 BN 超时用例 |
 | `_fix_de_gap.py` | **修复** D/E 缺口（写盘）：备份并清失败日志 → 宽松超时重生成 bndb → 提 D/E 写回 npz → 只移除已救回的行。`--dry-run` 只报告 |
-| `_probe_bn_available.py` | 三层验证本机 BinaryNinja：解释器/导入 → 许可（product/serial/expires）→ 真实 PE 反汇编（函数/基本块/指令/call_sites）。**用 `bnpython3.exe` 跑** |
-| `_probe_bn_license.py` / `_probe_bn_license2.py` | 直接查 BN 核心许可位；`2` 对比 `BNInitPlugins()` **前后** `BNIsLicenseValidated()` 的变化（**之前恒 False，易误判许可无效**） |
-| `_probe_bn_de_e2e.py` | 验证项目自身能否产出 D/E 视角：打印每个视角的 shape/dtype（本版本 = D01-D07 + E03 + E04，共 9 个） |
-| `_probe_bn_pipeline_path.py` | 验证训练真正走的**子进程**路径：`generate_bndbs_batch`（PE→bndb）+ `extract_de_from_bndb_batch`（bndb→D/E） |
-| `_probe_bn_perfile.py` | 逐样本单 worker（`n_workers=1, batch_size=1`）隔离 BN 崩溃，用来区分「样本问题」与「并发/超时问题」 |
 
 ```bash
 PYTHONIOENCODING=utf-8 python -u CoDefenderC3/train/_probe_ensemble.py [pkl路径]
@@ -73,20 +93,12 @@ PYTHONIOENCODING=utf-8 python -u CoDefenderC3/train/_verify_ensemble_load.py [pk
 PYTHONIOENCODING=utf-8 python -u CoDefenderC3/train/_probe_device.py [pkl路径]
 PYTHONIOENCODING=utf-8 python -u CoDefenderC3/train/_cmp_ensemble.py <pklA> <pklB>
 PYTHONIOENCODING=utf-8 python -u CoDefenderC3/train/_probe_link_place.py
-PYTHONIOENCODING=utf-8 python -u CoDefenderC3/train/_probe_bndb_slow_retry.py
-PYTHONIOENCODING=utf-8 python -u CoDefenderC3/train/_probe_bndb_slow_retry.py --with-bn   # 追加真实 BN 超时用例
 
 # D/E 覆盖率门禁：先诊断，再修复（修复会写盘，先 --dry-run）
 PYTHONIOENCODING=utf-8 python -u CoDefenderC3/train/_probe_de_coverage.py "<数据集目录>"
 PYTHONIOENCODING=utf-8 python -u CoDefenderC3/train/_fix_de_gap.py "<数据集目录>" --dry-run
 PYTHONIOENCODING=utf-8 python -u CoDefenderC3/train/_fix_de_gap.py "<数据集目录>"
 
-# BinaryNinja 可用性（前两条必须用 BN 自带解释器，bnpython3 环境无 numpy）
-"C:\Program Files\Vector35\BinaryNinja\bnpython3.exe" CoDefenderC3/train/_probe_bn_available.py
-"C:\Program Files\Vector35\BinaryNinja\bnpython3.exe" CoDefenderC3/train/_probe_bn_license2.py
-PYTHONIOENCODING=utf-8 python -u CoDefenderC3/train/_probe_bn_de_e2e.py
-PYTHONIOENCODING=utf-8 python -u CoDefenderC3/train/_probe_bn_pipeline_path.py
-PYTHONIOENCODING=utf-8 python -u CoDefenderC3/train/_probe_bn_perfile.py
 ```
 
 > **D/E 覆盖率不到 100% 时不要急着换 `--views fast` 或 `--allow-partial-de`**（都等于丢/冻结样本）。

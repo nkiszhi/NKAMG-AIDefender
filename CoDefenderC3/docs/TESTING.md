@@ -276,33 +276,237 @@ curl -s -X POST "http://localhost:8000/reload-model?model_path=/data/models/ense
 curl -s -X POST "http://localhost:8000/predict-directory?directory=/data/samples&recursive=true&include_de=false" | python -m json.tool
 ```
 
-预期输出：
+预期输出（顶层固定两块：`Summary` 统计 + `Results` 逐文件明细）：
 
 ```json
 {
   "Summary": {
     "TotalFiles": 100,
+    "TotalFilesInDirectory": 102,
+    "SkippedNonPE": 2,
     "ScannedFiles": 98,
     "MaliciousCount": 73,
     "BenignCount": 25,
-    "ErrorCount": 2,
-    "Directory": "/data/samples"
+    "ErrorCount": 0.0,
+    "TimeoutCount": 0.0,
+    "Directory": "/data/samples",
+    "Timing": {
+      "TotalTime": 61.234,
+      "ModelLoadTime": 0.0,
+      "BatchScanTime": 61.234,
+      "AvgSampleTime": 0.625,
+      "MedianSampleTime": 0.611,
+      "MinSampleTime": 0.412,
+      "MaxSampleTime": 1.204,
+      "Throughput": 1.633
+    }
   },
   "Results": [
     {
-      "MD5": "...",
-      "SHA256": "...",
+      "MD5": "2c31796a3334a3797243ae0d2f83e458",
+      "SHA256": "0004381360553d67780bfef0b61fa6a0caef43b9533f7586033fcef93d9cc769",
+      "CRC32": "b3d1c452",
       "FileName": "sample1.exe",
-      "FilePath": "/data/samples/sample1.exe",
-      "Status": 1,
+      "FileSize": 23738,
+      "Status": 1.0,
       "StatusLabel": "Malicious",
       "IsMalicious": true,
-      "Score": 0.95,
-      "ScanResult": { ... }
+      "Score": 0.550718,
+      "ScanResult": {
+        "VirusName": "Trojan.PEs.00043813",
+        "Packed": {
+          "IsPacked": false,
+          "PackerName": "",
+          "IsArchive": false,
+          "ArchiveName": ""
+        },
+        "PerModelScores": {
+          "MalConv": 0.5,
+          "MalConv2": 0.54017,
+          "ByteTransformer": 0.968524,
+          "SaxeBerlinDNN": 0.641813,
+          "EmberDNN": 0.798209,
+          "NatarajKNN": 0.238401,
+          "DrebinSVM": 0.554038,
+          "DL4MD": 1.0,
+          "PEMinerRF": 0.691002,
+          "DrebinImport": 0.473582,
+          "ALOHANet": 0.39014,
+          "EmberGBDT_Import": 0.474975,
+          "RaffFeatureNet": 0.454618,
+          "DrebinString": 0.409904,
+          "OpcodeLSTM": 0.5,
+          "OpcodeTransformer": 0.5,
+          "OpcodeStatNet": 0.5,
+          "AsmEmbedNet": 0.5,
+          "MalGraph": 0.5,
+          "CFGGAT": 0.5,
+          "CFGGCN": 0.5,
+          "CFGDGCNN": 0.5,
+          "CallGraphGNN": 0.5,
+          "GraphStatNet": 0.5,
+          "GrayscaleCNN": 0.468996,
+          "InceptionV3": 0.473481,
+          "IMCFN": 0.5,
+          "ColorCNN": 0.5,
+          "MarkovCNN": 0.17313,
+          "EntropyMapCNN": 0.44659,
+          "HashEmbedNet": 0.887563,
+          "MetadataNet": 0.472179,
+          "ResourceNet": 0.507532
+        },
+        "PerModelPreds": {
+          "MalConv": 0.0,
+          "MalConv2": 1.0,
+          "ByteTransformer": 1.0,
+          "SaxeBerlinDNN": 1.0,
+          "EmberDNN": 1.0,
+          "NatarajKNN": 0.0,
+          "DrebinSVM": 1.0,
+          "DL4MD": 1.0,
+          "PEMinerRF": 1.0,
+          "DrebinImport": 0.0,
+          "ALOHANet": 0.0,
+          "EmberGBDT_Import": 1.0,
+          "RaffFeatureNet": 0.0,
+          "DrebinString": 0.0,
+          "OpcodeLSTM": 0.0,
+          "OpcodeTransformer": 0.0,
+          "OpcodeStatNet": 0.0,
+          "AsmEmbedNet": 0.0,
+          "MalGraph": 0.0,
+          "CFGGAT": 0.0,
+          "CFGGCN": 0.0,
+          "CFGDGCNN": 0.0,
+          "CallGraphGNN": 0.0,
+          "GraphStatNet": 0.0,
+          "GrayscaleCNN": 0.0,
+          "InceptionV3": 0.0,
+          "IMCFN": 0.0,
+          "ColorCNN": 0.0,
+          "MarkovCNN": 0.0,
+          "EntropyMapCNN": 0.0,
+          "HashEmbedNet": 1.0,
+          "MetadataNet": 0.0,
+          "ResourceNet": 1.0
+        },
+        "DriftEvidence": {
+          "surface": 0.0,
+          "structure": 0.0,
+          "global": 0.0
+        },
+        "SampleDriftType": "none",
+        "AnomalyScore": 0.0,
+        "IsDriftCandidate": false,
+        "ModelStats": {
+          "TotalModels": 33,
+          "OkModels": 33,
+          "SkippedModels": 0.0,
+          "ErrorModels": 0.0,
+          "MaliciousVotes": 9,
+          "BenignVotes": 24,
+          "AgreementRate": 0.2727,
+          "EnsembleScore": 0.550718,
+          "EnsemblePred": 1.0,
+          "ScoreRange": [0.2384, 1.0]
+        }
+      },
+      "FilePath": "/data/samples/sample1.exe",
+      "ProcessingTime": 0.625
     }
   ]
 }
 ```
+
+#### `ScanResult` 字段说明
+
+| 字段 | 类型 | 含义 |
+|------|------|------|
+| `VirusName` | str | 恶意家族标签，格式 `<类型>.<家族>.<SHA256 前 8 位>`（如 `Trojan.PEs.00043813`）。**仅 `Status > 0` 时生成**，良性样本为 `""` |
+| `Packed.IsPacked` | bool | 是否被加壳/保护 |
+| `Packed.PackerName` | str | 壳名称（`UPX` / `VMProtect` / `Themida` / `ASPack` / `PECompact` / `Enigma` / `MPRESS` / `NSIS` / `Unknown(.节名)`），未加壳为 `""` |
+| `Packed.IsArchive` | bool | 是否为自解压归档（SFX）安装包 |
+| `Packed.ArchiveName` | str | SFX 技术类型标签（`NSIS` / `7-Zip SFX` / `Inno Setup` / `WinRAR SFX`）。**是"哪种制作工具"，不是压缩包文件名**；未识别为 `""` |
+| `PerModelScores` | object | 每个子模型的恶意度得分 (0~1)，键为模型名，共 33 项 |
+| `PerModelPreds` | object | 每个子模型的 0/1 硬判定，键与 `PerModelScores` 完全一致、同序 |
+| `DriftEvidence.surface` | float | 表层漂移证据 |
+| `DriftEvidence.structure` | float | 结构漂移证据 |
+| `DriftEvidence.global` | float | 全局漂移证据 |
+| `SampleDriftType` | str | 漂移类型：`none` / `perturbation` / `structural` / `paradigm_shift` |
+| `AnomalyScore` | float | 漂移异常分（= `max(DriftEvidence)`） |
+| `IsDriftCandidate` | bool | 是否被判为漂移候选 |
+| `ModelStats.TotalModels` | int | 集成内模型总数（当前 33） |
+| `ModelStats.OkModels` | int | 成功推理出分的模型数 |
+| `ModelStats.SkippedModels` | int | 因视角缺失被跳过的模型数（`include_de=false` 时 D/E 视角的图模型全部计入） |
+| `ModelStats.ErrorModels` | int | 推理报错/维度不符的模型数 |
+| `ModelStats.MaliciousVotes` | int | ok 模型中判为恶意的票数 |
+| `ModelStats.BenignVotes` | int | ok 模型中判为良性的票数 |
+| `ModelStats.AgreementRate` | float | 一致率 = `MaliciousVotes / OkModels` |
+| `ModelStats.EnsembleScore` | float | 集成得分 = 各 ok 模型分数的均值 (0~1) |
+| `ModelStats.EnsemblePred` | int | 集成判定 (0/1)，`EnsembleScore > 0.5` → 1 |
+| `ModelStats.ScoreRange` | [float, float] | ok 模型分数的 `[最小值, 最大值]` |
+
+> ⚠️ **判定口径**：`Status` 由集成均值决定，`MaliciousVotes` 只是投票统计，不决定结论。
+> 恶意样本可能是 9/33 票恶意但均值 0.5507 → Malicious；良性样本 3/33 票恶意、均值 0.3986 → Benign。
+> 哈希命中路径的 `Score` 恒为 `1.0`（非模型分），与模型路径不同量纲，不要混用。
+
+#### `Results[]` 的三种条目形态
+
+**① 模型推理路径** —— 上面展示的完整结构。
+
+**② 哈希库命中短路**（sha256 / md5 / fuzzy 任一级命中即直出，不占模型批量额度）：
+
+```json
+{
+  "MD5": "...", "SHA256": "...", "CRC32": "...",
+  "FileName": "sample2.exe", "FileSize": 51200,
+  "Status": 1, "StatusLabel": "Malicious", "IsMalicious": true, "Score": 1.0,
+  "Source": "sha256_db",
+  "ScanResult": {
+    "VirusName": "KnownMalware",
+    "Packed": { "IsPacked": false, "PackerName": "", "IsArchive": false, "ArchiveName": "" },
+    "PerModelScores": {}, "PerModelPreds": {},
+    "DriftEvidence": { "surface": 0.0, "structure": 0.0, "global": 0.0 },
+    "SampleDriftType": "normal", "AnomalyScore": 0.0, "IsDriftCandidate": false,
+    "HashMatch": { "engine": "Hash DB", "type": "hash", "detail": "SHA256 命中: <hex>" }
+  },
+  "FilePath": "/data/samples/sample2.exe",
+  "ProcessingTime": 0.625
+}
+```
+
+差异点：`Source` ∈ `sha256_db` / `md5_db` / `fuzzy_db`；`PerModelScores` / `PerModelPreds` 为**空对象**；
+无 `ModelStats`；`Score` 恒 `1.0`；`VirusName` 为库内签名名，v4 库不存名时统一 `KnownMalware`。
+fuzzy 命中的 `HashMatch` 额外带 `fuzzy_type`（`ssdeep`/`imphash`/`authentihash`/`tlsh`）与 `sha256`。
+
+**③ 失败条目**（特征提取或批量推理失败，无 `ScanResult`）：
+
+```json
+{
+  "FileName": "broken.exe",
+  "FilePath": "/data/samples/broken.exe",
+  "Status": -1,
+  "StatusLabel": "Error",
+  "IsMalicious": false,
+  "Error": "feature_extraction_failed"
+}
+```
+
+`Error` 取值：`feature_extraction_failed` / `batch_inference_failed` / `format_result_failed`。
+
+#### 校验要点
+
+- `Summary.MaliciousCount + BenignCount + ErrorCount + TimeoutCount` 应等于 `Results` 条目数。
+- `Summary.TotalFiles` 只统计 **PE 文件**（按文件头 `MZ`+`PE\0\0` 判定，不看扩展名）；
+  非 PE 文件计入 `TotalFilesInDirectory` 与 `SkippedNonPE`。
+- `Results` 顺序 = **哈希命中在前 + 模型结果在后**，不是按路径排序。
+- `ProcessingTime` 是**整批的平均单样本耗时**（`BatchScanTime / 成功数`），同一批里所有成功条目的值相同，
+  失败条目没有该字段——它不是单文件真实耗时。
+- `Summary.Timing.ModelLoadTime` 为 `0.0` 表示模型此前已加载（懒加载，进程内只加载一次）。
+- HTTP 错误分支：`directory` 不存在 → `400`；目录内无任何文件 → `404`；无 PE 文件 → `404`；
+  文件数超限 → `400`（上限 `MAX_BATCH_FILES`，默认 500）。
+
+> `directory` 是**服务端路径**，需挂载进容器（如 `-v /mnt/hgfs/VM_Share/testsamples:/data/samples:ro`）。
 
 ---
 

@@ -24,7 +24,9 @@ import hashlib
 import argparse
 
 REPO = os.environ.get(
-    "CODEFENDER_REPO", r"D:/VM_Share/CoDefenderC3_v8/CoDefenderC3")
+    # 2026-11-05: 原先硬编码 v8 目录 → 改为按本文件位置定位仓库根（v9 自身）。
+"CODEFENDER_REPO",
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, REPO)
 sys.path.insert(0, os.path.join(REPO, "feature_extraction"))
 

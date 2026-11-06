@@ -17,6 +17,9 @@
 - [训练管线](#训练管线)
 - [配置参考](#配置参考)
 - [项目结构](#项目结构)
+- [特征哈希稳定性 (W0)](#特征哈希稳定性-w0)
+- [BN 基线特征快照 (W1)](#bn-基线特征快照-w1)
+- [ProgramIR 契约 (Phase 1)](#programir-契约--phase-1)
 
 ---
 
@@ -1291,6 +1294,12 @@ CoDefenderC3_v8/
 ├── codefender.ini               # Supervisor program 配置（生产档位环境变量在此）
 ├── dev_model_only.cmd           # 【本机开发】纯模型链路启动（Windows，ASCII-only）
 ├── dev_model_only.sh            # 【本机开发】纯模型链路启动（Linux/VM）
+├── ir.py                      # ProgramIR 数据类（后端中立中间表示，Phase 1）
+├── backend_bn.py             # BN → ProgramIR 适配器（Phase 1 第 2 步）
+├── features_from_ir.py       # ProgramIR → D/E 特征（Phase 1 第 4 步）
+├── tests/                      # 回归测试（W0 特征哈希 11 项 + IR 契约 17 项）
+├── baseline_fixture.py         # BN 基线快照采集/校验（W1）
+├── fixtures/bn_baseline/        # 基线快照：88 样本 / 2640 特征指纹
 ├── _probe_env_profile.py        # 档位隔离回归探针（41 项断言）
 ├── _probe_runtime_cfg.py        # 运行时配置热切换探针（20 项断言）
 └── testsamples/                 # 测试样本 (SHA256 命名)
@@ -1319,3 +1328,96 @@ A: 主要体积来自 sha256/md5/fuzzy 三族签名库（~1GB）、`ensemble.pkl
 
 **Q: 如何在 CUDA 环境下使用 GPU 加速？**
 A: 将 Dockerfile 中 PyTorch 安装的 `--index-url` 改为 GPU 版本，并设置 `CODEFENDER_MALGRAPH_DEVICE=cuda`。开发环境直接安装 GPU 版 PyTorch 即可。
+---
+
+## 特征哈希稳定性 (W0)
+
+**2026-11-05 落地。SMDA 迁移前必须先做的第一件事。**
+
+项目原先有 13 处用 Python 内置 `hash()` 做 feature hashing，而内置 `hash(str)` **每个进程都不一样**，
+导致训练（子进程）与推理（主进程）对同一个 PE 算出**不同的特征向量**。现已全部改为 `zlib.crc32` 的纯函数哈希。
+
+受影响的视角组（A06 / C01 / C04 / D01 / D02 / D03 / D07）对应模型**必须重训**。
+
+完整说明（成因 / 实测数据 / 改动清单 / 重训清单 / 跑测试）见
+**[`docs/FEATURE_HASH_STABILITY.md`](FEATURE_HASH_STABILITY.md)**。
+
+守门测试：
+
+```bash
+python tests/test_stable_hash.py          # 无需 pytest，11 项
+```
+---
+
+## BN 基线特征快照 (W1)
+
+**2026-11-05 落地。SMDA 迁移 Phase 1（IR 抽象）的验收基准。**
+
+Phase 1 要把「BinaryNinja → 特征」重构一遍。没有基准的话，重构后分不清是
+「重构引入的 bug」「hash 修复带来的语义变化」「后端换成 SMDA 带来的分布漂移」——三件事混在一起。
+
+因此在动手重构前，先用**当前代码**对 88 个分层样本（benign/malicious × 32/64 位）
+跑一遍真实生产路径（`extract_fast` + `extract_de_only`），把每个特征向量的
+`sha256(原始字节)` 存成指纹。重构后再跑一遍，指纹必须逐位相同。
+
+完整说明（选样规则 / 指纹判据 / 环境要求 / 补采命令）见
+**[`docs/BASELINE_FIXTURE.md`](BASELINE_FIXTURE.md)**。
+
+```bash
+python tests/baseline_fixture.py verify \
+    --samples tests/fixtures/bn_baseline/samples.json \
+    --manifest tests/fixtures/bn_baseline/manifest.json
+
+```
+
+> 门禁分**两级**（因为「PE → BN 实时分析」这一步**不确定**，D/E 不能拿 PE 当锚点）：
+>
+> | 门禁 | 锚点 | 覆盖 | 实测 |
+> |---|---|---|---|
+> | G1 | PE | fast 路径 30 个特征 | 2640/2640 逐位一致（跨 numpy 版本也一致） |
+> | G2 | **.bndb** | D/E 路径 9 个特征 | 288/288 逐位一致 |
+>
+> 采集过程中挖出两条关键前置条件（都不是「许可过期」）：
+> ① BN 的许可校验**需要联网**，断网时表现为「Unable to create new BinaryView」，与过期一模一样；
+> ② **BN 打不开路径含非 ASCII 字符的文件** —— 样本库在 `E:\nkproject\00 样本库\...` 这种路径下，
+>    训练侧的 D/E 抽取会 100% 失败（很可能就是历史 `bndb_fail.log` 的真正原因）。
+> 详见 `docs/BASELINE_FIXTURE.md`。
+---
+
+## ProgramIR 契约 (Phase 1)
+
+**SMDA 迁移 Phase 1 的设计基线。**
+
+把「反汇编后端」和「特征计算」之间插入一层**后端中立、可缓存、顺序敏感**的中间表示：
+
+```
+    PE ──[后端: BN / SMDA]──> ProgramIR ──[特征层]──> D01-D07 / E03-E04
+```
+
+配套代码：
+
+* [`feature_extraction/ir.py`](../feature_extraction/ir.py) —— IR 数据类 + 序列化 + 校验
+* [`feature_extraction/backend_bn.py`](../feature_extraction/backend_bn.py) —— BN → IR 适配器（Phase 1 第 2 步）
+* [`feature_extraction/features_from_ir.py`](../feature_extraction/features_from_ir.py) —— IR → D/E 特征（第 4 步）
+* [`tests/test_ir_contract.py`](../tests/test_ir_contract.py) —— 17 项契约测试，含 mock 后端（适配器行为规范）
+* [`tests/verify_ir_equivalence.py`](../tests/verify_ir_equivalence.py) —— 等价性验证（bndb→IR→特征 vs bndb→特征）
+
+✅ **第 2+4 步已验收**：32 个 bndb × 9 个特征 = 288 个指纹，**0 差异**（IR 路径与原路径逐位一致）。
+
+💾 附带收益：IR 缓存（gz）平均 105 KB/样本，比 .bndb 的 6.0 MB **小 58 倍**；
+6k 样本的缓存从 35 GB 降到 0.6 GB。
+
+要点：
+
+* **顺序即语义** —— functions/blocks/instructions/callees 全是有序列表，
+  D01（opcode 序列）、D02/D03（n-gram）直接依赖顺序，不能去重；
+* **callees 保留重复** —— 同一被调方调两次 = 2 条调用边（现有代码按重数计）；
+* **IR → 特征是纯函数** —— 后端的不确定性（BN 分析不确定，W1 实测 25/88 样本有差异）
+  被隔离在「生成一次 IR」这一步，IR 可像现在的 .bndb 一样缓存但格式与后端无关；
+* **完备性已证明** —— 现有代码用到的每一个 BN API 都有 IR 落点（见文档第 3 节）；
+* **feature ID ↔ IR 字段映射表** —— 见文档第 4 节。
+
+验收方式：用 **G2 门禁**（bndb 锚定）比对「bndb → IR → 特征」与「bndb → 旧特征代码」，
+两者必须逐位相同。
+
+完整说明见 **[`docs/IR_CONTRACT.md`](IR_CONTRACT.md)**。

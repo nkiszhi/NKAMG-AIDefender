@@ -1,42 +1,82 @@
+# ==============================================================
+#  CoDefenderC3 v9 —— 版本库忽略规则
+# ==============================================================
+#  原则：**代码 / 配置 / 文档 / 测试 进版本库；数据与大体积产物不进**。
+#  工作副本总量约 8.4 GB，其中 ~8 GB 是下面这些可重建/可重新下载的东西，
+#  提交进去会让 .git 膨胀到无法接受。
+#
+# ⚠ 这些内容仍然**保留在磁盘上**（gitignore 只影响 git，不管文件存在与否）——
+#   推理服务照常读 ensemble.pkl / signatures/，不受影响。
+
+# ── 工具与解释器产物 ──────────────────────────────────────────
 .venv/
 venv/
 __pycache__/
 *.py[cod]
+*.pyo
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# ── 工作区工具的临时目录 ──────────────────────────────────────
+.workbuddy/
+
+# ── 日志与临时文件 ────────────────────────────────────────────
 *.log
+CoDefenderC3/tmp*/
+*.tmp
+
+# ── 大体积数据 / 构建产物（不进版本库）──────────────────────────
+# 镜像构建暂存的签名库副本（约 1 GB）
+#   → 由 `python docker/stage_signatures.py` 重新生成
+CoDefenderC3/.docker_build/
+
+# 哈希签名库分片（约 3 GB）
+#   → 生产数据，由签名库发布流程更新
+CoDefenderC3/signatures/
+
+# 训练产物（约 3.6 GB）
+#   → `train/` 重新训练生成
+CoDefenderC3/runs/
+
+# 预训练集成权重（约 736 MB）
+#   → 由 `train/run_all.py` / `train/train_all.py` 重新训练生成
+CoDefenderC3/ensemble.pkl
+CoDefenderC3/ensemble2.pkl
+
+# 特征缓存（按文件哈希命名的 .npy）
+CoDefenderC3/.feature_cache/
+
+# MalGraph 的图特征缓存与训练输出
+CoDefenderC3/models/MalGraph_2022/output/
+CoDefenderC3/models/MalGraph_2022/saved/features.jsonl
+
+# 各子模型的权重文件（.py 源码保留，只排权重）
+CoDefenderC3/models/**/*.pt
+CoDefenderC3/models/**/*.pth
+CoDefenderC3/models/**/*.ckpt
+CoDefenderC3/models/**/best_model.*
+
+# vendored 上游库（自带独立 .git 历史，重复存储）
+CoDefenderC3/_tools/ember/
+CoDefenderC3/_tools/ember.zip
+
+# ── Web 前端 / 后端 ───────────────────────────────────────────
+node_modules/
+dist/
 uploads/*
 !uploads/.gitkeep
 web/FastAPI/uploads/*
 !web/FastAPI/uploads/.gitkeep
-node_modules/
 web/FastAPI/data/
-dist/
+web/config.ini
+web/config.ini.before-dual-*.bak
 .env
 .env.*
 !.env.example
-web/config.ini
-web/config.ini.before-dual-*.bak
-.pytest_cache/
-web/config.ini.before-dual-*.bak
-.pytest_cache/
 
-# CoDefenderC3 derived artifacts / large files
-CoDefenderC3/.feature_cache/
-CoDefenderC3/_tools/ember.zip
-CoDefenderC3/*.pyc
-CoDefenderC3/**/__pycache__/
-
-# local agent workspace / scratch
-.workbuddy/
-CoDefenderC3/tmp*/
-# oversized derived data (>100MB GitHub limit)
-CoDefenderC3/models/MalGraph_2022/saved/features.jsonl
-CoDefenderC3/**/*.jsonl
-!CoDefenderC3/models/MalGraph_2022/saved/train_external_function_name_vocab.jsonl
-
-# --- 测评/构建产物（体积大，不入库；脚本保留） ---
+# ── 测评 / 构建产物（体积大，不入库；脚本保留）──────────────────
 codefender-c3-smda.tar
-CoDefenderC3/ensemble.pkl
-CoDefenderC3/ensemble2.pkl
 benign.csv
 malware.csv
 test_eval/sample_index.json
@@ -45,3 +85,25 @@ test2_eval/eval_output/*.jsonl
 test2_eval/eval_output/*.json
 .tmp/
 .vscode/
+
+# ── 超大派生数据（>100MB GitHub 上限）──────────────────────────
+CoDefenderC3/**/*.jsonl
+!CoDefenderC3/models/MalGraph_2022/saved/train_external_function_name_vocab.jsonl
+
+# ── W1 基线快照采集用的本地依赖与产物（不入库）─────────────────────────
+#   _tools/py310_pkgs  ← 给 BinaryNinja 自带 python 3.10 用的 numpy(cp310)/pefile
+#                        （BN 的 python 没有 numpy；也可用 --pkgs 指向别处）
+_tools/
+#   全量特征数组（单样本约 10 MB × 88 = 900 MB）
+_baseline_arrays/
+#   临时下载 / 解包的中间物
+_wheels/
+_oci/
+
+# ── 本地一次性产物（不入库）────────────────────────────────
+#   IR 缓存导出（体积大，几十 MB ~ 几百 MB）
+/_ir_out/
+#   临时脚本 / 消息文件（工具链生成）
+/_*.cmd
+/_*.py
+/_m*.txt

@@ -37,6 +37,24 @@ import torch
 from enum import Enum, auto
 from typing import Optional, Dict, Any
 
+# 跨进程稳定的字符串哈希（feature hashing）
+# 内置 hash(str) 每进程随机 → 训练(子进程)与推理(主进程)桶号不同 → 特征语义错位。
+try:
+    from ._stable_hash import stable_hash, stable_seed   # ① 包内导入: feature_extraction.unified
+except ImportError:
+    try:
+        from _stable_hash import stable_hash, stable_seed # ② 同目录在 sys.path 上
+    except ImportError:
+        # ③ 兜底: 按本文件路径直接加载（不依赖 sys.path）
+        import importlib.util as _ilu
+        _spec = _ilu.spec_from_file_location(
+            "_stable_hash",
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "_stable_hash.py"))
+        _sh = _ilu.module_from_spec(_spec)
+        _spec.loader.exec_module(_sh)
+        stable_hash = _sh.stable_hash
+        stable_seed = _sh.stable_seed
+
 
 # ═══════════════════════════════════════
 #  特征类型枚举
@@ -304,7 +322,7 @@ def _extract_opcode_seq(pe_path, seq_len):
                     # 操作码 hash → [1, 511] 索引空间
                     if len(tokens) > 0:
                         op_text = tokens[0].text.strip().lower()
-                        op_hash = hash(op_text) % 511 + 1
+                        op_hash = stable_hash(op_text) % 511 + 1
                         opcodes[idx] = op_hash
                         idx += 1
                         if idx >= seq_len:
@@ -355,7 +373,7 @@ def _extract_func_embeddings(pe_path, n_funcs=48, embed_dim=128):
                     if len(tokens) > 0:
                         # 用操作码文本的 hash 分配到 embed_dim 维度
                         op_text = tokens[0].text.strip().lower()
-                        dim_idx = hash(op_text) % embed_dim
+                        dim_idx = stable_hash(op_text) % embed_dim
                         func_vec[dim_idx] += 1.0
                         n_instrs += 1
 
@@ -367,7 +385,7 @@ def _extract_func_embeddings(pe_path, n_funcs=48, embed_dim=128):
 
     except ImportError:
         # BinaryNinja 不可用: 用随机但确定性的值填充
-        rng = np.random.RandomState(hash(pe_path) % 2**31)
+        rng = np.random.RandomState(stable_seed(pe_path))
         result = rng.randn(n_funcs * embed_dim).astype(np.float32) * 0.01
     except Exception as e:
         print(f"[函数嵌入提取失败] {pe_path}: {e}")

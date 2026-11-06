@@ -28,13 +28,26 @@ class InceptionV3Model(nn.Module):
         try:
             import torchvision.models as models
             if pretrained:
+                # 训练路径：确实要 ImageNet 权重做迁移学习起点。
+                # ⚠ 这里会联网下载 inception_v3_google-0cc3c7bd.pth（~104MB）。
+                #   离线/无 DNS 环境请在训练前把该文件放进
+                #   $TORCH_HOME/hub/checkpoints/（默认 ~/.cache/torch/hub/checkpoints/）。
                 try:
                     weights = models.Inception_V3_Weights.IMAGENET1K_V1
                     self.inception_v3 = models.inception_v3(weights=weights)
                 except AttributeError:
                     self.inception_v3 = models.inception_v3(pretrained=True)
             else:
-                self.inception_v3 = models.inception_v3(pretrained=False)
+                # 推理/加载路径（ensemble.py::load 恒传 pretrained=False）：
+                # 只要网络结构，不要 ImageNet 权重 —— 构造完紧跟
+                # model.load_state_dict(训练权重) 会全量覆盖，
+                # 下载既纯属浪费，又会让离线容器直接加载失败。
+                # ⚠ 刻意用 weights=None 而不是 pretrained=False：后者自
+                #   torchvision 0.13 起已弃用，新版本可能直接移除该关键字。
+                try:
+                    self.inception_v3 = models.inception_v3(weights=None)
+                except TypeError:           # 老 torchvision (<0.13) 无 weights 参数
+                    self.inception_v3 = models.inception_v3(pretrained=False)
         except ImportError:
             raise ImportError("InceptionV3Model requires torchvision")
 

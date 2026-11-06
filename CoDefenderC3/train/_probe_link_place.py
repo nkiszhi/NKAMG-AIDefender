@@ -4,7 +4,8 @@ import os
 import shutil
 import sys
 
-sys.path.insert(0, r"D:\VM_Share\CoDefenderC3_v8\CoDefenderC3\train")
+# 2026-11-05: 原先硬编码 v8 目录 → 改为按本文件位置定位。
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from build_minimal_dataset import place_sample, _same_inode  # noqa: E402
 
 SRC = r"D:\nkproject\_link_test\src"

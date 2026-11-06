@@ -85,7 +85,14 @@ WORKDIR /app
 #    「几分钟没有任何输出」，看着像卡死，其实在下 180MB 的 torch wheel。
 #  ⚠ 第 6 段的 ENV 里也有 PYTHONUNBUFFERED，那是给运行期 supervisor 抓日志用的；
 #    这里必须**再提前设一份**，因为第 1 段的 pip 跑在第 6 段之前。重复设置无害。
-ENV PYTHONUNBUFFERED=1
+#  PYTHONHASHSEED=0：把 str.__hash__ 的 secret 固定下来。
+#    CPython 默认每进程随机 → 任何还用了内置 hash() 的代码（第三方库、
+#    将来新增的代码）在训练子进程与推理主进程之间会算出不同的桶号。
+#    项目自身的 feature hashing 已改用 feature_extraction/_stable_hash.py 的
+#    crc32（纯函数，天然跨进程一致），这一行是**兜底**：防止有人再引入
+#    内置 hash() 时无声退化。
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONHASHSEED=0
 
 # ── 1. Python 运行时依赖 ──────────────────────────────────────────────
 #  必须加引号：见文件头第 3 条坑
@@ -227,6 +234,7 @@ ENV OPENBLAS_NUM_THREADS=1 \
     NUMEXPR_NUM_THREADS=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONIOENCODING=utf-8 \
+    PYTHONHASHSEED=0 \
     CODEFENDER_MODEL_PATH=/app/ensemble.pkl \
     CODEFENDER_HASH_DB_DIR=/app/signatures
 

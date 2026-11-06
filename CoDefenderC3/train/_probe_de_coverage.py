@@ -17,7 +17,7 @@ _probe_de_coverage.py — 按 **build 门禁口径**复核某数据集的 D/E �
 输出：快速特征 x/N、D/E 特征 y/N、覆盖率、以及每个缺失样本的归类：
   · 在 bndb_slow.log 里 → 慢样本（超时/子进程崩溃）→ **直接重跑 build 即会自动补救**
   · 在 bndb_fail/de_fail 日志中 → 已标记永久失败，**直接重跑 build 不会重试**
-  · 无 bndb      → BinaryNinja 生不出 bndb（用 _probe_bndb_fail.py 单独复现）
+  · 无 bndb      → BinaryNinja 生不出 bndb（需单独复现该样本）
   · 有 bndb 无 npz → 快速/合并阶段没写出来
   · 有 bndb 有 npz 无 D → D/E 提取失败（de_fail.log）
 退出码：0 = 覆盖率 100%；1 = 有缺口；2 = 用法/路径错误。
