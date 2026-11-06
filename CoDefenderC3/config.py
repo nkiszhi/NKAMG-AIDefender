@@ -31,6 +31,25 @@ BASELINE_MONTHS = 3
 DACP_ALPHA = 0.10
 SEED = 42
 
+# ── 恶意度分档阈值 (VirusName: Benign / Generic.ML.Low|Medium|High) ──────
+# 口径 (阶段 A): 现有线上「等权聚合分」= 各 ok 模型分数的算术平均
+#   (/predict-single app.py 的 ok_scores.mean() / /predict-directory 的 valid_scores.mean())
+#
+#   score <  ML_TIER_BENIGN_MAX  → "Benign"            (IsMalicious=False)
+#   score >= ML_TIER_BENIGN_MAX  → "Generic.ML.Low"    (IsMalicious=True)
+#   score >= ML_TIER_LOW_MAX     → "Generic.ML.Medium" (IsMalicious=True)
+#   score >= ML_TIER_MEDIUM_MAX  → "Generic.ML.High"   (IsMalicious=True)
+#
+# ML_TIER_BENIGN_MAX = 0.500 沿用现有判定线 → 判定行为零变化（只加标签）。
+# LOW/MEDIUM 两处为初值: 需用留出月评估集重新标定
+#   T_LOW    = 恶意分布 P5   (Recall≈95%)
+#   T_MEDIUM = 恶意分布 P50  (或 Precision≥0.95 处)
+#
+# ⚠️ 切到 AUC 加权聚合 (阶段 B) 后聚合分的量级会整体位移, 这三个数必须重标。
+ML_TIER_BENIGN_MAX = float(os.environ.get("CODEFENDER_ML_TIER_BENIGN_MAX", 0.500))
+ML_TIER_LOW_MAX    = float(os.environ.get("CODEFENDER_ML_TIER_LOW_MAX",    0.620))
+ML_TIER_MEDIUM_MAX = float(os.environ.get("CODEFENDER_ML_TIER_MEDIUM_MAX", 0.780))
+
 # ── EMBER 特征范围 (由数据集 metadata.json 的 feature_ranges 字段决定) ──
 EMBER_RANGES_V2 = {
     "ByteHistogram": (0, 256),     "ByteEntropy":   (256, 512),

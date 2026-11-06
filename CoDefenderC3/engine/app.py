@@ -45,6 +45,8 @@ from models.ensemble import MultiModelEnsemble, _input_dtype
 from engine.inference import compute_identifiers, _is_valid_pe
 from engine.view_masking import apply_view_mask
 from engine.result_formatter import format_scan_result
+from engine.naming import name_for_hash_hit
+from engine.projection import project_directory, project_single
 
 # nkrepo 哈希库（SHA256 + MD5 预检）：scaner 目录入 sys.path 后顶层导入。
 # 注意目录名用 scaner（非 scanner），避免与 scanner.py 模块同名遮蔽。
@@ -1707,6 +1709,7 @@ def _build_hash_hit_result(md5_hex: str, sha256_hex: str, crc32: str,
         "Status": 1, "StatusLabel": "Malicious", "IsMalicious": True, "Score": 1.0,
         "Source": source,
         "ScanResult": {
+            "VirusName": name_for_hash_hit(),  # 命中统一 "Malicious"（不暴露库内签名名）
             "Packed": {"IsPacked": False, "PackerName": "", "IsArchive": False, "ArchiveName": ""},
             "PerModelScores": {}, "PerModelPreds": {},
             "DriftEvidence": {"surface": 0.0, "structure": 0.0, "global": 0.0},
@@ -3125,10 +3128,10 @@ async def _predict_directory_unprotected(
             },
         }
 
-        return {
+        return project_directory({
             "Summary": summary,
             "Results": results,
-        }
+        })
     except HTTPException:
         raise
     except Exception as e:
@@ -3201,7 +3204,7 @@ async def predict_single(
             raise HTTPException(400, detail='empty file content')
         if len(content) > MAX_UPLOAD_BYTES:
             raise HTTPException(413, detail='file too large')
-        return await _run_guarded(_scan_uploaded_sync, content, file.filename, include_de)
+        return project_single(await _run_guarded(_scan_uploaded_sync, content, file.filename, include_de))
     except ValueError as error:
         raise HTTPException(400, detail=str(error)) from error
     finally:
@@ -3230,7 +3233,7 @@ async def predict_stream(file: UploadFile = File(...), include_de: bool = Query(
     async def produce():
         try:
             result = await _run_guarded(_scan_uploaded_sync, content, file.filename, include_de, progress)
-            await events.put({'event': 'result', 'data': result})
+            await events.put({'event': 'result', 'data': project_single(result)})
         except Exception as error:
             await events.put({'event': 'error', 'detail': str(getattr(error, 'detail', error))})
 
@@ -3268,4 +3271,4 @@ async def predict_directory(
     recursive: bool = Query(default=True),
     include_de: bool = Query(default=False),
 ) -> Dict[str, Any]:
-    return await _run_guarded(_directory_in_thread, directory, recursive, include_de)
+    return project_directory(await _run_guarded(_directory_in_thread, directory, recursive, include_de))
