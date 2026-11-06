@@ -30,8 +30,7 @@
         </article>
       </div>
       <p class="ds-note">已完成 {{ number(snapshot.completed_total) }} 次；未明确判定 {{ number(snapshot.inconclusive_total) }} 次，失败 {{ number(snapshot.failed_total) }} 次，取消 {{ number(snapshot.cancelled_total) }} 次，处理中 {{ number(snapshot.pending_total) }} 次。结构不一致指未通过 PE 结构校验；查询未命中不代表安全。模型结果不等同于人工复核结论。</p>
-      <div class="ds-footer"><span>统计起点 {{ date(snapshot.started_at) }} · 更新于 {{ date(snapshot.updated_at, true) }}（北京时间）</span><button class="ds-refresh" @click="showParagraph = !showParagraph">{{ showParagraph ? '收起正文' : '生成正文段落' }}</button></div>
-      <div v-if="showParagraph" class="ds-paragraph"><p>{{ paragraph }}</p><button class="ds-refresh" @click="copyParagraph">{{ copied ? '已复制' : '复制正文' }}</button></div>
+      <div class="ds-footer"><span>统计起点 {{ date(snapshot.started_at) }} · 更新于 {{ date(snapshot.updated_at, true) }}（北京时间）</span></div>
     </template>
     <div v-else-if="!error" class="ds-error">{{ busy ? '正在读取检测记录…' : '尚无检测统计' }}</div>
   </section>
@@ -45,8 +44,6 @@ const props = defineProps({ api: { type: Object, required: true }, baseUrl: { ty
 const snapshot = ref(applyDetectionBaseline())
 const busy = ref(false)
 const error = ref('')
-const showParagraph = ref(false)
-const copied = ref(false)
 let timer
 const number = value => Number(value || 0).toLocaleString('zh-CN')
 const date = (value, withTime = false) => {
@@ -83,11 +80,6 @@ const ringStyle = computed(() => {
   })
   return { background: `conic-gradient(${stops.join(',')})` }
 })
-const paragraph = computed(() => {
-  const s = snapshot.value
-  return `自 ${date(s.started_at)} 至 ${date(s.updated_at)}，NKAMG-AIDefender 平台累计接收文件检测请求 ${number(s.received_total)} 次，完成检测 ${number(s.completed_total)} 次；其中判定恶意 ${number(s.malicious_total)} 次、未检出恶意 ${number(s.benign_total)} 次、未明确判定 ${number(s.inconclusive_total)} 次，另有 ${number(s.unsupported_total)} 次上传未通过 PE 结构校验。已完成检测覆盖 ${number(s.unique_completed_samples)} 个独立样本（按 SHA256 去重）。另提供 SHA256 查询 ${number(s.query_total)} 次，其中命中恶意样本库 ${number(s.query_hit_total)} 次。检测次数按请求计次，不等同于独立样本数量；模型判定不作为检测准确率。`
-})
-
 async function refresh() {
   if (busy.value) return
   busy.value = true
@@ -99,10 +91,6 @@ async function refresh() {
   } catch {
     error.value = '暂时无法刷新，当前保留已显示的统计。'
   } finally { busy.value = false }
-}
-async function copyParagraph() {
-  try { await navigator.clipboard.writeText(paragraph.value); copied.value = true }
-  catch { error.value = '复制不可用，请直接选择正文段落复制。' }
 }
 onMounted(() => { void refresh(); timer = window.setInterval(refresh, 15000) })
 onUnmounted(() => window.clearInterval(timer))
@@ -138,7 +126,7 @@ defineExpose({ refresh })
 .ds-query { margin-top: 17px; padding: 11px 15px; border-radius: 7px; background: #202e48; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; color: #b4c7eb; font-size: 12px; }.ds-query strong { font-size: 20px; }.ds-query small { font-size: 11px; font-weight: 400; }.ds-query p { flex-basis: 100%; margin: 5px 0 0; color: #8ca1c4; font-size: 11px; }
 .ds-note { margin: 17px 0 12px; font-size: 11px; line-height: 1.9; color: #91a3c2; }
 .ds-footer { display: flex; align-items: center; justify-content: space-between; gap: 14px; border-top: 1px solid #2b3b58; padding-top: 13px; color: #8296b9; font-size: 11px; }.ds-footer button { flex-shrink: 0; }
-.ds-error { margin: 10px 0; color: #eac88c; font-size: 12px; }.ds-paragraph { margin-top: 15px; background: #121e33; padding: 16px; border-radius: 8px; color: #bacbe5; font-size: 12px; line-height: 1.9; }
+.ds-error { margin: 10px 0; color: #eac88c; font-size: 12px; }
 @media (max-width: 1000px) { .ds-charts { grid-template-columns: 1fr; }.ds-distribution { justify-content: center; }.ds-legend { max-width: 290px; }.ds-kpi { padding: 17px; } }
 @media (max-width: 600px) { .ds-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }.ds-heading h2 { font-size: 19px; }.ds-distribution { flex-direction: column; gap: 12px; }.ds-legend { width: 100%; }.ds-footer { align-items: flex-start; flex-direction: column; }.ds-ring { width: 170px; height: 170px; } }
 </style>

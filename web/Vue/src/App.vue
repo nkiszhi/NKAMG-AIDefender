@@ -258,7 +258,7 @@ const apiService = axios.create({
 })
 
 const showSection = ref('fileInfo')
-const modelsOpen = ref(['detectionStats'])
+const modelsOpen = ref(['modelCatalog', 'sampleLibrary'])
 const loading = ref(false)
 const maxUploadSize = ref(20 * 1024 * 1024)
 const detectionMessage = ref('正在检测，可刷新页面继续等待')
@@ -368,6 +368,7 @@ const incompleteCount = computed(() => modelRows.value.filter(row => !['Maliciou
 onMounted(async () => {
   window.addEventListener('pagehide', notifyPageLeave)
   loading.value = Boolean(localStorage.getItem(TASK_KEY))
+  if (loading.value) modelsOpen.value = ['detectionStats']
   await loadConfig()
   try {
     const { data } = await apiService.get(`${apiBaseUrl.value}/upload-policy`, { timeout: 5000 })
@@ -455,7 +456,7 @@ function parseIni(text) {
 function resetResult() {
   uploadResult.value = null
   showSection.value = 'fileInfo'
-  modelsOpen.value = ['detectionStats']
+  modelsOpen.value = ['modelCatalog', 'sampleLibrary']
   void detectionStatsPanel.value?.refresh()
 }
 
