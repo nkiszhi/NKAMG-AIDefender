@@ -98,7 +98,8 @@ class ModelWorkerTests(unittest.TestCase):
             worker.main()
         self.assertEqual(calls[-1], ('start', 'codefender-c3-v8-worker2'))
         copies = [call for call in calls if call[0] == 'cp']
-        self.assertEqual(len(copies), 6)
+        self.assertEqual(len(copies), 7)
+        self.assertTrue(any(call[-1].endswith('/engine/result_formatter.py') for call in copies))
         self.assertEqual(copies[0][1], 'codefender-c3-v8:/app/engine/app.py')
         self.assertEqual(copies[-1][-1], 'codefender-c3-v8-worker2:/app/models/MalGraph_2022/utils.py')
         creation = next(call for call in calls if call[0] == 'create')

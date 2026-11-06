@@ -115,11 +115,12 @@ def install_progress(source, target):
         updated = module.upgrade_source(app_path.read_text(encoding='utf-8'),
                                         (root / 'CoDefenderC3/docker/runtime_endpoints.py').read_text(encoding='utf-8'))
         if source == target:
+            docker('exec', source, 'cp', '/app/engine/result_formatter.py', f'/app/engine/result_formatter.before-binary-{time.time_ns()}.py')
             docker('exec', source, 'cp', '/app/engine/app.py', f'/app/engine/app.before-progress-{time.time_ns()}.py')
             docker('exec', source, 'cp', '/app/models/MalGraph_2022/utils.py', f'/app/models/MalGraph_2022/utils.before-progress-{time.time_ns()}.py')
         app_path.write_text(updated, encoding='utf-8')
         docker('cp', str(app_path), f'{target}:/app/engine/app.py')
-        for filename in ('scan_runtime.py', 'staged_scan.py', 'analysis_worker.py'):
+        for filename in ('scan_runtime.py', 'staged_scan.py', 'analysis_worker.py', 'result_formatter.py'):
             docker('cp', str(root / 'CoDefenderC3/engine' / filename), f'{target}:/app/engine/{filename}')
         docker('cp', str(root / 'CoDefenderC3/models/MalGraph_2022/utils.py'),
                f'{target}:/app/models/MalGraph_2022/utils.py')

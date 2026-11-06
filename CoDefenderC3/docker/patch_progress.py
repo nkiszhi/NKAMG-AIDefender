@@ -18,6 +18,16 @@ def upgrade_source(source, fragment):
         def visit_FunctionDef(self, node):
             name = node.name
             self.generic_visit(node)
+            if name == '_build_hash_hit_result':
+                class RemoveNames(ast.NodeTransformer):
+                    def visit_Dict(self, value):
+                        self.generic_visit(value)
+                        pairs = [(key, item) for key, item in zip(value.keys, value.values)
+                                 if not (isinstance(key, ast.Constant) and key.value == 'VirusName')]
+                        value.keys = [key for key, _ in pairs]
+                        value.values = [item for _, item in pairs]
+                        return value
+                node = RemoveNames().visit(node)
             options = {
                 '_predict_malgraph_single': ['sample'],
                 '_extract_views_for_single_sample': ['extracted_features'],
