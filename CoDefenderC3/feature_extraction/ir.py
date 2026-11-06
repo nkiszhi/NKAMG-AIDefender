@@ -92,6 +92,7 @@ class Function:
     size: int
     blocks: Tuple[BasicBlock, ...]
     callees: Tuple[int, ...] = ()
+    callees_known: bool = True
 
     @property
     def n_blocks(self) -> int:
@@ -103,18 +104,29 @@ class Function:
 
     @property
     def is_leaf(self) -> bool:
-        return len(self.callees) == 0
+        """无被调函数。
+
+        注意语义：callees 未知（后端取 callees 时出错）时为 False，而不是 True。
+        这与现有代码一致 —— 那里 is_leaf 是在 try 成功后才赋值的，出错时保持 False。
+        （而 E04 的叶子函数计数用的是「len(callees)==0」，出错时也算叶子 ——
+         两处语义不同，IR 用 callees_known 区分，见 features_from_ir.py。）
+        """
+        return self.callees_known and len(self.callees) == 0
 
     @property
     def is_recursive(self) -> bool:
-        """自递归：callees 里含自己。与现有代码 any(c == func for c in callees) 等价。"""
-        return self.start in self.callees
+        """自递归：callees 里含自己。与现有代码 any(c == func for c in callees) 等价。
+
+        callees 未知时为 False（与现有代码的出错分支一致）。
+        """
+        return self.callees_known and self.start in self.callees
 
     def to_dict(self):
         return {
             "start": int(self.start),
             "size": int(self.size),
             "callees": [int(c) for c in self.callees],
+            "callees_known": bool(self.callees_known),
             "blocks": [b.to_dict() for b in self.blocks],
         }
 
@@ -125,6 +137,7 @@ class Function:
             size=int(d.get("size") or 0),
             blocks=tuple(BasicBlock.from_dict(b) for b in (d.get("blocks") or ())),
             callees=tuple(int(c) for c in (d.get("callees") or ())),
+            callees_known=bool(d.get("callees_known", True)),
         )
 
 
@@ -248,6 +261,7 @@ class ProgramIR:
                 "start": int(f.start),
                 "size": int(f.size),
                 "callees": [int(c) for c in f.callees],
+                "callees_known": bool(f.callees_known),
                 "blocks": blocks,
             })
         return {
@@ -280,6 +294,7 @@ class ProgramIR:
                 size=int(f.get("size") or 0),
                 blocks=tuple(blocks),
                 callees=tuple(int(c) for c in (f.get("callees") or ())),
+                callees_known=bool(f.get("callees_known", True)),
             ))
         return cls(
             functions=tuple(funcs),

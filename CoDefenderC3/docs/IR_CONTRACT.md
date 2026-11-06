@@ -54,6 +54,7 @@ class Function:
     size: int                        # 字节数
     blocks: Tuple[BasicBlock, ...]   # 有序
     callees: Tuple[int, ...]         # 被调函数起始地址（**保留重复**）
+    callees_known: bool = True       # 后端是否成功取到 callees（见 I7）
 
 @dataclass(frozen=True)
 class ProgramIR:
@@ -80,6 +81,7 @@ class ProgramIR:
 | I4 | **地址用 int**，一切身份比较用起始地址 | 与现有代码一致（func.start / bb.start / edge.target.start） |
 | I5 | **不可变**（frozen + tuple） | 可哈希、可安全缓存、可做等值比对 |
 | I6 | **successors 原样透传**（不排序、不去重） | E03 回边判定依赖 `target.start <= bb.start` 的地址序 |
+| I7 | **callees 未知 ≠ callees 为空** | 原代码在 `func.callees` 抛异常时：n_callees=0，但 is_leaf/is_recursive 保持 False；而 E04 的叶子计数用的是「len(callees)==0」，出错时**也算叶子**。两处语义不同 → 用 `callees_known` 区分 |
 
 ## 3. BN API 表面 → IR 字段（**完备性证明**）
 
@@ -152,13 +154,38 @@ canonical JSON（sort_keys=True），助记符表压缩：
 
 ## 6. Phase 1 的实施顺序
 
-| 步 | 内容 | 产出 | 验收 |
+| 步 | 内容 | 状态 | 验收 |
 |---|---|---|---|
-| 1 | `ir.py`（本设计已给出代码） | 数据类 + 序列化 + 校验 | `tests/test_ir_contract.py` |
-| 2 | `backend_bn.py`：`bv → ProgramIR` | 纯适配器，不碰特征计算 | 单测：mock bv → IR |
-| 3 | `backend_smda.py`：SMDA → IR | 同构产出（Phase 2） | 与 BN 的 IR 做字段级对比 |
-| 4 | `_extract_disassembly(ir)` / `_extract_graphs(ir)` | 特征层改为消费 IR | **G2 门禁逐位不变** |
-| 5 | 训练管线接 IR 缓存 | 替掉 .bndb 缓存 | D/E 覆盖率不降 |
+| 1 | `ir.py`（数据类 + 序列化 + 校验） | ✅ 完成 | `tests/test_ir_contract.py` 17/17 |
+| 2 | `backend_bn.py`：`bv → ProgramIR` | ✅ 完成 | 内含 mock 适配器规范（测试里） |
+| 3 | `backend_smda.py`：SMDA → IR | ⬜ Phase 2 | 与 BN 的 IR 做字段级对比 |
+| 4 | `features_from_ir.py`：IR → D/E 特征 | ✅ 完成 | **逐位等价已验证（见下）** |
+| 5 | 训练管线接 IR 缓存，替掉 .bndb | ⬜ 未做 | D/E 覆盖率不降 + 缓存体积 |
+
+### ✅ 第 2+4 步的验收结果（2026-11-06）
+
+在 32 个 `.bndb` 上跑 `tests/verify_ir_equivalence.py`：
+
+```
+bndb ──[现有代码]─────────────> 特征
+bndb ──[backend_bn]→ IR ──[features_from_ir]──> 特征
+
+共比对 288 个特征（D01-D07 / E03 / E04 × 32 个 bndb）
+→ 0 个差异 → 结论：OK —— IR 路径与原路径逐位一致
+```
+
+样本覆盖度不错：函数数从 0（BN 没分析出来的加壳/损坏样本）到 9247，指令数 0~1773。
+
+### 💾 缓存体积实测（IR 的意外收益）
+
+| 缓存 | 平均 | 最大 | 6k 样本估算 |
+|---|---|---|---|
+| `.bndb`（现状，BN 私有格式） | 6.0 MB | 36.9 MB | **35 GB** |
+| IR `.json` | 908 KB | 13.2 MB | 5.3 GB |
+| IR `.json.gz` | **105 KB** | 1.4 MB | **0.60 GB** |
+
+→ **IR 缓存比 .bndb 小 58 倍**。训练管线的磁盘压力会大幅下降，
+而且重抽特征不再需要 BN 许可（IR 是后端中立的）。
 
 ### 第 4 步的验收方式（关键）
 
@@ -190,7 +217,7 @@ bndb ──[backend_bn]──> IR ──[特征层]──> 特征      ← 与�
 | SMDA 的**函数识别质量**不足 | E 视角特征弱、MalGraph 掉点 | Phase 0 PoC 必须实测 |
 | BN 分析不确定 | 同一 PE 两次分析结果不同 | 已由 W1 量化；IR 缓存把影响关在一次生成里 |
 | 32 位样本的函数发现 | 覆盖率低 | Phase 0 单列评估 |
-| IR 缓存体积 | 训练集 6k 样本的 IR 有多大？ | 待实测（助记符表压缩后预计单样本 100~500 KB） |
+| IR 缓存体积 | 6k 样本要占多少磁盘？ | ✅ 已实测：gz 后平均 105 KB/样本 → 约 0.6 GB（比 .bndb 小 58 倍） |
 | IR schema 演进 | 旧缓存失效 | `schema_version` + 重建策略（旧版本直接重算） |
 
 ## 9. 相关文档

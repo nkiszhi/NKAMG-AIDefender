@@ -176,6 +176,28 @@ def test_successors_preserved_unsorted():
     assert b.successors == (0x1000, 0x2000, 0x1500)
 
 
+def test_callees_unknown_semantics():
+    """callees_known=False：is_leaf / is_recursive 都为 False。
+
+    复刻原代码的 except 分支 —— 那里 n_callees 留 0，但 is_leaf/is_recursive
+    保持初始的 False（不是 True）。这是实现适配器时才发现的语义差异，
+    故 IR 用 callees_known 显式区分「callees 未知」与「callees 为空」。
+    """
+    f = Function(start=0x10, size=4, blocks=(), callees=(), callees_known=False)
+    assert f.n_callees == 0
+    assert f.is_leaf is False
+    assert f.is_recursive is False
+    g = Function(start=0x10, size=4, blocks=(), callees=(), callees_known=True)
+    assert g.is_leaf is True
+
+
+def test_callees_known_survives_roundtrip():
+    f = Function(start=0x10, size=4, blocks=(), callees=(0x20,), callees_known=False)
+    ir = ProgramIR(functions=(f,), bitness=64)
+    ir2 = ProgramIR.from_dict(ir.to_dict())
+    assert ir2.functions[0].callees_known is False
+    assert ir2.functions[0].is_leaf is False
+
 def test_roundtrip_dict_is_equal():
     ir = _sample_ir()
     ir2 = ProgramIR.from_dict(ir.to_dict())
