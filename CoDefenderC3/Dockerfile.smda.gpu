@@ -1,0 +1,171 @@
+﻿# =============================================================================
+#  CoDefenderC3 —— SMDA + CUDA GPU 镜像（两个变体，同一份 Dockerfile）
+# =============================================================================
+#  变体一：train —— GPU + **关闭哈希预检**
+#      训练 / 离线测评用。哈希库全关（sha256/md5/fuzzy 三级预检都不做），
+#      所有样本都真正进模型打分；签名库不打进镜像（镜像更小、无授权/合规负担）。
+#
+#  变体二：serve —— GPU + **开启哈希预检**
+#      线上生产用。签名库在构建期打进镜像（/app/signatures），命中即短路返回，
+#      走四级哈希预检（sha256 + md5 + imphash + authentihash + fuzzy）。
+#      REQUIRE_HASH_DB=1：签名库缺失/损坏时**拒绝启动**（响的失败优于静默降级）。
+#
+#  构建：
+#      cd CoDefenderC3
+#      # ① 训练版（无需签名库）
+#      docker build -f Dockerfile.smda.gpu --target train -t codefender-c3:gpu-train .
+#      # ② 上线版（必须先暂存签名库）
+#      python docker/stage_signatures.py
+#      docker build -f Dockerfile.smda.gpu --target serve -t codefender-c3:gpu-serve .
+#
+#  导出（拷到服务器）：
+#      docker save codefender-c3:gpu-train | gzip > codefender-c3-gpu-train.tar.gz
+#      docker save codefender-c3:gpu-serve | gzip > codefender-c3-gpu-serve.tar.gz
+#
+#  运行（服务器需装 NVIDIA Container Toolkit，docker run --gpus all）：
+#      docker run -d --name codefender -p 8000:8000 --gpus all \
+#          -e CUDA_VISIBLE_DEVICES=0 \
+#          -e CODEFENDER_MAX_CONCURRENT=4 \
+#          codefender-c3:gpu-serve
+#
+#  驱动要求：CUDA 12.1 runtime → 驱动 >= 525.60.13（3090 / 4090 / A10 均可）。
+#  驱动较新（>= 550）想用 cu124 时，不必改文件，走 build-arg：
+#      docker build -f Dockerfile.smda.gpu --target serve \
+#          --build-arg TORCH_INDEX_URL=https://download.pytorch.org/whl/cu124 \
+#          --build-arg TORCH_VERSION=2.6.0+cu124 \
+#          --build-arg TORCHVISION_VERSION=0.21.0+cu124 \
+#          -t codefender-c3:gpu-serve .
+#
+#  与 CPU 版（Dockerfile.smda）的差异只有两处：
+#      ① torch/torchvision 用 CUDA 轮子；
+#      ② 多了 train / serve 两个 target（哈希预检开关不同）。
+#     反汇编后端、特征口径、模型权重、引擎逻辑完全一致 ⇒ 两个版本的分数可比。
+# =============================================================================
+ARG BASE_PYTHON=python:3.10-slim-bookworm
+FROM ${BASE_PYTHON} AS base
+
+# ── 系统依赖（ppdeep / yara-python 需编译，装完即卸载）────────────────────
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+        build-essential python3-dev ca-certificates curl; \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+ENV PYTHONUNBUFFERED=1
+
+# ── torch / torchvision（CUDA 轮子；版本可用 build-arg 覆盖）────────────
+#  "+cu121" 这类本地版本号只存在于 PyTorch 官方索引，所以用 --extra-index-url；
+#  其它依赖（filelock/sympy/nvidia-* 运行时等）走国内 PyPI 镜像。
+ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cu121
+ARG TORCH_VERSION=2.5.1+cu121
+ARG TORCHVISION_VERSION=0.20.1+cu121
+RUN pip3 install --no-cache-dir --timeout 900 --progress-bar off \
+        --index-url https://mirrors.cloud.tencent.com/pypi/simple \
+        --extra-index-url ${TORCH_INDEX_URL} \
+        --trusted-host mirrors.cloud.tencent.com \
+        --trusted-host download.pytorch.org \
+        "torch==${TORCH_VERSION}" "torchvision==${TORCHVISION_VERSION}"
+
+# ── torch_geometric（纯 Python，无需编译）+ 运行时依赖 + smda ────────────
+RUN pip3 install --no-cache-dir --timeout 600 --progress-bar off \
+        -i https://mirrors.cloud.tencent.com/pypi/simple \
+        --trusted-host mirrors.cloud.tencent.com \
+        torch_geometric supervisor
+
+COPY requirements.txt ./
+RUN pip3 install --no-cache-dir --timeout 600 --progress-bar off \
+        -i https://mirrors.cloud.tencent.com/pypi/simple \
+        --trusted-host mirrors.cloud.tencent.com \
+        -r requirements.txt smda
+
+# 卸掉编译工具（减小镜像）
+RUN set -eux; \
+    apt-get purge -y build-essential python3-dev; \
+    apt-get autoremove -y; \
+    rm -rf /var/lib/apt/lists/*
+
+# ── 构建期自检：torch/torchvision ABI + 必须是 CUDA 构建 + smda 可用 ──────
+#   注：构建机上没有 GPU，torch.cuda.is_available() 为 False 属正常。
+RUN python3 -c "import torch, torchvision; from torchvision.ops import nms; \
+print('   torch=%s torchvision=%s cuda_build=%s' % (torch.__version__, torchvision.__version__, torch.version.cuda)); \
+assert torch.version.cuda is not None, 'not a CUDA build'; \
+_b = torch.tensor([[0., 0., 10., 10.], [0., 0., 9., 9.]]); _s = torch.tensor([0.9, 0.8]); \
+print('   torchvision::nms OK ->', nms(_b, _s, 0.5).tolist())" && \
+    python3 -c "import smda; print('   smda', getattr(smda, '__version__', 'ok'))"
+
+# ── 模型权重（736MB）与应用代码 ─────────────────────────────────────────
+COPY ensemble.pkl ./ensemble.pkl
+COPY config.py model_registry.py insn_categories.py ./
+COPY engine/             ./engine/
+COPY core/               ./core/
+COPY models/             ./models/
+COPY scaner/             ./scaner/
+COPY feature_extraction/ ./feature_extraction/
+COPY start_codefender.smda.sh ./start_codefender.sh
+# 统一行尾（Windows 检出的 CRLF 会让 #!/bin/bash\r 失效）
+RUN sed -i 's/\r$//' /app/start_codefender.sh && chmod +x /app/start_codefender.sh
+
+# 代码就位后再做导入自检（engine.app 的导入闭环）
+RUN python3 -c "import sys; sys.path.insert(0, '/app'); import engine.app; print('   engine.app 导入 OK')"
+
+# ── 进程管理 ───────────────────────────────────────────────────────────
+COPY supervisord.conf /etc/supervisord.conf
+RUN mkdir -p /var/log/supervisor /etc/supervisord.d
+
+# ── 运行期环境（与对应 ini 的 environment= 保持一致）─────────────────────
+ENV OPENBLAS_NUM_THREADS=1 \
+    OMP_NUM_THREADS=1 \
+    MKL_NUM_THREADS=1 \
+    NUMEXPR_NUM_THREADS=1 \
+    CODEFENDER_MODEL_PATH=/app/ensemble.pkl \
+    CODEFENDER_HASH_DB_DIR=/app/signatures \
+    CODEFENDER_ENV=prod \
+    CODEFENDER_RUNTIME_CFG_DISABLE=1 \
+    CODEFENDER_DISASM_BACKEND=smda \
+    CODEFENDER_ANALYSIS_TIMEOUT=600 \
+    CODEFENDER_REQUEST_TIMEOUT=900 \
+    CODEFENDER_HARD_TIMEOUT=960 \
+    CODEFENDER_MAX_CONCURRENT=8 \
+    BN_WORKER_THREADS=8 \
+    CODEFENDER_MODEL_DEVICE=cuda \
+    CODEFENDER_MALGRAPH_DEVICE=cuda \
+    CODEFENDER_MASK_VIEWS=""
+
+EXPOSE 8000
+CMD ["/usr/local/bin/supervisord", "-c", "/etc/supervisord.conf"]
+
+# =============================================================================
+#  变体一：训练 / 离线测评 —— 哈希预检全关，签名库不打进镜像
+# =============================================================================
+FROM base AS train
+COPY codefender.smda.gpu-train.ini /etc/supervisord.d/codefender.ini
+ENV CODEFENDER_HASH_DB_ENABLED=0 \
+    CODEFENDER_FUZZY_DB_ENABLED=0 \
+    CODEFENDER_REQUIRE_HASH_DB=0
+
+# =============================================================================
+#  变体二：线上生产 —— 哈希预检全开，签名库构建期内嵌
+# =============================================================================
+FROM base AS serve
+# 签名库不直接 COPY signatures/：宿主目录里同时躺着扁平旧副本、releases/<v> 与
+# current 符号链接，Docker 上下文无法解析符号链接指向宿主绝对路径。
+# 由 docker/stage_signatures.py 解析出"当前生效的那一套"，暂存到此目录。
+ARG SIG_STAGE=.docker_build/signatures
+COPY ${SIG_STAGE}/ ./signatures/
+RUN set -eux; \
+    if [ -f /app/signatures/_staging_manifest.json ]; then \
+        mv -f /app/signatures/_staging_manifest.json /app/SIGNATURES_SOURCE.json; \
+    fi; \
+    ls -l /app/signatures | head -20; \
+    for f in sha256.db.shards md5.db.shards fuzzy.db.shards; do \
+        if [ ! -e "/app/signatures/$f" ]; then \
+            echo "ERROR: 签名库缺少 $f —— 先运行 python docker/stage_signatures.py 再构建" >&2; \
+            exit 1; \
+        fi; \
+    done; \
+    echo "   签名库自检通过"
+COPY codefender.smda.gpu-serve.ini /etc/supervisord.d/codefender.ini
+ENV CODEFENDER_HASH_DB_ENABLED=1 \
+    CODEFENDER_FUZZY_DB_ENABLED=1 \
+    CODEFENDER_REQUIRE_HASH_DB=1
