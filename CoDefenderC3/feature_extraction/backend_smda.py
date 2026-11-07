@@ -24,9 +24,9 @@ import os
 import sys
 
 try:
-    from .ir import BasicBlock, Function, ProgramIR
+    from .ir import (BasicBlock, CallSite, Function, OP_KEYWORD_SET, ProgramIR)
 except ImportError:
-    from ir import BasicBlock, Function, ProgramIR
+    from ir import (BasicBlock, CallSite, Function, OP_KEYWORD_SET, ProgramIR)
 
 
 def _smda_import():
@@ -42,13 +42,185 @@ def _smda_import():
         cands.append(env)
     cands.append(os.path.join(os.path.dirname(here), "_tools", "py%s_pkgs" % ver))
     for c in cands:
-        if os.path.isdir(os.path.join(c, "smda")) and os.path.isdir(os.path.join(c, "lief")):
-            if c not in sys.path:
-                sys.path.insert(0, c)
-            return c
-    raise ImportError("找不到 smda/lief；用 CODEFENDER_SMDA_PKGS 指定目录")
+        if not os.path.isdir(os.path.join(c, "smda")):
+            continue
+        # lief / capstone 是按 ABI 编的扩展：目录里没有就用解释器已装的版本。
+        # （py311_pkgs 只放纯 Python 包，lief/capstone 走 conda 环境）
+        if c not in sys.path:
+            sys.path.insert(0, c)
+        try:
+            import lief  # noqa: F401
+            import capstone  # noqa: F401
+        except Exception as e:
+            raise ImportError("目录 %s 里没有可用的 lief/capstone: %s" % (c, e))
+        return c
+    raise ImportError("找不到 smda；用 CODEFENDER_SMDA_PKGS 指定目录")
 
 
+
+# ── MalGraph 需要的额外信息 ────────────────────────────────────────────
+
+# 分支/调用类助记符：它们的立即数操作数是**代码目标**，BN 会渲染成代码符号
+# （CodeSymbolToken）而不是整数，所以统计"常量个数"时要排除。
+_BRANCH_MNEMONICS = frozenset({
+    "call", "callq", "lcall", "jmp", "jmpq", "ljmp",
+    "ja", "jae", "jb", "jbe", "jc", "jcxz", "je", "jecxz", "jg", "jge",
+    "jl", "jle", "jna", "jnae", "jnb", "jnbe", "jnc", "jne", "jng", "jnge",
+    "jnl", "jnle", "jno", "jnp", "jns", "jnz", "jo", "jp", "jpe", "jpo",
+    "jrcxz", "js", "jz", "loop", "loope", "loopne", "loopnz", "loopz",
+})
+
+
+def _import_table(pe_path):
+    """[(IAT 地址, 符号名)] —— 与 BN 的 ImportAddressSymbol 同一形态。
+
+    BN 的 ImportAddressSymbol.name 是**裸函数名**（不含 dll 前缀），
+    MalGraph 的外部函数词表就是按这个名字统计的，所以这里也用裸名。
+    """
+    out = []
+    try:
+        import pefile
+        pe = pefile.PE(pe_path, fast_load=True)
+        try:
+            pe.parse_data_directories(directories=[
+                pefile.DIRECTORY_ENTRY["IMAGE_DIRECTORY_ENTRY_IMPORT"]])
+            for entry in getattr(pe, "DIRECTORY_ENTRY_IMPORT", []) or []:
+                for imp in entry.imports:
+                    try:
+                        addr = int(imp.address)
+                    except Exception:
+                        continue
+                    if imp.name:
+                        out.append((addr, imp.name.decode("ascii", "ignore")))
+                    elif imp.ordinal:
+                        out.append((addr, "ordinal_%d" % int(imp.ordinal)))
+        finally:
+            pe.close()
+    except Exception:
+        return tuple()
+    return tuple(out)
+
+
+def _export_names(pe_path):
+    """{导出地址: 导出名} —— 用来给函数起接近 BN 的名字。"""
+    out = {}
+    try:
+        import pefile
+        pe = pefile.PE(pe_path, fast_load=True)
+        try:
+            pe.parse_data_directories(directories=[
+                pefile.DIRECTORY_ENTRY["IMAGE_DIRECTORY_ENTRY_EXPORT"]])
+            exp = getattr(pe, "DIRECTORY_ENTRY_EXPORT", None)
+            if exp is not None:
+                for sym in exp.symbols:
+                    try:
+                        if sym.name and sym.address:
+                            out[int(sym.address)] = sym.name.decode("ascii", "ignore")
+                    except Exception:
+                        continue
+        finally:
+            pe.close()
+    except Exception:
+        return {}
+    return out
+
+
+def _cs_op_kinds():
+    """(CS_OP_IMM, CS_OP_MEM) —— capstone 的通用操作数类型常量。"""
+    try:
+        import capstone
+        return capstone.CS_OP_IMM, capstone.CS_OP_MEM
+    except Exception:
+        return 2, 3
+
+
+def _smda_constant_count(block) -> int:
+    """块内立即数操作数个数（**近似** BN 的 IntegerToken 口径）。
+
+    ⚠ 与 BN 不可能逐位一致：BN 数的是反汇编 token 类型，SMDA 只能从
+    capstone 的操作数类型推断。分支/调用目标的立即数已排除（BN 渲染成
+    代码符号，不算常量）。
+    """
+    imm_t, _mem_t = _cs_op_kinds()
+    count = 0
+    for ins in (getattr(block, "instructions", None) or []):
+        m = (ins.mnemonic or "").strip().lower()
+        try:
+            detailed = ins.getDetailed()
+            ops = list(detailed.operands)
+        except Exception:
+            continue
+        for op in ops:
+            try:
+                if op.type == imm_t:
+                    if m in _BRANCH_MNEMONICS:
+                        continue
+                    count += 1
+            except Exception:
+                continue
+    return count
+
+
+def _smda_call_sites(blocks, local_starts, import_by_addr):
+    """从指令流重建调用点（SMDA 没有 MLIL，只能靠 capstone 的操作数）。
+
+    * call rel32      → capstone IMM 操作数（已经是绝对地址）→ 本地函数 / 导入槽
+    * call [rip+disp] → 绝对地址 = 下一条指令地址 + disp → 导入槽
+    * call [reg]      → 间接调用 → unknown（旧 BN 实现同样丢弃）
+    """
+    imm_t, mem_t = _cs_op_kinds()
+    sites = []
+    for b in blocks:
+        for ins in (getattr(b, "instructions", None) or []):
+            m = (ins.mnemonic or "").strip().lower()
+            if m not in ("call", "callq", "lcall"):
+                continue
+            try:
+                addr = int(ins.offset)
+            except Exception:
+                addr = 0
+            target = None
+            try:
+                detailed = ins.getDetailed()
+                ops = list(detailed.operands)
+            except Exception:
+                ops = []
+            if ops:
+                op = ops[0]
+                try:
+                    otype = op.type
+                except Exception:
+                    otype = None
+                if otype == imm_t:
+                    try:
+                        target = int(op.imm)
+                    except Exception:
+                        target = None
+                elif otype == mem_t:
+                    try:
+                        disp = int(op.mem.disp)
+                        base = int(op.mem.base)
+                    except Exception:
+                        disp, base = 0, 0
+                    try:
+                        base_name = detailed.reg_name(base)
+                    except Exception:
+                        base_name = ""
+                    if base_name == "rip":
+                        target = int(detailed.address) + int(detailed.size) + disp
+                    elif not base_name:
+                        target = disp
+            if target is None:
+                sites.append(CallSite(address=addr, kind="unknown"))
+                continue
+            if target in local_starts:
+                sites.append(CallSite(address=addr, target=target, kind="func"))
+            elif target in import_by_addr:
+                sites.append(CallSite(address=addr, target=target,
+                                      name=import_by_addr[target], kind="import"))
+            else:
+                sites.append(CallSite(address=addr, target=target, kind="unknown"))
+    return tuple(sites)
 def _pe_info(pe_path):
     """(image_base, bitness, machine) —— 用 pefile 读 PE 头。"""
     import pefile
@@ -84,13 +256,14 @@ def _imports(pe_path):
     return tuple(out)
 
 
-def build_ir(pe_path, backend="intel", addr_mode="auto"):
+def build_ir(pe_path, backend="intel", addr_mode="auto", with_calls=False):
     """把一个 PE 转成 ProgramIR（SMDA 后端）。
 
     Args:
         pe_path:   PE 文件路径（必须是 ASCII 路径）
         backend:   SMDA 后端，默认 "intel"（强制原生 x86/x64，避免 .NET 被当 IL）
         addr_mode: "auto"（默认）= 自动判定；"va" = 强制加 imagebase；"rva" = 保留原值
+        with_calls: 是否重建调用点（MalGraph 的 FCG 需要）。默认 False。
     """
     _smda_import()
     from smda.Disassembler import Disassembler
@@ -119,8 +292,23 @@ def build_ir(pe_path, backend="intel", addr_mode="auto"):
             return int(report_base) + int(off)
         return int(off) if _already_va else int(report_base) + int(off)
 
+    # 导入表（IAT 地址 → 符号名）与导出名
+    import_table = _import_table(pe_path)
+    import_by_addr = {}
+    for _a, _n in import_table:
+        import_by_addr[_a] = _n
+    export_names = _export_names(pe_path) if with_calls else {}
+
+    report_funcs = list(report.getFunctions())   # getFunctions() 返回生成器
+    # 本地函数起始地址集合（判定 call 目标是本地函数还是导入槽）
+    local_starts = set()
+    for _f in report_funcs:
+        _a = to_addr(_f.offset)
+        if _a is not None:
+            local_starts.add(int(_a))
+
     functions = []
-    for f in report.getFunctions():
+    for f in report_funcs:
         f_start = to_addr(f.offset)
         blocks = []
         try:
@@ -129,10 +317,13 @@ def build_ir(pe_path, backend="intel", addr_mode="auto"):
             bb_list = []
         for b in bb_list:
             insns = []
+            keywords = []
             for ins in (b.instructions or []):
                 m = (ins.mnemonic or "").strip().lower()
                 if m:
                     insns.append(m)
+                    if m in OP_KEYWORD_SET:
+                        keywords.append(m)
             try:
                 succ = [to_addr(x) for x in b.getSuccessors()]
             except Exception:
@@ -142,6 +333,9 @@ def build_ir(pe_path, backend="intel", addr_mode="auto"):
                 length=(None if b.length is None else int(b.length)),
                 instructions=tuple(insns),
                 successors=tuple(succ),
+                constant_count=_smda_constant_count(b),
+                n_outgoing=len(succ),
+                keywords=tuple(keywords),
             ))
         size = 0
         try:
@@ -161,18 +355,27 @@ def build_ir(pe_path, backend="intel", addr_mode="auto"):
                     callees.append(to_addr(dst_fn.offset))
         except Exception:
             callees = []
+        fname = ""
+        if f_start is not None:
+            fname = export_names.get(int(f_start)) or ("sub_%x" % int(f_start))
+        calls = ()
+        if with_calls:
+            calls = _smda_call_sites(bb_list, local_starts, import_by_addr)
         functions.append(Function(
             start=f_start,
             size=int(size or 0),
             blocks=tuple(blocks),
             callees=tuple(callees),
             callees_known=True,
+            name=fname,
+            call_sites=calls,
         ))
 
     arch = "x86_64" if bitness == 64 else "x86"
     return ProgramIR(
         functions=tuple(functions),
         imports=_imports(pe_path),
+        external_symbols=tuple(import_table),
         arch=arch,
         bitness=bitness,
         backend="smda",

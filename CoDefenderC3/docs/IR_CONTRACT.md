@@ -426,3 +426,179 @@ D01（opcode 序列）、D02/D03（n-gram）、D04（类别分布）、D07（每
 > 顺带修正第 7.2 节的一个说法：那里的「BN 的 .bndb 序列化有损」，
 > 实际上主要不是序列化的问题，而是**助记符取法缺陷** —— 修正取法后，
 > 两条路径的指令数就几乎一致了。
+
+## 12. Phase 3：MalGraph 切干净（BN 依赖已从 models/ 移除）
+
+### 12.1 交付物
+
+| 文件 | 作用 |
+|---|---|
+| `feature_extraction/ir.py` | 新增 `CallSite`；`BasicBlock` 增 `constant_count` / `n_outgoing` / `keywords`；`Function` 增 `name` / `call_sites`；`ProgramIR` 增 `external_symbols`；新增常量 `OP_KEYWORDS` |
+| `feature_extraction/backend_bn.py` | 填新字段：MLIL 调用点、块级 token 统计、导入槽表、函数名 |
+| `feature_extraction/backend_smda.py` | 同上（SMDA 版）：capstone 操作数还原调用点 |
+| `feature_extraction/backend.py` | **新增**：后端调度（`CODEFENDER_DISASM_BACKEND=bn\|smda`）+ 两个分析档位 |
+| `feature_extraction/bn_runtime.py` | **新增**：BN 路径注入 + 许可激活（自包含，不依赖 bn_bootstrap） |
+| `models/MalGraph_2022/graph_from_ir.py` | **新增**：IR → MalGraph 图特征（11 维块特征 + FCG） |
+| `models/MalGraph_2022/utils.py` | 删掉 `from binaryninja import ...`；`extract_cfg_and_fcg` 变成走 IR 的薄包装 |
+| `models/MalGraph_2022/build_malgraph_cache_fast.py` | 删掉自己那份 BN 直读副本，改用统一实现 |
+| `tests/compare_malgraph_backends.py` | **新增**：BN 等价性验证 + BN/SMDA 跨后端对比 |
+
+### 12.2 MalGraph 现在完全不需要 BinaryNinja
+
+`@
+PE ──▶ ProgramIR ──▶ MalGraph 特征
+      (backend_bn / backend_smda，由 CODEFENDER_DISASM_BACKEND 选)
+`@
+
+`models/` 目录下**已无任何 `import binaryninja`**。实测：
+
+`@
+$ CODEFENDER_DISASM_BACKEND=smda python -c "...extract_cfg_and_fcg(...)"
+ok funcs 1003 edges 2020 acfg 603 hash 002eae3bb1e9 vocab 400 1.8s
+binaryninja imported? False        ← SMDA 路径完全不碰 BN
+`@
+
+### 12.3 两个"分析档位"（不能混用）
+
+| 档位 | 用途 | BN 分析模式 | 说明 |
+|---|---|---|---|
+| `features` | D01-D07 / E03-E04 | `basic` + 线性扫描 | 快；与 .bndb 门禁口径一致 |
+| `graph` | MalGraph 的 CFG/FCG | 默认全量分析 | **必须**：只有全量分析才算 MLIL |
+
+⚠ 实测：`basic` 档下 612 个函数里 **521 个 `mlil` 为 `None`**。拿 basic 档的 IR
+做 FCG 会得到空调用图。旧实现（`BinaryViewType["PE"].open` + 默认分析）
+本来就是全量分析，所以 `graph` 档对齐它。
+
+### 12.4 等价性验证结果（**本次改造的硬判据**）
+
+命令：
+
+`@
+python tests/compare_malgraph_backends.py bn-equivalence --samples <样本目录>
+`@
+
+判据（16 个样本，良性/恶意 × 32/64 位）：
+
+`@
+等价性: 15 个一致 / 0 个不一致 / 1 个跳过
+BN 自身不稳定（同一 view 跑三遍就不一致）的块×维: 1021
+扣除不稳定项后，新实现与旧实现的不一致: 0
+结论: OK —— 同一 BinaryView 上，IR 路径与旧 BN 直读实现逐字段一致
+`@
+
+比对的字段：函数数、函数名表、FCG 边、块数、块边、11 维块特征、外部函数词表。
+
+**唯一的"跳过"**：`s09_malicious_32.bin` —— 旧实现在某个函数上 `func.mlil`
+为 `None`，直接抛 `TypeError` → 整份样本返回 `None`（MalGraph 推理直接失败）。
+新实现跳过该函数继续跑。**这是修复，不是回归。**
+
+#### 为什么判据要"扣除 BN 自身不稳定项"
+
+BN 在**同一个 BinaryView 上重复渲染**时，「地址操作数」有时渲染成
+`IntegerToken`（算常量）、有时渲染成代码符号（不算常量）——取决于 BN 内部
+惰性分析的状态。实测：旧实现自己在同一个 view 上跑三遍，`constants` 维度
+就有 1021 个「块×维」不一致。
+
+所以判据改成：
+
+* 旧实现跑三遍都不同的维度 → 判定为「BN 自身不稳定」，不计入失败
+* 旧实现跑三遍相同的维度 → 新实现必须**完全一致**
+
+结论：除 `constants` 外，**其余 10 个维度 + 全部结构字段逐字段一致**。
+
+### 12.5 为了 1:1 复刻，IR 里多了一个 `keywords` 字段
+
+旧实现的块特征是**逐 token 按优先级 elif 匹配**：
+
+`@
+call > transfer > arithmetic > logic > compare > move >
+termination > data_declaration > constants
+`@
+
+因为是 elif 链，**一个文本恰好是关键字的 token 会被算进它的类别，而不是
+算成常量**。实测撞到的真实例子：BN 把 `je xxx [0xa] { "or" }` 里的
+字符串 `"or"` 渲染成 `StringToken`，旧实现会把它算成**一次 logic**
+（而不是常量）。
+
+所以 IR 的 `BasicBlock` 里除了 `constant_count`（非关键字的 Integer/String
+个数）还带了 `keywords`（关键字 token 文本序列），MalGraph 直接按它统计。
+少了这个字段，这一类块就会对不上。
+
+### 12.6 BN ↔ SMDA 的 MalGraph 特征差异（16 个样本）
+
+`@
+函数数     BN 14660   SMDA 12875   (87.8%)
+FCG 边     BN 28242   SMDA 29656   (105.0%)
+基本块     BN 70730   SMDA 59497   (84.1%)
+外部函数名 Jaccard 平均 0.755（BN 2594 / SMDA 2571）
+
+11 维块特征总量：
+  call                35233    34276    -2.7%
+  transfer            32492    30363    -6.6%
+  arithmetic          46770    17034   -63.6%   ← 见下
+  logic               18411    13048   -29.1%
+  compare             17691    16762    -5.3%
+  move               127223   122615    -3.6%
+  termination           133     7527  +5559.4%   ← 见下
+  total_instructions 424648   351283   -17.3%
+  constants          141477    54700   -61.3%   ← 见下
+  offspring           88356    75629   -14.4%
+`@
+
+#### 差异 1：`termination` +5559% —— BN 渲染 `retn`，SMDA 渲染 `ret`
+
+BN 的 x86 打印器把 near return 渲染成 **`retn`**，而关键字表里只有 `ret`。
+所以 BN 侧的 termination 几乎恒为 0（16 个样本才 133 次）。SMDA 用 capstone，
+助记符是 `ret`，于是 termination 正常计入。
+
+**这是 BN 侧的渲染怪癖（老实现一直如此），不是 SMDA 的问题。**
+要跟 BN 基线对齐，SMDA 侧需要把 `ret` 映射成 `retn`；要"正确"，就保留 `ret`。
+**建议保留 `ret`**（MalGraph 本来就该统计返回指令），并在重训时一并处理。
+
+#### 差异 2：`arithmetic` -63.6% —— BN 的线性扫描把数据当代码解
+
+逐样本查下来，差距几乎全部集中在 `add` 一个助记符上（6 个样本：BN 20539
+次 vs SMDA 3730 次）。抽样看 BN 里 `add` 最密集的块：
+
+`@
+(204, '0x56859b9b', 'sub_56859b9b', ['add','add','add','add','add','rol','add','add'])
+`@
+
+—— 整块都是 `add byte ptr [eax+edx*2], 0x0` 这种**把数据字节当指令解**
+的结果。BN 的线性扫描（linear sweep）会把 .text 里的非代码区域也扫成函数；
+SMDA 的递归下降不会。
+
+**方向性结论：BN 偏"过近似"（多出数据噪声函数），SMDA 偏"欠近似"。**
+两边都要盯：
+
+* BN 多出来的：噪声函数（会拉高 basic-block 数与 arithmetic 计数）
+* SMDA 少掉的：**真实函数漏检** —— 实测 `s00_benign_32.bin` BN 找到 280 个
+  函数、SMDA 只找到 6 个；`s05_benign_64.bin` SMDA 一条指令都没解出来。
+  **这是 SMDA 的覆盖率缺口，比 BN 的噪声更严重，必须在切换前解决。**
+
+#### 差异 3：`constants` -61.3% —— 口径不同
+
+BN 数的是 `IntegerToken + StringToken`（**地址操作数也算**，只要被渲染成
+整数）；SMDA 只能从 capstone 的操作数类型推断（`CS_OP_IMM`），而且分支/
+调用目标的立即数被排除（BN 把它们渲染成代码符号，不算常量）。
+
+这是**两个后端口径不同**，不是某一方算错。要对齐得统一口径：
+建议后续把 `constants` 定义改成"操作数里的立即数"，两个后端都按操作数类型算。
+
+#### 差异 4：FCG 边数 SMDA 反而更多（+5%）
+
+因为 BN 的 `MLIL_IMPORT` 分支靠 `bv.get_symbol_at(调用指令地址)` 拿导入名，
+实测 **83% 的情况下取不到符号**（6004/7204），这些导入调用边直接丢了；
+SMDA 从 capstone 的 RIP 相对寻址直接算出 IAT 地址，**不丢**。
+
+也就是说 SMDA 的 FCG 更完整 —— 老实现在导入调用上是有缺陷的。
+
+### 12.7 还没切干净的部分（MalGraph 相关）
+
+* `engine/app.py:481` 的调用**不用改**（`extract_cfg_and_fcg` 签名保持不变）
+* `engine/app.py` 的其它 BN 专用路径（`extract_de_only` 等）还没切 —— 属
+  于整体迁移的 P0-1/P0-2 项，不在 MalGraph 范围内
+* `models/MalGraph_2022/saved/` 与 `output/` 里的**旧权重和旧图特征缓存
+  必须作废重训**：函数集合、FCG 边、11 维块特征全都变了
+* 外部函数词表 `train_external_function_name_vocab.jsonl` 要用 SMDA 的
+  导入表重建（BN 2594 个 vs SMDA 2571 个，Jaccard 0.755）

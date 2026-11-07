@@ -9,7 +9,6 @@ from pathlib import Path
 from collections import Counter
 from datetime import datetime
 from tqdm import tqdm
-from binaryninja import BinaryViewType, SymbolType, MediumLevelILOperation
 
 # ====== 直接用你已有的功能 ======
 from feature_extraction.extract_feature import scan_load_samples
@@ -18,200 +17,12 @@ from models.MalGraph_2022.utils import (
 )
 from models.MalGraph_2022.Vocabulary import Vocab
 
-def extract_cfg_and_fcg(sample_path, vocab_dict):
-    """
-    提取函数调用图（FCG）和控制流图（CFG/ACFG）
-    返回:
-        {
-          "function_edges": [[caller_idx...],[callee_idx...]],
-          "acfg_list": [ {block_number, block_edges[[src...],[dst...]], block_features[[...11维]...]} ... ],
-          "function_names": [本地函数名..., 导入函数名...],
-          "function_number": 总函数数,
-          "hash": 文件sha256
-        }
-    """
-    try:
-        # ---- BinaryNinja 解析 ----
-        file_hash = calculate_file_hash(sample_path)
-        bv = BinaryViewType["PE"].open(sample_path)
-        if not bv:
-            raise ValueError(f"无法打开文件：{sample_path}")
-        bv.update_analysis_and_wait()
-
-        # ---- 外部函数统计 & 词频 ----
-        # 一次性拿 symbols，避免多次 API 调用
-        import_syms = list(bv.get_symbols_of_type(SymbolType.ImportAddressSymbol))
-        for s in import_syms:
-            # 直接用 Counter 风格累加更快
-            vocab_dict[s.name] = vocab_dict.get(s.name, 0) + 1
-
-        # ---- 函数集合 ----
-        local_functions = list(bv.functions)  # 本地函数对象
-        external_functions = [s.name for s in import_syms]  # 外部函数名
-        n_local = len(local_functions)
-        n_external = len(external_functions)
-        total_fn = n_local + n_external
-
-        # ---- FCG：建索引 ----
-        # 本地函数：起始地址 -> 下标；外部函数：名字 -> 下标
-        local_idx_by_addr = {f.start: i for i, f in enumerate(local_functions)}
-        func_index = dict(local_idx_by_addr)
-        for i, name in enumerate(external_functions):
-            func_index[name] = n_local + i
-
-        # 导入地址 -> 名字（用于把常量地址映射到导入函数名）
-        import_addr_to_name = {s.address: s.name for s in import_syms}
-
-        # ---- 收集调用边（FCG）----
-        function_edges_src = []
-        function_edges_dst = []
-        CALL = MediumLevelILOperation.MLIL_CALL
-        TAIL = MediumLevelILOperation.MLIL_TAILCALL
-        CONST_PTR = MediumLevelILOperation.MLIL_CONST_PTR
-        IMPORT = MediumLevelILOperation.MLIL_IMPORT
-
-        for caller_idx, func in enumerate(local_functions):
-            mlil = func.mlil
-            if mlil is None:
-                continue
-
-            # 局部绑定，少走属性链
-            _getattr = getattr
-            _func_index_get = func_index.get
-            _addr2name_get = import_addr_to_name.get
-
-            for block in mlil:
-                for ins in block:
-                    op = ins.operation
-                    if op != CALL and op != TAIL:
-                        continue
-
-                    dest = _getattr(ins, "dest", None)
-                    callee_idx = None
-
-                    if dest is None:
-                        pass
-                    else:
-                        dop = dest.operation
-                        if dop == CONST_PTR:
-                            addr = dest.constant
-                            # 先当本地函数地址查，查不到再当导入地址映射到名字
-                            callee_idx = _func_index_get(addr)
-                            if callee_idx is None:
-                                name = _addr2name_get(addr)
-                                if name is not None:
-                                    callee_idx = _func_index_get(name)
-                        elif dop == IMPORT:
-                            # IMPORT 直接用当前地址上的符号名兜底
-                            sym = bv.get_symbol_at(ins.address)
-                            if sym is not None:
-                                callee_idx = _func_index_get(sym.name)
-
-                    if callee_idx is not None:
-                        function_edges_src.append(caller_idx)
-                        function_edges_dst.append(callee_idx)
-
-        function_edges = [function_edges_src, function_edges_dst]
-
-        # ---- ACFG/CFG：基本块特征 + 边 ----
-        acfg_list = []
-        # 预定义 token 分类集合，避免反复构造 set
-        CALL_TOK = {"call"}
-        TRANS_TOK = {"jmp", "jz", "jnz", "je", "jne"}
-        ARITH_TOK = {"add", "sub", "mul", "div"}
-        LOGIC_TOK = {"and", "or", "xor"}
-        CMP_TOK = {"cmp"}
-        MOVE_TOK = {"mov"}
-        TERM_TOK = {"ret", "hlt"}
-        DATA_TOK = {"db", "dw", "dd"}
-        CONST_TOKEN_TYPES = {"IntegerToken", "StringToken"}
-
-        for func in local_functions:
-            blocks = func.basic_blocks
-            bcount = len(blocks)
-
-            cfg_data = {
-                "block_number": bcount,
-                "block_edges": [[], []],  # [[src...], [dst...]]
-                "block_features": []      # [[11维]...]
-            }
-
-            # 用基本块起始地址做 key（Binary Ninja 的 block 对象不保证恒等）
-            block_map = {b.start: i for i, b in enumerate(blocks)}
-
-            # 少做全局查找
-            be_src, be_dst = cfg_data["block_edges"]
-
-            for b in blocks:
-                # ---- 统计 block 内特征 ----
-                call = trans = arith = logic = cmp_ = move = term = data_decl = tot = consts = 0
-
-                # 注意：有些块可能没有反汇编文本，判空
-                dt = b.disassembly_text
-                if dt is not None:
-                    for ins in dt:
-                        toks = getattr(ins, "tokens", None)
-                        if not toks:
-                            continue
-                        tot += 1  # 把“有 token 的指令数”作为 total_instructions
-                        for t in toks:
-                            tt = t.text
-                            if tt in CALL_TOK:
-                                call += 1
-                            elif tt in TRANS_TOK:
-                                trans += 1
-                            elif tt in ARITH_TOK:
-                                arith += 1
-                            elif tt in LOGIC_TOK:
-                                logic += 1
-                            elif tt in CMP_TOK:
-                                cmp_ += 1
-                            elif tt in MOVE_TOK:
-                                move += 1
-                            elif tt in TERM_TOK:
-                                term += 1
-                            elif tt in DATA_TOK:
-                                data_decl += 1
-                            # 常量：按 Token 类型判断
-                            elif getattr(t, "type", None) and t.type.name in CONST_TOKEN_TYPES:
-                                consts += 1
-
-                offspring = len(b.outgoing_edges)
-
-                cfg_data["block_features"].append([
-                    call, trans, arith, logic, cmp_, move, term,
-                    data_decl, tot, consts, offspring
-                ])
-
-                # ---- 记录 CFG 边（地址匹配）----
-                src_idx = block_map.get(b.start)
-                if src_idx is None:
-                    continue
-                for e in b.outgoing_edges:
-                    tgt = e.target
-                    if tgt is None:
-                        continue
-                    dst_idx = block_map.get(tgt.start)
-                    if dst_idx is not None:
-                        be_src.append(src_idx)
-                        be_dst.append(dst_idx)
-
-            acfg_list.append(cfg_data)
-
-        # ---- 汇总 ----
-        results = {
-            "function_edges": function_edges,
-            "acfg_list": acfg_list,
-            "function_names": [f.name for f in local_functions] + external_functions,
-            "function_number": total_fn,
-            "hash": file_hash,
-        }
-        return results
-
-    except Exception as e:
-        print(f"处理文件时出错：{e}")
-        return None
-
+# ─────────────────────────────────────────────────────────────────────
+# 图特征提取已统一到 models/MalGraph_2022/utils.py::extract_cfg_and_fcg
+#   （走 ProgramIR，后端可选 bn / smda，不再 import binaryninja）。
+# 原来这里有一份自己的 BN 直读副本，与 utils.py 的版本存在细微差别
+#（尾调用是否计入、常量统计口径），已删除以免两套口径漂移。
+# ─────────────────────────────────────────────────────────────────────
 
 # -*- coding: utf-8 -*-
 """
@@ -236,7 +47,8 @@ from collections import Counter
 from tqdm import tqdm
 
 from feature_extraction.extract_feature import scan_load_samples as _scan2
-from models.MalGraph_2022.utils import parse_json_list_2_pyg_object
+from models.MalGraph_2022.utils import (extract_cfg_and_fcg,
+                                    parse_json_list_2_pyg_object)
 from models.MalGraph_2022.Vocabulary import Vocab
 
 # ========= 可按需修改的配置 =========

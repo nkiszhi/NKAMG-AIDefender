@@ -37,9 +37,63 @@ from typing import Iterator, Optional, Tuple
 
 SCHEMA_VERSION = "codefender-ir/1"
 
+# ── 反汇编里被识别为"操作码类别"的关键字 ──────────────────────────────
+# MalGraph 的 11 维块特征靠这些关键字统计（call / jmp / add / and / ...）。
+# 放在契约里是为了让两个后端产出**同一套**关键字，流向一致。
+#
+# ⚠ 集合是**闭集**：不在里面的 token 一律不算操作码类别。
+#   旧 BN 实现的分类是"逐 token 按优先级 elif 匹配"，因此
+#   一个文本恰好是关键字的 token（比如注解里的字符串 "or"）
+#   会被算成 logic 而不是常量 —— 这个语义由 IR 的
+#   BasicBlock.keywords + constant_count 两个字段共同承载。
+OP_KEYWORDS = (
+    "call", "jmp", "jz", "jnz", "je", "jne",
+    "add", "sub", "mul", "div",
+    "and", "or", "xor",
+    "cmp", "mov", "ret", "hlt",
+    "db", "dw", "dd",
+)
+OP_KEYWORD_SET = frozenset(OP_KEYWORDS)
+
 
 class IRValidationError(ValueError):
     """IR 结构不满足契约时抛出。"""
+
+
+@dataclass(frozen=True)
+class CallSite:
+    """一个调用点（call site）。
+
+    Attributes:
+        address:  调用指令自身的地址
+        target:   被调用目标地址。本地函数 → 函数起始地址；
+                  导入函数 → 导入槽（IAT）地址；无法解析时为 None
+        name:     导入符号名（kind == "import" 时有值）
+        kind:     "func"（目标是本地函数） / "import"（目标是导入函数）
+                  / "unknown"（间接调用或无法解析）
+    """
+
+    address: int
+    target: Optional[int] = None
+    name: Optional[str] = None
+    kind: str = "unknown"
+
+    def to_dict(self):
+        return {
+            "address": int(self.address),
+            "target": (None if self.target is None else int(self.target)),
+            "name": self.name,
+            "kind": self.kind,
+        }
+
+    @classmethod
+    def from_dict(cls, d):
+        return cls(
+            address=int(d.get("address") or 0),
+            target=(None if d.get("target") is None else int(d["target"])),
+            name=(None if d.get("name") is None else str(d["name"])),
+            kind=str(d.get("kind") or "unknown"),
+        )
 
 
 @dataclass(frozen=True)
@@ -58,6 +112,21 @@ class BasicBlock:
     length: Optional[int]
     instructions: Tuple[str, ...]
     successors: Tuple[int, ...] = ()
+    constant_count: int = 0
+    n_outgoing: Optional[int] = None
+    keywords: Tuple[str, ...] = ()
+
+    @property
+    def outgoing_count(self) -> int:
+        """后继边条数（后端给出的原始 outgoing_edges 条数）。
+
+        与 len(successors) 可能不同：successors 只保留能取到起始地址的后继，
+        而 outgoing_count 是边本身的条数（旧 .bndb/IR 文件没有该字段时退化为
+        len(successors)）。
+        """
+        if self.n_outgoing is not None:
+            return int(self.n_outgoing)
+        return len(self.successors)
 
     def to_dict(self):
         return {
@@ -65,6 +134,9 @@ class BasicBlock:
             "length": (None if self.length is None else int(self.length)),
             "instructions": list(self.instructions),
             "successors": [int(s) for s in self.successors],
+            "constant_count": int(self.constant_count),
+            "n_outgoing": (None if self.n_outgoing is None else int(self.n_outgoing)),
+            "keywords": list(self.keywords),
         }
 
     @classmethod
@@ -74,6 +146,9 @@ class BasicBlock:
             length=(None if d.get("length") is None else int(d["length"])),
             instructions=tuple(d.get("instructions") or ()),
             successors=tuple(int(s) for s in (d.get("successors") or ())),
+            constant_count=int(d.get("constant_count") or 0),
+            n_outgoing=(None if d.get("n_outgoing") is None else int(d["n_outgoing"])),
+            keywords=tuple(str(k) for k in (d.get("keywords") or ())),
         )
 
 
@@ -93,6 +168,8 @@ class Function:
     blocks: Tuple[BasicBlock, ...]
     callees: Tuple[int, ...] = ()
     callees_known: bool = True
+    name: str = ""
+    call_sites: Tuple[CallSite, ...] = ()
 
     @property
     def n_blocks(self) -> int:
@@ -127,6 +204,8 @@ class Function:
             "size": int(self.size),
             "callees": [int(c) for c in self.callees],
             "callees_known": bool(self.callees_known),
+            "name": self.name,
+            "call_sites": [c.to_dict() for c in self.call_sites],
             "blocks": [b.to_dict() for b in self.blocks],
         }
 
@@ -138,6 +217,8 @@ class Function:
             blocks=tuple(BasicBlock.from_dict(b) for b in (d.get("blocks") or ())),
             callees=tuple(int(c) for c in (d.get("callees") or ())),
             callees_known=bool(d.get("callees_known", True)),
+            name=str(d.get("name") or ""),
+            call_sites=tuple(CallSite.from_dict(c) for c in (d.get("call_sites") or ())),
         )
 
 
@@ -156,6 +237,7 @@ class ProgramIR:
 
     functions: Tuple[Function, ...]
     imports: Tuple[str, ...] = ()
+    external_symbols: Tuple[Tuple[int, str], ...] = ()
     arch: str = "unknown"
     bitness: int = 0
     backend: str = "unknown"
@@ -188,6 +270,16 @@ class ProgramIR:
         for f in self.functions:
             for b in f.blocks:
                 yield b
+
+    @property
+    def external_names(self) -> Tuple[str, ...]:
+        """导入符号名（按 external_symbols 的原始顺序）。"""
+        return tuple(n for (_a, n) in self.external_symbols)
+
+    @property
+    def external_by_addr(self) -> dict:
+        """导入槽地址 → 符号名。"""
+        return {int(a): n for (a, n) in self.external_symbols}
 
     def function_map(self) -> dict:
         """起始地址 → Function 的索引。
@@ -272,6 +364,7 @@ class ProgramIR:
             "bitness": int(self.bitness),
             "mnemonics": vocab,
             "imports": list(self.imports),
+            "external_symbols": [[int(a), str(n)] for (a, n) in self.external_symbols],
             "functions": funcs,
         }
 
@@ -299,6 +392,7 @@ class ProgramIR:
         return cls(
             functions=tuple(funcs),
             imports=tuple(d.get("imports") or ()),
+            external_symbols=tuple((int(a), str(n)) for (a, n) in (d.get("external_symbols") or ())),
             arch=str(d.get("arch") or "unknown"),
             bitness=int(d.get("bitness") or 0),
             backend=str(d.get("backend") or "unknown"),

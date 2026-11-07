@@ -2,7 +2,6 @@ import os
 import torch
 from torch.utils.data import Dataset
 from torch_geometric.data import Data, Batch, DataLoader
-from binaryninja import BinaryViewType, SymbolType, MediumLevelILOperation
 import hashlib
 import json
 from models.MalGraph_2022.Vocabulary import Vocab
@@ -22,174 +21,35 @@ def calculate_file_hash(file_path):
     return hash_sha256.hexdigest()
 
 def extract_cfg_and_fcg(file_path, vocab_dict):
-    """
-    提取函数调用图（FCG）和控制流图（CFG）
+    """提取函数调用图（FCG）和控制流图（CFG）。
+
+    ⚠ 本函数已**不再依赖 BinaryNinja**：
+       PE → ProgramIR（feature_extraction.backend，按 CODEFENDER_DISASM_BACKEND
+       选 bn / smda）→ models.MalGraph_2022.graph_from_ir → MalGraph 特征。
+       图特征算法见 graph_from_ir.py（与旧 BN 直读实现逐项等价）。
+
     :param file_path: str PE 文件路径
-    :param vocab_dict: dict
-    :return: dict 包含 function_edges、acfg_list 等
+    :param vocab_dict: dict 外部函数名词表（原地累加）
+    :return: dict 包含 function_edges、acfg_list 等；失败返回 None
     """
     try:
+        from feature_extraction.backend import build_ir_for_graph
+        from models.MalGraph_2022.graph_from_ir import extract_cfg_and_fcg_from_ir
+
         # 计算文件哈希
         file_hash = calculate_file_hash(file_path)
-        # 打开 PE 文件
-        bv = BinaryViewType["PE"].open(file_path)
-        if not bv:
-            raise ValueError(f"无法打开文件：{file_path}")
-        bv.update_analysis_and_wait()
 
-        for extern_func in bv.get_symbols_of_type(SymbolType.ImportAddressSymbol):
-            if extern_func.name in vocab_dict:
-                vocab_dict[extern_func.name] = vocab_dict[extern_func.name] + 1
-            else:
-                vocab_dict[extern_func.name] = 1
+        ir = build_ir_for_graph(file_path)
+        if ir is None:
+            raise ValueError(f"无法解析文件：{file_path}")
 
-        # 提取本地函数和外部函数
-        local_functions = list(bv.functions)
-        external_functions = [
-            sym.name for sym in bv.get_symbols_of_type(SymbolType.ImportAddressSymbol)
-        ]
-
-        local_function_count = len(local_functions)
-        total_function_count = local_function_count + len(external_functions)
-
-        # 构建 function_edges
-        function_edges = [[], []]  # 第一个数组为调用者索引，第二个数组为被调用者索引
-
-        # 构建函数索引映射
-        function_index = {}
-        for idx, func in enumerate(local_functions):
-            function_index[func.start] = idx
-        for idx, name in enumerate(external_functions):
-            function_index[name] = idx + local_function_count
-        # 构建导入地址映射
-        external_symbols = bv.get_symbols_of_type(SymbolType.ImportAddressSymbol)
-        import_address_map = {sym.address: sym.name for sym in external_symbols}
-
-        for func in local_functions:
-            caller_idx = function_index[func.start]
-
-            # 遍历 MLIL 指令，查找调用指令
-            for block in func.mlil:
-                for instr in block:
-                    if instr.operation == MediumLevelILOperation.MLIL_CALL:
-                        dest = instr.dest
-                        callee_idx = None
-                        if dest.operation == MediumLevelILOperation.MLIL_CONST_PTR:
-                            # 直接调用目标
-                            call_address = dest.constant
-                            if call_address in function_index:
-                                callee_idx = function_index[call_address]
-                            elif call_address in import_address_map:
-                                callee_name = import_address_map[call_address]
-                                callee_idx = function_index[callee_name]
-                        elif dest.operation == MediumLevelILOperation.MLIL_IMPORT:
-                            # 导入函数调用
-                            symbol = bv.get_symbol_at(instr.address)
-                            if symbol and symbol.name in function_index:
-                                callee_idx = function_index[symbol.name]
-                        else:
-                            # 处理其他情况，如间接调用
-                            continue
-
-                        if callee_idx is not None:
-                            function_edges[0].append(caller_idx)
-                            function_edges[1].append(callee_idx)
-
-        # 提取 CFG 数据
-        acfg_list = []
-        for func in local_functions:
-            cfg_data = {
-                "block_number": len(func.basic_blocks),
-                "block_edges": [[], []],  # 存储基本块的边信息
-                "block_features": []  # 存储基本块特征
-            }
-
-            # 构建基本块映射
-            block_map = {block: idx for idx, block in enumerate(func.basic_blocks)}
-
-            # 提取 block_features 和 block_edges
-            for block in func.basic_blocks:
-                # 初始化特征统计
-                feature_counts = {
-                    "call": 0,
-                    "transfer": 0,
-                    "arithmetic": 0,
-                    "logic": 0,
-                    "compare": 0,
-                    "move": 0,
-                    "termination": 0,
-                    "data_declaration": 0,
-                    "total_instructions": 0,
-                    "constants": 0,
-                }
-
-                # 遍历指令并统计特征
-                for instr in block.disassembly_text:
-                    if hasattr(instr, "tokens"):
-                        feature_counts["total_instructions"] += 1
-                        for token in instr.tokens:
-                            if token.text in ["call"]:
-                                feature_counts["call"] += 1
-                            elif token.text in ["jmp", "jz", "jnz", "je", "jne"]:
-                                feature_counts["transfer"] += 1
-                            elif token.text in ["add", "sub", "mul", "div"]:
-                                feature_counts["arithmetic"] += 1
-                            elif token.text in ["and", "or", "xor"]:
-                                feature_counts["logic"] += 1
-                            elif token.text in ["cmp"]:
-                                feature_counts["compare"] += 1
-                            elif token.text in ["mov"]:
-                                feature_counts["move"] += 1
-                            elif token.text in ["ret", "hlt"]:
-                                feature_counts["termination"] += 1
-                            elif token.text in ["db", "dw", "dd"]:
-                                feature_counts["data_declaration"] += 1
-                            elif token.type.name in ["IntegerToken", "StringToken"]:
-                                feature_counts["constants"] += 1
-
-                # 后继基本块数量
-                offspring_count = len(block.outgoing_edges)
-
-                # 记录特征
-                block_features = [
-                    feature_counts["call"],
-                    feature_counts["transfer"],
-                    feature_counts["arithmetic"],
-                    feature_counts["logic"],
-                    feature_counts["compare"],
-                    feature_counts["move"],
-                    feature_counts["termination"],
-                    feature_counts["data_declaration"],
-                    feature_counts["total_instructions"],
-                    feature_counts["constants"],
-                    offspring_count,
-                ]
-                cfg_data["block_features"].append(block_features)
-
-                # 提取基本块之间的边
-                for edge in block.outgoing_edges:
-                    src_idx = block_map.get(block)
-                    dst_idx = block_map.get(edge.target)
-                    if src_idx is not None and dst_idx is not None:
-                        cfg_data["block_edges"][0].append(src_idx)
-                        cfg_data["block_edges"][1].append(dst_idx)
-
-            acfg_list.append(cfg_data)
-
-        # 构建结果
-        results = {
-            "function_edges": function_edges,
-            "acfg_list": acfg_list,
-            "function_names": [func.name for func in local_functions] + external_functions,
-            "function_number": total_function_count,
-            "hash": file_hash,  # 文件的哈希值
-        }
+        results = extract_cfg_and_fcg_from_ir(ir, vocab_dict)
+        results["hash"] = file_hash
         return results
 
     except Exception as e:
         print(f"处理文件时出错：{e}")
         return None
-
 
 
 def extract_features_to_jsonl(base_dir, output_dir):
