@@ -22,9 +22,12 @@ Usage:
 Requires: pip install binaryninja (commercial license)
 """
 import os, sys, hashlib, math, struct, time
+import logging
 from collections import Counter, defaultdict
 from typing import Dict, Optional
 import numpy as np
+
+logger = logging.getLogger("codefender.feature_extraction")
 
 # 跨进程稳定的字符串哈希（feature hashing）
 # 内置 hash(str) 每进程随机 → 训练(子进程)与推理(主进程)桶号不同 → 特征语义错位。
@@ -47,6 +50,25 @@ except ImportError:
         _spec.loader.exec_module(_sh)
         stable_hash = _sh.stable_hash
 
+# BinaryNinja 运行时引导（路径注入 + 许可激活）—— 见 feature_extraction/bn_bootstrap.py
+# 三级回退与上面 _stable_hash 同款:
+#   ① 包内导入 feature_extraction.extract_feature（服务进程 / ProcessPool 子进程）
+#   ② 同目录导入 extract_feature（worker 以顶层模块导入时）
+#   ③ 按文件路径加载（train/data_loader.py 用 importlib 按路径加载本文件时）
+try:
+    from .bn_bootstrap import bootstrap_bn
+except ImportError:
+    try:
+        from bn_bootstrap import bootstrap_bn
+    except ImportError:
+        import importlib.util as _ilu
+        _spec = _ilu.spec_from_file_location(
+            "_bn_bootstrap",
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "bn_bootstrap.py"))
+        _bm = _ilu.module_from_spec(_spec)
+        _spec.loader.exec_module(_bm)
+        bootstrap_bn = _bm.bootstrap_bn
+
 # BinaryNinja import (deferred to allow module-level import without crash)
 _BN = None
 
@@ -61,7 +83,11 @@ def _env_int(name: str, default: int) -> int:
 def _get_bn():
     global _BN
     if _BN is None:
-        import binaryninja as bn
+        # 路径注入 + 许可激活必须在 import binaryninja 之前完成:
+        #   ① BN 的 python 包目录不在 sys.path 上 → ModuleNotFoundError
+        #   ② BN 不会自动读 license.dat → 未激活 → bn.load() 抛 C++ 异常
+        #      (Windows Error 0xe06d7363) "Unable to create new BinaryView"
+        bn = bootstrap_bn()
         _BN = bn
         
         # 设置BinaryNinja工作线程数（提升分析性能）
@@ -490,11 +516,18 @@ class BinjaExtractor:
             raise FileNotFoundError(pe_path)
         with open(pe_path, "rb") as _fh:
             raw = _fh.read()
-        bv = self.bn.load(pe_path, options={
-            "analysis.mode": "basic",
-            "analysis.linearSweep.autorun": True,
-            "analysis.limits.maxFunctionSize": 262144,
-        })
+        try:
+            bv = self.bn.load(pe_path, options={
+                "analysis.mode": "basic",
+                "analysis.linearSweep.autorun": True,
+                "analysis.limits.maxFunctionSize": 262144,
+            })
+        except Exception as e:
+            # BN 打不开 view 的三个常见原因: ①许可在线校验失败(需联网 vector35.com:443)
+            # ②许可无效/过期 ③路径含非 ASCII 字符。这里必须显式记日志, 否则
+            # D/E 视角会**静默**缺失(分数与不启用 D/E 完全相同), 排查不到。
+            logger.warning("[BN] 加载失败 %s: %s: %s", pe_path, type(e).__name__, e)
+            raise
         if bv is None:
             raise RuntimeError(f"BinaryNinja failed to load: {pe_path}")
         try:
@@ -507,8 +540,7 @@ class BinjaExtractor:
                 ("A: PE Structure",    lambda: self._extract_pe_structure(bv, raw)),
                 ("B: Byte Statistics",  lambda: self._extract_byte_stats(raw)),
                 ("C: Strings",         lambda: self._extract_strings(bv, raw)),
-                ("D: Disassembly",     lambda: self._extract_disassembly(bv)),
-                ("E: Graph Structure",  lambda: self._extract_graphs(bv)),
+                ("D+E: IR Features",   lambda: self.extract_de_only(pe_path)),
                 ("F: Visualization",   lambda: self._extract_visualization(raw)),
                 ("G: Hashes",          lambda: self._extract_hashes(bv, raw)),
                 ("H: Metadata",        lambda: self._extract_metadata(bv, raw)),
@@ -518,42 +550,37 @@ class BinjaExtractor:
                     features.update(stage_fn())
                 except Exception:
                     pass
-            return features
         finally:
             bv.file.close()
 
     # ─── 仅提取 D+E (需要 BinaryNinja 反汇编) ──────
 
     def extract_de_only(self, pe_path: str) -> Dict[str, np.ndarray]:
-        """只提取 D01-D07 + E01-E04 (需要 BinaryNinja)。"""
-        self._ensure_bn()
-        if self.bn is None:
-            raise RuntimeError("BinaryNinja not available for D/E extraction")
-        bv = self.bn.load(pe_path, options={
-            "analysis.mode": "basic",
-            "analysis.linearSweep.autorun": True,
-            "analysis.limits.maxFunctionSize": 262144,
-        })
-        if bv is None:
-            raise RuntimeError(f"BinaryNinja failed to load: {pe_path}")
-        try:
-            try:
-                bv.update_analysis_and_wait()
-            except Exception:
-                pass
-            features = {}
-            for stage_fn in [
-                lambda: self._extract_disassembly(bv),
-                lambda: self._extract_graphs(bv),
-            ]:
-                try:
-                    features.update(stage_fn())
-                except Exception:
-                    pass
-            return features
-        finally:
-            bv.file.close()
+        """只提取 D01-D07 + E03-E04。
 
+        ⚠ 已切到 **ProgramIR**（2026-11-07）：**不再直接依赖 BinaryNinja**。
+           反汇编后端由 feature_extraction.backend 按
+           CODEFENDER_DISASM_BACKEND 选（bn / smda），
+           特征计算在 feature_extraction/features_from_ir.py。
+
+           旧实现（_extract_disassembly(bv) / _extract_graphs(bv)）已删除 ——
+           它们与 features_from_ir.py 是同一套算法的两份实现，留着必然漂移。
+
+           ⚠ **口径变化（重要）**：旧实现取 tokens[0].text 当助记符，而 BN 5.x
+              的 tokens[0] 是**空的地址分隔符** → D01-D07 实际装的是
+              "{ Does not return }" 这类**注解文本**，不是助记符。
+              IR 路径装的是真正的助记符。
+              → **D01-D07 的语义变了**，依赖它们的 V6 系列模型
+                （opcode_seq / func_embed / opcode_stat）**必须重训**，
+                否则推理输入与训练分布错位。
+              详见 docs/IR_CONTRACT.md 第 11 / 13 节。
+        """
+        if not os.path.exists(pe_path):
+            raise FileNotFoundError(pe_path)
+        from feature_extraction.backend import build_ir_for_features
+        from feature_extraction.features_from_ir import all_features
+        ir = build_ir_for_features(pe_path)
+        return all_features(ir)
     # ─── 批量生成 bndb ──────────────────
 
     def generate_bndbs_batch(self, pe_bndb_pairs, n_workers=4, batch_size=20,
@@ -596,13 +623,15 @@ if sys.platform == 'win32':
     except Exception:
         pass
 try:
-    import binaryninja as bn
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from bn_bootstrap import bootstrap_bn
+    bn = bootstrap_bn()
     try: bn.log.log_to_stderr(bn.LogLevel.ErrorLog)
     except: pass
     try: bn.disable_default_log()
     except: pass
-except ImportError:
-    print("FAIL\\tNO_FILE\\tno_binaryninja", flush=True)
+except Exception as e:
+    print("FAIL\\tNO_FILE\\tno_binaryninja: %s" % str(e)[:200], flush=True)
     sys.exit(0)
 
 # 从参数文件读取: pe_path\\tbndb_path 每行一对
@@ -1304,303 +1333,6 @@ for line in lines:
             raw_strings = re.findall(rb'[\x20-\x7e]{4,}', raw)
             raw_strings = [s.decode("ascii", errors="ignore") for s in raw_strings[:STR_MAX_STRINGS]]
         return self._string_features(raw_strings)
-
-    # ═══════════════════════════════════════
-    #  D: Disassembly via BinaryNinja (Appendix C.3)
-    # ═══════════════════════════════════════
-
-    def _extract_disassembly(self, bv):
-        """D01-D07: 单次遍历 bv.functions, 收集所有反汇编数据。"""
-        feats = {}
-
-        # ── 单次遍历: 收集全局 + per-function 数据 ──
-        all_opcodes = []
-        global_opcode_counts = Counter()
-        global_cat_counts = Counter()
-        func_data = []  # [{opcodes: Counter, n_bbs: int, size: int, callees: int, ...}]
-        all_bb_sizes = []
-        all_bb_out_edges = []
-
-        def _parse_mnemonic(line):
-            try:
-                if hasattr(line, 'tokens'):
-                    tokens = line.tokens
-                elif isinstance(line, tuple):
-                    tokens = line[0] if line else []
-                else:
-                    tokens = line
-                if tokens and len(tokens) > 0:
-                    text = tokens[0].text if hasattr(tokens[0], 'text') else str(tokens[0])
-                    return text.strip().lower()
-            except Exception:
-                pass
-            return ""
-
-        for func in bv.functions:
-            func_ops = Counter()
-            func_bb_count = 0
-            try:
-                for block in func.basic_blocks:
-                    func_bb_count += 1
-                    if block.length is not None:
-                        all_bb_sizes.append(block.length)
-                    try:
-                        all_bb_out_edges.append(len(block.outgoing_edges))
-                    except Exception:
-                        all_bb_out_edges.append(0)
-
-                    try:
-                        lines = block.disassembly_text
-                    except AttributeError:
-                        lines = block
-                    for line in lines:
-                        m = _parse_mnemonic(line)
-                        if m:
-                            all_opcodes.append(m)
-                            global_opcode_counts[m] += 1
-                            global_cat_counts[_CAT_LOOKUP.get(m, "other")] += 1
-                            func_ops[m] += 1
-            except Exception:
-                pass
-
-            # Per-function metadata
-            fsize = 0
-            try:
-                if hasattr(func, 'total_bytes') and func.total_bytes:
-                    fsize = func.total_bytes
-                elif func.highest_address and func.start:
-                    fsize = func.highest_address - func.start
-            except Exception:
-                pass
-            n_callees = 0
-            is_leaf = False
-            is_recursive = False
-            try:
-                callees = list(func.callees)
-                n_callees = len(callees)
-                is_leaf = n_callees == 0
-                is_recursive = any(c == func for c in callees)
-            except Exception:
-                pass
-            func_data.append({
-                "ops": func_ops, "n_bbs": func_bb_count, "size": fsize,
-                "n_callees": n_callees, "is_leaf": is_leaf, "is_recursive": is_recursive,
-            })
-
-        n_funcs = len(func_data)
-
-        # ── D01: Opcode sequence ──
-        d01 = np.zeros(MAX_OPCODES, dtype=np.int64)
-        for i, op in enumerate(all_opcodes[:MAX_OPCODES]):
-            d01[i] = stable_hash(op) % 511 + 1
-        feats["D01"] = d01
-
-        # ── D02: Opcode bigram ──
-        d02 = np.zeros(NGRAM_DIM, dtype=np.float32)
-        for i in range(len(all_opcodes) - 1):
-            d02[stable_hash(all_opcodes[i] + "_" + all_opcodes[i+1]) % NGRAM_DIM] += 1
-        if d02.sum() > 0:
-            d02 = np.log1p(d02); d02 /= np.linalg.norm(d02) + 1e-8
-        feats["D02"] = d02
-
-        # ── D03: Opcode trigram ──
-        d03 = np.zeros(NGRAM_DIM, dtype=np.float32)
-        for i in range(len(all_opcodes) - 2):
-            d03[stable_hash("_".join(all_opcodes[i:i+3])) % NGRAM_DIM] += 1
-        if d03.sum() > 0:
-            d03 = np.log1p(d03); d03 /= np.linalg.norm(d03) + 1e-8
-        feats["D03"] = d03
-
-        # ── D04: Category distribution ──
-        d04 = np.zeros(len(_CAT_NAMES), dtype=np.float32)
-        total_cat = sum(global_cat_counts.values()) or 1
-        for i, cat in enumerate(_CAT_NAMES):
-            d04[i] = global_cat_counts.get(cat, 0) / total_cat
-        feats["D04"] = d04
-
-        # ── D05: Function statistics (from func_data, no re-traversal) ──
-        d05 = np.zeros(12, dtype=np.float32)
-        d05[0] = n_funcs
-        if n_funcs > 0:
-            sizes = [fd["size"] for fd in func_data if fd["size"] > 0]
-            if sizes:
-                d05[1] = np.mean(sizes); d05[2] = np.max(sizes); d05[3] = np.std(sizes)
-            bbc = [fd["n_bbs"] for fd in func_data]
-            if bbc:
-                d05[4] = np.mean(bbc); d05[5] = np.max(bbc)
-            d05[6] = sum(1 for fd in func_data if fd["is_leaf"])
-            d05[7] = sum(1 for fd in func_data if fd["is_recursive"])
-            d05[8] = d05[6] / n_funcs
-            d05[9] = len(all_opcodes)
-            d05[10] = len(all_opcodes) / n_funcs
-            d05[11] = len(global_opcode_counts)
-        feats["D05"] = d05
-
-        # ── D06: Basic block statistics (from collected data) ──
-        d06 = np.zeros(10, dtype=np.float32)
-        n_bbs_total = sum(fd["n_bbs"] for fd in func_data)
-        d06[0] = n_bbs_total
-        if all_bb_sizes:
-            d06[1] = np.mean(all_bb_sizes); d06[2] = np.max(all_bb_sizes)
-            d06[3] = np.std(all_bb_sizes)
-        if all_bb_out_edges:
-            d06[4] = np.mean(all_bb_out_edges); d06[5] = np.max(all_bb_out_edges)
-            d06[6] = sum(1 for e in all_bb_out_edges if e == 0)
-            d06[7] = sum(1 for e in all_bb_out_edges if e > 1)
-            d06[8] = d06[7] / max(n_bbs_total, 1)
-        if all_bb_sizes:
-            d06[9] = sum(all_bb_sizes) / max(n_bbs_total, 1)
-        feats["D06"] = d06
-
-        # ── D07: Per-function embedding (from func_data, no re-traversal) ──
-        d07 = np.zeros(MAX_FUNCTIONS * 128, dtype=np.float32)
-        for fi in range(min(n_funcs, MAX_FUNCTIONS)):
-            emb = np.zeros(128, dtype=np.float32)
-            for op, cnt in func_data[fi]["ops"].items():
-                emb[stable_hash(op) % 128] += cnt
-            if emb.sum() > 0:
-                emb /= np.linalg.norm(emb) + 1e-8
-            d07[fi*128:(fi+1)*128] = emb
-        feats["D07"] = d07
-
-        return feats
-
-    # ═══════════════════════════════════════
-    #  E: Graph Structure via BinaryNinja (Appendix C.4)
-    # ═══════════════════════════════════════
-
-    def _extract_graphs(self, bv):
-        """CFG and call graph — 单次遍历所有函数和基本块。"""
-        feats = {}
-        funcs = list(bv.functions)
-        n_funcs = len(funcs)
-
-        # ── 单次遍历: 收集所有 graph 数据 ──
-        cfg_nodes, cfg_edges = 0, 0
-        cg_edges = 0
-        cg_adj = defaultdict(set)
-        func_bb_counts = []    # per-func bb count
-        back_edges = 0
-        leaf_funcs = 0
-        recursive_funcs = 0
-        out_degrees = []
-        in_degree_map = defaultdict(int)  # func_start → in_degree
-
-        for fi, func in enumerate(funcs):
-            fstart = None
-            try:
-                fstart = func.start
-            except: pass
-
-            # Basic blocks
-            n_bbs = 0
-            try:
-                for bb in func.basic_blocks:
-                    n_bbs += 1
-                    cfg_nodes += 1
-                    bb_start = None
-                    try: bb_start = bb.start
-                    except: pass
-                    try:
-                        edges = bb.outgoing_edges
-                        n_edges = len(edges)
-                        cfg_edges += n_edges
-                        # Back edges (前 100 个函数)
-                        if fi < 100 and bb_start is not None:
-                            for edge in edges:
-                                try:
-                                    t = edge.target
-                                    if t is not None and t.start is not None and t.start <= bb_start:
-                                        back_edges += 1
-                                except: pass
-                    except: pass
-            except: pass
-            func_bb_counts.append(n_bbs)
-
-            # Callees (call graph)
-            callees_list = []
-            try:
-                callees_list = list(func.callees)
-            except: pass
-            n_callees = len(callees_list)
-            out_degrees.append(n_callees)
-            if n_callees == 0:
-                leaf_funcs += 1
-
-            for callee in callees_list:
-                try:
-                    cstart = callee.start
-                    if cstart is None or fstart is None:
-                        continue
-                    cg_edges += 1
-                    cg_adj[fstart].add(cstart)
-                    in_degree_map[cstart] += 1
-                    if cstart == fstart:
-                        recursive_funcs += 1
-                except: pass
-
-        # ── E03: CFG statistics (12d) ──
-        e03 = np.zeros(12, dtype=np.float32)
-        e03[0] = cfg_nodes
-        e03[1] = cfg_edges
-        e03[2] = cfg_edges / max(cfg_nodes, 1)
-        if func_bb_counts:
-            e03[3] = max(func_bb_counts)
-            e03[4] = np.mean(func_bb_counts)
-            e03[5] = np.std(func_bb_counts)
-        e03[6] = back_edges
-        e03[7] = n_funcs
-        e03[8] = cfg_nodes / max(n_funcs, 1)
-        e03[9] = cfg_edges / max(n_funcs, 1)
-        e03[10] = back_edges / max(n_funcs, 1)
-        e03[11] = 1.0 if cfg_nodes > 0 else 0.0
-        feats["E03"] = e03
-
-        # ── E04: Call graph statistics (10d) ──
-        e04 = np.zeros(10, dtype=np.float32)
-        e04[0] = n_funcs
-        e04[1] = cg_edges
-        e04[2] = cg_edges / max(n_funcs, 1)
-        e04[3] = leaf_funcs / max(n_funcs, 1)
-        e04[4] = recursive_funcs / max(n_funcs, 1)
-        depths = []
-        for f in funcs[:50]:
-            try:
-                d = self._call_depth(f, set(), 0, 10)
-                if d is not None:
-                    depths.append(d)
-            except: pass
-        e04[5] = max(depths) if depths else 0
-        e04[6] = np.mean(depths) if depths else 0
-        if out_degrees:
-            e04[7] = max(out_degrees)
-        in_degrees = list(in_degree_map.values())
-        if in_degrees:
-            e04[8] = max(in_degrees)
-        e04[9] = len(set().union(*cg_adj.values())) if cg_adj else 0
-        feats["E04"] = e04
-
-        return feats
-
-    def _call_depth(self, func, visited, depth, max_depth):
-        if depth >= max_depth:
-            return depth
-        try:
-            fstart = func.start
-            if fstart is None or fstart in visited:
-                return depth
-            visited.add(fstart)
-        except Exception:
-            return depth
-        max_d = depth
-        try:
-            for callee in list(func.callees)[:5]:
-                d = self._call_depth(callee, visited, depth + 1, max_depth)
-                if d is not None:
-                    max_d = max(max_d, d)
-        except Exception:
-            pass
-        return max_d
 
     # ═══════════════════════════════════════
     #  F: Visualization (Appendix C.5)

@@ -68,6 +68,8 @@ class Vocab:
         with open(file_path, 'r', encoding='utf-8') as f:
             for line in tqdm(f, desc="Load frequency list from the file of {} ... ".format(file_path)):
                 line = json.loads(line)
+                if "f_name" not in line:
+                    continue          # 指纹 meta 行
                 f_name = line["f_name"]
                 count = int(line["count"])
 

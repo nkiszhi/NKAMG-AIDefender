@@ -1,4 +1,6 @@
 import os
+from datetime import datetime
+
 import torch
 from torch.utils.data import Dataset
 from torch_geometric.data import Data, Batch, DataLoader
@@ -85,11 +87,26 @@ def extract_features_to_jsonl(base_dir, output_dir):
 
 
 def save_vocab_from_train(vocab_dict, output_dir):
+    """写外部函数词表（带指纹）。
+
+    ⚠ 排序必须是**确定性**的：按 (-count, name) 排。
+      Vocab 内部用 Counter.most_common() 建索引，同频项按**插入顺序**决胜，
+      而插入顺序 = 这里的文件顺序。若提取是并行的，插入顺序会随机变，
+      于是"同一个词表"在不同机器上会得到不同的索引映射 → 权重对不上词表。
+      显式排序把这个坑堵死。
+    """
+    from models.MalGraph_2022.artifact_guard import (
+        current_backend, make_fingerprint, stamp_vocab_file,
+    )
     output_file_path = os.path.join(output_dir, "train_external_function_name_vocab.jsonl")
+    items = sorted(vocab_dict.items(), key=lambda kv: (-int(kv[1]), kv[0]))
     with open(output_file_path, "w", encoding='utf-8') as jsonl_file:
-        for f_name, count in tqdm(vocab_dict.items(), desc="Writing to JSONL"):
-            json_line = json.dumps({"f_name": f_name, "count": count}, ensure_ascii=False)
+        for f_name, count in tqdm(items, desc="Writing to JSONL"):
+            json_line = json.dumps({"f_name": f_name, "count": int(count)}, ensure_ascii=False)
             jsonl_file.write(json_line + '\n')
+    stamp_vocab_file(output_file_path, make_fingerprint(
+        backend=current_backend(),
+        built_at=datetime.now().isoformat(timespec="seconds")))
 
     print(f"Successfully wrote to {output_file_path}")
 
@@ -133,6 +150,10 @@ def parse_json_list_2_pyg_object(jsonl_file, output_dir, vocab):
                     hash=item_hash,
                     local_acfgs=acfg_list,
                     external_list=external_function_index_list,
+                    # 外部函数**名字**也要存：模型的 forward 里对外部函数做的是
+                    # word2idx(name)，只存索引的话训练侧只能喂 <unk>，
+                    # 外部函数这一路信息就白丢了。
+                    external_names=external_function_name_list,
                     function_edges=item_function_edges,
                     targets=label
                 ),

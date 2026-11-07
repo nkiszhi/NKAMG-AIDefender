@@ -483,9 +483,116 @@ def cmd_compare(args):
     return 0
 
 
+
+
+# ══════════════════════════════════════════════════════════════════════
+# 函数发现质量（prologue 覆盖率）
+# ══════════════════════════════════════════════════════════════════════
+# 为什么要这个指标
+# ----------------
+# 只比"函数个数"会被 BN 的**线性扫描**骗：BN 会把 .text 里的数据区域也
+# 扫成函数（实测某个良性样本：BN 280 个函数里只有 7 个带正常序言，
+# 其余全是把数据字节当指令解出来的噪声）。
+#
+# 而 SMDA 走递归下降 + 序言打分，没有入口点就几乎什么都找不到 ——
+# 于是"BN 280 / SMDA 6"看起来像 SMDA 覆盖率崩了，其实是 BN 在造噪声。
+#
+# 客观判据：**函数入口处有没有常见序言**（push ebp; mov ebp,esp /
+# sub rsp,imm8 / push rbx; sub rsp,imm8 ...）。
+# 用 SMDA 自带的 COMMON_PROLOGUES 打分表（smda/intel/definitions.py），
+# 分数 >= 30 视为"像真函数"。
+
+_PROLOGUE_MIN_SCORE = 30
+
+
+def _va_reader(pe_path):
+    """返回一个 VA → 原始字节的读取器（按 PE 节映射）。"""
+    import pefile
+    pe = pefile.PE(pe_path, fast_load=True)
+    base = pe.OPTIONAL_HEADER.ImageBase
+    segs = [(base + s.VirtualAddress, s.get_data()) for s in pe.sections]
+    pe.close()
+
+    def read(va, n=16):
+        for lo, data in segs:
+            if lo <= va < lo + len(data):
+                off = va - lo
+                return data[off:off + n]
+        return b""
+    return read
+
+
+def _prologue_score(read, va, bits):
+    """用 SMDA 的序言表给函数入口打分（0 = 不像函数入口）。"""
+    try:
+        from smda.intel.definitions import COMMON_PROLOGUES
+    except Exception:
+        return 0
+    w = read(va, 16)
+    if not w:
+        return 0
+    if w[:4] == b"\xf3\x0f\x1e\xfa":       # endbr64 (CET 落地垫)
+        w = w[4:]
+    best = 0
+    for _length, per_bitness in COMMON_PROLOGUES.items():
+        for pat, sc in (per_bitness.get(bits) or {}).items():
+            if w[:len(pat)] == pat and sc > best:
+                best = sc
+    return best
+
+
+def cmd_coverage(args):
+    """BN vs SMDA 的函数发现质量对比（序言覆盖率）。"""
+    from feature_extraction.backend_bn import build_ir_from_path as bn_ir
+    from feature_extraction.backend_smda import build_ir as smda_ir
+
+    files = _sample_list(args)
+    if not files:
+        print("没有样本: %s" % args.samples)
+        return 2
+
+    tot = {"bn": 0, "bn_strong": 0, "smda": 0, "smda_strong": 0, "common": 0}
+    print("%-26s %-18s %-18s %s" % ("sample", "BN 总/序言", "SMDA 总/序言", "交集"))
+    for i, path in enumerate(files, 1):
+        name = os.path.basename(path)
+        try:
+            ir_b = bn_ir(path, analysis="full")
+            ir_s = smda_ir(path, with_calls=True)
+        except Exception as e:
+            print("[cov] %3d/%d SKIP %-24s %s" % (i, len(files), name[:24], e))
+            continue
+        bits = 64 if int(ir_b.bitness or 0) == 64 else 32
+        read = _va_reader(path)
+        sb = {int(f.start) for f in ir_b.functions}
+        ss = {int(f.start) for f in ir_s.functions}
+        bs = sum(1 for a in sb if _prologue_score(read, a, bits) >= _PROLOGUE_MIN_SCORE)
+        ss_s = sum(1 for a in ss if _prologue_score(read, a, bits) >= _PROLOGUE_MIN_SCORE)
+        common = len(sb & ss)
+        tot["bn"] += len(sb)
+        tot["bn_strong"] += bs
+        tot["smda"] += len(ss)
+        tot["smda_strong"] += ss_s
+        tot["common"] += common
+        print("[cov] %3d/%d %-26s %5d/%5d (%4.1f%%)  %5d/%5d (%4.1f%%)  %5d"
+              % (i, len(files), name[:26], len(sb), bs,
+                 100.0 * bs / max(len(sb), 1),
+                 len(ss), ss_s, 100.0 * ss_s / max(len(ss), 1), common))
+
+    print("")
+    print("=== 汇总 ===")
+    print("函数总数     BN %6d   SMDA %6d   (%.1f%%)"
+          % (tot["bn"], tot["smda"], 100.0 * tot["smda"] / max(tot["bn"], 1)))
+    print("带序言的函数 BN %6d   SMDA %6d   (%.1f%%)"
+          % (tot["bn_strong"], tot["smda_strong"],
+             100.0 * tot["smda_strong"] / max(tot["bn_strong"], 1)))
+    print("  → BN 的序言占比 %.1f%%，SMDA %.1f%%"
+          % (100.0 * tot["bn_strong"] / max(tot["bn"], 1),
+             100.0 * tot["smda_strong"] / max(tot["smda"], 1)))
+    print("函数起点交集 %6d" % tot["common"])
+    return 0
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["bn-equivalence", "compare"])
+    ap.add_argument("cmd", choices=["bn-equivalence", "compare", "coverage"])
     ap.add_argument("--samples", required=True, help="样本目录")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--legacy-runs", type=int, default=3,
@@ -493,6 +600,8 @@ def main():
     args = ap.parse_args()
     if args.cmd == "bn-equivalence":
         return cmd_bn_equivalence(args)
+    if args.cmd == "coverage":
+        return cmd_coverage(args)
     return cmd_compare(args)
 
 

@@ -360,6 +360,9 @@ def _activate_license(path=None):
     随后创建 BinaryView 会失败。故这里把结果显式报出来。
     ⚠ BN 的许可校验**需要联网**（访问 Vector35 许可服务器）：断网时同样表现为
        "Unable to create new BinaryView"，但许可本身是好的。别误判成许可过期。
+    ⚠️ bn.core_set_license() 的激活是**异步**的: 紧接着查 core_license_count()
+       必然还是 0 (实测 2026-11-06: 提交后立刻查是 0, 稍后才变成 1)。
+       唯一可信判据是"能否真的开出一个 view" → _bn_functional_probe。
     """
     try:
         import binaryninja as bn

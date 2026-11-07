@@ -1724,6 +1724,43 @@ def metrics() -> Dict[str, Any]:
     return m
 
 
+def _bn_status() -> Dict[str, Any]:
+    """BinaryNinja 运行时状态（路径 / 许可 / 版本 / 是否已加载）。
+
+    为什么必须透出来: D/E 视角提取失败是**静默降级**
+    (de_status = f"failed: {e}"，不抛异常) → BN 挂掉时表现为
+    "10 个图模型被静默 skipped"，接口照常 200，不透状态根本看不出来。
+    """
+    info: Dict[str, Any] = {"available": False, "loaded": False}
+    bb = None
+    try:
+        from feature_extraction import bn_bootstrap as bb
+    except Exception:
+        try:
+            import bn_bootstrap as bb
+        except Exception as e:
+            info["error"] = f"{type(e).__name__}: {e}"
+            return info
+    try:
+        info["python_dir"] = bb.find_bn_python_dir()
+    except Exception as e:
+        info["python_dir_error"] = f"{type(e).__name__}: {e}"
+    try:
+        info["licenses"] = [p for _, p in bb.license_candidates() if os.path.isfile(p)]
+    except Exception:
+        pass
+    try:
+        info.update(bb.bn_status() or {})
+    except Exception:
+        pass
+    info["available"] = bool(info.get("version")) or bool(info.get("python_dir"))
+    try:
+        import feature_extraction.extract_feature as _ef
+        info["loaded"] = getattr(_ef, "_BN", None) is not None
+    except Exception:
+        pass
+    return info
+
 @app.get("/health")
 def health() -> Dict[str, Any]:
     try:
@@ -1767,6 +1804,7 @@ def health() -> Dict[str, Any]:
             # 过滤引擎（四级哈希签名库预检）实际状态：不接受日志即可确认开关是否生效
             # enabled=False → 三库恒为 None 且 count 全为 null，所有样本走模型。
             "hash_db": hdb,
+            "binaryninja": _bn_status(),
         }
         if MALGRAPH_ENABLED:
             try:

@@ -11,6 +11,27 @@ CoDefenderC3 — 配置文件
 import json
 import os
 
+# ── 进程环境兜底 (必须在 import torch_geometric 之前生效) ──────────────────
+# torch>=2.x 的 torch._dynamo 在 import 时会算 inductor 缓存目录:
+#   torch/_inductor/runtime/cache_dir_utils.py: default_cache_dir() -> getpass.getuser()
+#   而 getpass.getuser() 只有在 LOGNAME/USER/LNAME/USERNAME 全空时才 `import pwd`
+#   —— pwd 是 POSIX 模块, Windows 没有 → ModuleNotFoundError: No module named "pwd"
+#   → torch_geometric 整个 import 失败
+#   → models/CFG_GAT_2019/cfg_gat.py 的 `except ImportError: pass` 把它静默吞掉
+#     → _HAS_PYG=False → CFGGAT 只建 mlp 不建 gat1/2/3
+#     → 加载 ensemble.pkl 报 "Unexpected key(s) in state_dict: gat1.att_src ..."
+#     → 集成加载失败 → /readyz 503, /health status=error。
+# 触发场景: IDE / 沙箱 / CI 里启动的进程没有 USERNAME (交互式终端有, 所以手工跑没事)。
+# 修: 补齐 USERNAME, 并直接指定 TORCHINDUCTOR_CACHE_DIR 让 torch 短路 (不再走 getpass)。
+if not os.environ.get("USERNAME"):
+    os.environ["USERNAME"] = (os.environ.get("USER") or os.environ.get("LOGNAME")
+                              or os.environ.get("LNAME") or "developer")
+if not os.environ.get("TORCHINDUCTOR_CACHE_DIR"):
+    import tempfile as _tempfile
+    os.environ["TORCHINDUCTOR_CACHE_DIR"] = os.path.join(
+        _tempfile.gettempdir(), "torchinductor_cache")
+
+
 # ── 路径配置 (通过环境变量或直接修改) ──
 DATA_DIR   = os.environ.get("CODEFENDER_DATA_DIR",
                             os.path.join(r"E:\nkproject\test_samples", "CoDefenderC3_data"))

@@ -8,13 +8,15 @@ if sys.platform == 'win32':
     except Exception:
         pass
 try:
-    import binaryninja as bn
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from bn_bootstrap import bootstrap_bn
+    bn = bootstrap_bn()
     try: bn.log.log_to_stderr(bn.LogLevel.ErrorLog)
     except: pass
     try: bn.disable_default_log()
     except: pass
-except ImportError:
-    print("FAIL\tNO_FILE\tno_binaryninja", flush=True)
+except Exception as e:
+    print("FAIL\tNO_FILE\tno_binaryninja: %s" % str(e)[:200], flush=True)
     sys.exit(0)
 
 # 从参数文件读取: pe_path\tbndb_path 每行一对

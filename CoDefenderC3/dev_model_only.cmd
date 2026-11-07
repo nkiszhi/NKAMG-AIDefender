@@ -27,7 +27,7 @@ REM        comment lines get executed as commands and the script half-runs.
 REM        Keep every message here in English / ASCII.
 REM ===================================================================
 
-if not defined CODEFENDER_PYEXE set "CODEFENDER_PYEXE=D:\work\tools\miniconda3\python.exe"
+if not defined CODEFENDER_PYEXE set "CODEFENDER_PYEXE=D:\conda\envs\ml\python.exe"
 if exist "%CODEFENDER_PYEXE%" goto cf_py_ok
 echo [dev] ERROR: python interpreter not found: %CODEFENDER_PYEXE%
 echo [dev] set "CODEFENDER_PYEXE=D:\path\to\python.exe" then rerun this script
@@ -38,6 +38,13 @@ if not defined CODEFENDER_PORT set "CODEFENDER_PORT=8000"
 cd /d "%~dp0"
 
 set "PYTHONIOENCODING=utf-8"
+REM Windows: torch._dynamo -> getpass.getuser() -> "import pwd" (POSIX only) breaks
+REM the torch_geometric import, which silently degrades CFGGAT (no gat1/2/3) and
+REM then breaks ensemble.pkl loading ("Unexpected key(s) in state_dict"). Provide
+REM USERNAME and a fixed inductor cache dir so torch never reaches getpass.
+REM (config.py carries the same guard for non-script launches, e.g. IDE / CI.)
+if not defined USERNAME set "USERNAME=developer"
+if not defined TORCHINDUCTOR_CACHE_DIR set "TORCHINDUCTOR_CACHE_DIR=%TEMP%\torchinductor_cache"
 set "CODEFENDER_ENV=dev"
 set "CODEFENDER_HASH_DB_ENABLED=0"
 set "CODEFENDER_FUZZY_DB_ENABLED=0"
@@ -67,6 +74,6 @@ echo [dev] listening on :%CODEFENDER_PORT%    Ctrl+C to stop
 echo [dev] ====================================================
 echo.
 
-"%CODEFENDER_PYEXE%" -u -m uvicorn engine.app:app --host 0.0.0.0 --port %CODEFENDER_PORT%
+"%CODEFENDER_PYEXE%" -u -m uvicorn engine.dev.app:app --host 0.0.0.0 --port %CODEFENDER_PORT%
 
 endlocal
