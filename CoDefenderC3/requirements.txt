@@ -18,7 +18,7 @@
 #      python docker/check_requirements.py         # 只查运行时闭包（严格，推荐）
 #      python docker/check_requirements.py --all   # 连 train/ 工具链一起查
 #
-#  最后核对：2026-10-08
+#  最后核对：2026-11-07（BN → SMDA：加 smda，去掉 binaryninja）
 # =============================================================================
 
 
@@ -37,6 +37,9 @@ scipy>=1.7              # SDD 漂移引擎：core/sdd_engine.py（/predict-singl
 ppdeep>=20200505        # ssdeep/CTPH 模糊哈希（纯 Python）；缺 → 模糊预检自动关闭
 yara-python>=4.3        # 壳检测的 YARA 扩展规则：scaner/packer.py（无 .yar 规则时自动跳过）
 tqdm>=4.60              # MalGraph 生产模型：models/MalGraph_2022/{utils,Vocabulary}.py 顶层导入
+smda>=4.3.10            # 反汇编后端（BSD-3，无需商业授权）：feature_extraction/backend_smda.py
+                        #   2026-11-07 起是**默认**后端（CODEFENDER_DISASM_BACKEND=smda）：
+                        #   D/E 特征与 MalGraph 的 CFG/FCG 全部由它产出
 
 
 # ── 3. 生产必需，但【不由本文件安装】（Dockerfile / 基础镜像负责）──────────
@@ -45,7 +48,8 @@ tqdm>=4.60              # MalGraph 生产模型：models/MalGraph_2022/{utils,Vo
 # torch>=2.0            # models/* 全部深度模型；feature_extraction/unified.py **顶层** import torch
 # torchvision           # IMCFN_2020 / InceptionV3_2020
 # torch_geometric       # 图模型 CFG_GAT / GCN / DGCNN / CallGraphGNN / GraphStatNet / MalGraph
-# binaryninja           # 商业库，由基础镜像 multiscan_basic_v3:with_binja 提供
+# capstone              # smda 的依赖（随 smda 一起装）；backend_smda.py 直接 import 它
+# lief                  # smda 的依赖（随 smda 一起装）；backend_smda.py 直接 import 它
 #
 #  ⚠ torch>=2.6 起 torch.load() 默认 weights_only=True：
 #    engine/app.py 加载 MalGraph ckpt 未显式传 weights_only，当前 state_dict 形态不受影响，
@@ -85,6 +89,13 @@ tqdm>=4.60              # MalGraph 生产模型：models/MalGraph_2022/{utils,Vo
 #
 #    anthropic —— core/llm_module.py 的漂移归因 LLM。API 从未调用 analyze_drift()，
 #                 且需 ANTHROPIC_API_KEY；仅在离线做漂移归因实验时才装。
+#
+#    binaryninja —— **旧后端**（feature_extraction/backend_bn.py），2026-11-07 起
+#                 默认后端是 SMDA。代码里的 import 全部是惰性的（只在
+#                 CODEFENDER_DISASM_BACKEND=bn 时才走），BN 不可用时服务照常启动。
+#                 只有做 A/B 对照（"BN 时代的特征 vs SMDA 的特征"）才需要装：
+#                     pip install binaryninja   # 商业库，需许可
+#                 此时还要提供 license.dat（BN 不自动读，见 feature_extraction/bn_runtime.py）。
 #
 #  ── 命名坑（不需要安装，务必别装错）────────────────────────────────────
 #   app.py 把 config.ROOT/scaner 插到 sys.path 最前，下列 import 命中的是【本地文件】：

@@ -57,8 +57,6 @@ def _license_candidates():
     cands.append(os.path.join(home, ".binaryninja", "license.dat"))
     cands.append(os.path.join(home, "AppData", "Roaming", "Binary Ninja",
                               "license.dat"))
-    repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    cands.append(os.path.join(repo, "license.txt"))
     cands.append("/root/.binaryninja/license.dat")
     return cands
 

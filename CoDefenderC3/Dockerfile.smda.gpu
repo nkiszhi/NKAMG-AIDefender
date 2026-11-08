@@ -102,7 +102,7 @@ COPY core/               ./core/
 COPY models/             ./models/
 COPY scaner/             ./scaner/
 COPY feature_extraction/ ./feature_extraction/
-COPY start_codefender.smda.sh ./start_codefender.sh
+COPY start_codefender.sh ./start_codefender.sh
 # 统一行尾（Windows 检出的 CRLF 会让 #!/bin/bash\r 失效）
 RUN sed -i 's/\r$//' /app/start_codefender.sh && chmod +x /app/start_codefender.sh
 

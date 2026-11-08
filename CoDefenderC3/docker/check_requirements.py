@@ -68,6 +68,9 @@ PKG_TO_IMPORT = {
     "anthropic": "anthropic",
     "ember-dataset": "ember",
     "binaryninja": "binaryninja",
+    "smda": "smda",
+    "capstone": "capstone",
+    "lief": "lief",
     "lightgbm": "lightgbm",
 }
 IMPORT_TO_PKG = {v: k for k, v in PKG_TO_IMPORT.items()}
@@ -88,6 +91,9 @@ EXPECTED_NON_IMPORT = {
 # 列在这里，避免 --all 每次把它们报成"漏项"，同时保留"为什么可以不装"的说明。
 INTENTIONAL_EXCLUSION = {
     "anthropic": "漂移归因 LLM（core/llm_module.py）；API 从未调用，仅离线实验用 → requirements §5",
+    "binaryninja": "旧后端（backend_bn.py）；2026-11-07 起默认后端是 SMDA，"
+                    "BN 的 import 全是惰性的（只在 CODEFENDER_DISASM_BACKEND=bn 时走）"
+                    "→ 只做 A/B 对照时才装 → requirements §5",
 }
 
 # 不由 requirements.txt 安装、但在镜像里一定存在的包（requirements 里只做注释声明）
@@ -95,7 +101,8 @@ INSTALLED_ELSEWHERE = {
     "torch": "Dockerfile 第 1 层：--index-url https://download.pytorch.org/whl/cpu",
     "torchvision": "Dockerfile 第 1 层：随 torch 一起从 PyTorch CPU 源安装",
     "torch_geometric": "Dockerfile 第 1 层：单独 pip install",
-    "binaryninja": "基础镜像 multiscan_basic_v3:with_binja 自带（商业库）",
+    "capstone": "smda 的依赖，随 smda 一起装（backend_smda.py 直接 import 它）",
+    "lief": "smda 的依赖，随 smda 一起装（backend_smda.py 直接 import 它）",
 }
 
 RUNTIME_ROOT = ["engine", "core", "models", "scaner", "feature_extraction"]
