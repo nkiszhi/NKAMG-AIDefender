@@ -8,8 +8,9 @@
    任何「顺手优化」都会破坏「IR → 特征」与「bv → 特征」的逐位等价，
    而那正是 Phase 1 的验收判据（G2 门禁）。
 
-常量（_CAT_LOOKUP / _CAT_NAMES / MAX_OPCODES / ...）直接引用 extract_feature，
-避免两处字典漂移。
+常量：尺寸常量（MAX_OPCODES / NGRAM_DIM / MAX_FUNCTIONS）引用 extract_feature，
+指令类别表（_CAT_LOOKUP / _CAT_NAMES）引用 insn_categories ——
+两边共用同一份，避免多套后端各维护一份类别定义导致漂移。
 
 2026-11-05
 """
@@ -19,12 +20,14 @@ from collections import Counter, defaultdict
 
 try:
     from ._stable_hash import stable_hash
-    from .extract_feature import (MAX_FUNCTIONS, MAX_OPCODES, NGRAM_DIM,
-                                  _CAT_LOOKUP, _CAT_NAMES)
+    from .extract_feature import MAX_FUNCTIONS, MAX_OPCODES, NGRAM_DIM
+    from .insn_categories import CAT_LOOKUP as _CAT_LOOKUP
+    from .insn_categories import CAT_NAMES as _CAT_NAMES
 except ImportError:                                 # 直接按文件加载时的回退
     from _stable_hash import stable_hash
-    from extract_feature import (MAX_FUNCTIONS, MAX_OPCODES, NGRAM_DIM,
-                                _CAT_LOOKUP, _CAT_NAMES)
+    from extract_feature import MAX_FUNCTIONS, MAX_OPCODES, NGRAM_DIM
+    from insn_categories import CAT_LOOKUP as _CAT_LOOKUP
+    from insn_categories import CAT_NAMES as _CAT_NAMES
 
 
 def _call_depth_ir(fmap, start, visited, depth, max_depth):

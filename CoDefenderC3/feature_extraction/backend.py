@@ -68,3 +68,31 @@ def build_ir_for_graph(path: str):
     except ImportError:
         from backend_bn import build_ir_from_path
     return build_ir_from_path(path, analysis="full")
+
+
+def build_ir_pair(path: str):
+    """一次调用拿到「D/E 特征用」和「MalGraph 用」两个 IR。
+
+    * SMDA：两个档位只差 call_sites，D/E 特征不用 call_sites → **一次分析**
+      就够（省一半时间）。
+    * BN：两个档位的**分析深度**不同（basic / full），函数集合都不一样，
+      不能复用 → 只能分析两次。
+      （basic 档下 BN 不算 MLIL，MalGraph 的 FCG 会是空的。）
+
+    返回 (features_ir, graph_ir)。
+    """
+    be = _env_backend()
+    if be == "smda":
+        try:
+            from .backend_smda import build_ir
+        except ImportError:
+            from backend_smda import build_ir
+        ir = build_ir(path, with_calls=True)
+        return ir, ir
+    try:
+        from .backend_bn import build_ir_from_path
+    except ImportError:
+        from backend_bn import build_ir_from_path
+    features_ir = build_ir_from_path(path, analysis="basic")
+    graph_ir = build_ir_from_path(path, analysis="full")
+    return features_ir, graph_ir

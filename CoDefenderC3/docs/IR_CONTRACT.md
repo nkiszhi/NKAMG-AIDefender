@@ -677,9 +677,11 @@ IR 路径装的是真正的助记符。⇒ **依赖 D01-D07 的 V6 系列模型
 
 ### 13.5 还没切的部分
 
-* `feature_extraction/smda_extract.py`（另一条并行的 SMDA 实现，由另一条任务合入）
-  与本文件的 `backend_smda.py + features_from_ir.py` 功能重叠，两套并存有
-  漂移风险，建议二选一
+* ~~`feature_extraction/smda_extract.py`~~（另一条并行的 SMDA 实现）**已删除**：
+  它的 `extract_de` 与本文件的 `backend_smda.py + features_from_ir.py` 是同一套
+  算法的两份实现（哈希都是 crc32、维度口径一致），留两套必然漂移。
+  `engine/analysis_worker.py` 现在**不分后端**：一次 ProgramIR 分析同时产出
+  D/E 特征与 MalGraph 输入。
 * `unified.py` 的 `_extract_opcode_seq` / `_extract_func_embeddings` /
   `_extract_graph_stat` 还在直接调 BN（属 P0-5）
 * `engine/app.py` 的 `include_de` 现在走 IR 了，但**没有**后端开关 ——

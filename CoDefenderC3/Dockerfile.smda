@@ -70,7 +70,7 @@ print('   torchvision::nms OK ->', nms(_b, _s, 0.5).tolist())" && \
 COPY ensemble.pkl ./ensemble.pkl
 
 # ── 6. 应用代码 ───────────────────────────────────────────────────────
-COPY config.py model_registry.py insn_categories.py ./
+COPY config.py model_registry.py ./
 COPY engine/             ./engine/
 COPY core/               ./core/
 COPY models/             ./models/

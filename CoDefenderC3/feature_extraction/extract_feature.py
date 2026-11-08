@@ -128,31 +128,31 @@ STR_MAX_STRINGS = 5000            # 字符串条数上限 (C01-C04)
 STR_C01_STRINGS = 2000            # C01 参与统计的字符串条数
 STR_C04_STRINGS = 200             # C04 参与 n-gram 统计的字符串条数
 
-# x86 instruction categories (15 classes, D04)
-INSN_CATEGORIES = {
-    "arithmetic": {"add","sub","mul","imul","div","idiv","inc","dec","neg","adc","sbb"},
-    "logic":      {"and","or","xor","not","shl","shr","sar","sal","rol","ror","rcl","rcr"},
-    "transfer":   {"mov","movzx","movsx","lea","xchg","cmov","movaps","movdqa"},
-    "branch":     {"jmp","je","jne","jz","jnz","jg","jl","jge","jle","ja","jb","jae","jbe",
-                   "call","ret","loop","int"},
-    "stack":      {"push","pop","pusha","popa","pushf","popf","enter","leave"},
-    "string":     {"movs","cmps","scas","lods","stos","rep","repe","repne"},
-    "flag":       {"stc","clc","cmc","std","cld","sti","cli","lahf","sahf"},
-    "float":      {"fld","fst","fstp","fadd","fsub","fmul","fdiv","fcom","fxch"},
-    "simd":       {"addps","mulps","subps","divps","paddb","paddw","paddd","pxor",
-                   "xmm","ymm","zmm"},
-    "system":     {"syscall","sysenter","rdtsc","cpuid","rdmsr","wrmsr","hlt","in","out"},
-    "nop":        {"nop"},
-    "interrupt":  {"int","int3","iret"},
-    "io":         {"in","out","ins","outs"},
-    "prefix":     {"lock","rep","repz","repnz","cs","ds","es","fs","gs","ss"},
-}
-# Flatten for lookup
-_CAT_LOOKUP = {}
-for cat, mnemonics in INSN_CATEGORIES.items():
-    for m in mnemonics:
-        _CAT_LOOKUP[m] = cat
-_CAT_NAMES = list(INSN_CATEGORIES.keys()) + ["other"]  # 15 categories
+# x86 指令类别表（15 类，D04）—— 唯一来源：feature_extraction/insn_categories.py
+# 三级回退（与上面 _stable_hash 同款）：
+#   ① 包内导入 feature_extraction.extract_feature（服务进程 / ProcessPool 子进程）
+#   ② 同目录导入 extract_feature（worker 以顶层模块导入时）
+#   ③ 按文件路径加载（train/data_loader.py 按路径 importlib 加载本文件时）
+try:
+    from .insn_categories import (CAT_LOOKUP as _CAT_LOOKUP,
+                                  CAT_NAMES as _CAT_NAMES,
+                                  INSN_CATEGORIES as INSN_CATEGORIES)
+except ImportError:
+    try:
+        from insn_categories import (CAT_LOOKUP as _CAT_LOOKUP,
+                                      CAT_NAMES as _CAT_NAMES,
+                                      INSN_CATEGORIES as INSN_CATEGORIES)
+    except ImportError:
+        import importlib.util as _ilu
+        _spec = _ilu.spec_from_file_location(
+            "_insn_categories",
+            os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                         "insn_categories.py"))
+        _ic = _ilu.module_from_spec(_spec)
+        _spec.loader.exec_module(_ic)
+        _CAT_LOOKUP = _ic.CAT_LOOKUP
+        _CAT_NAMES = _ic.CAT_NAMES
+        INSN_CATEGORIES = _ic.INSN_CATEGORIES
 
 
 # ═══════════════════════════════════════

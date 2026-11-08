@@ -19,11 +19,13 @@
 
 | 文件 | 改动 |
 |---|---|
-| `feature_extraction/smda_extract.py` | **新增**：SMDA 后端，产出 D01–D07 / E03 / E04 与 MalGraph 同构的 CFG/FCG |
-| `insn_categories.py` | **新增**：x86 指令类别表（15 类），BN 与 SMDA 共用 |
-| `feature_extraction/extract_feature.py` | `extract_de_only` 按后端开关分发；类别表改为共用顶层模块；BN 导入保持惰性 |
-| `models/MalGraph_2022/utils.py` | `extract_cfg_and_fcg` 按后端开关分发；BN 导入改为**可选**（无 BN 环境也能导入） |
-| `engine/analysis_worker.py` | 新增 SMDA 分支（一次分析同时产出 D/E 与 MalGraph），BN 分支保留 |
+| `feature_extraction/backend_smda.py` | SMDA 后端 → ProgramIR（函数 / 基本块 / CFG / 调用点 / 导入表） |
+| `feature_extraction/features_from_ir.py` | D01–D07 / E03 / E04 由 ProgramIR 算（BN 与 SMDA 共用同一套算法） |
+| `feature_extraction/backend.py` | 后端调度：`CODEFENDER_DISASM_BACKEND=bn\|smda` + 两个分析档位（features / graph） |
+| `feature_extraction/insn_categories.py` | x86 指令类别表（15 类），**唯一来源**，BN 与 SMDA 共用 |
+| `feature_extraction/extract_feature.py` | `extract_de_only` 改走 ProgramIR；类别表改为共用 `insn_categories` |
+| `models/MalGraph_2022/utils.py` | `extract_cfg_and_fcg` 走 ProgramIR；**不再 import binaryninja** |
+| `engine/analysis_worker.py` | **不分后端**：一次 ProgramIR 分析同时产出 D/E 与 MalGraph |
 | `engine/staged_scan.py` | `analysis_timeout()` 上限由硬编码 600 改为 `CODEFENDER_ANALYSIS_TIMEOUT_MAX`（默认 3600） |
 | `requirements.txt` | 增加 `smda>=4.3.10` |
 
@@ -92,8 +94,8 @@ D01/D02/D03/D07 的序列 id 与 n-gram 分桶由 Python 内置 `hash()` 生成�
 
 ### 7.2 SMDA 后端的处理
 
-`feature_extraction/smda_extract.py` 用 `zlib.crc32` 替代 `hash()`（`_stable_bucket`），
-使 D02/D03/D07 的分桶在进程间稳定。注意：**这只保证"同一份代码每次运行一致"**，
+`feature_extraction/_stable_hash.py` 用 `zlib.crc32` 替代 `hash()`，
+使 D02/D03/D07 的分桶在进程间稳定（BN 与 SMDA 两个后端共用这一份）。注意：**这只保证"同一份代码每次运行一致"**，
 并不等于与旧权重训练时的随机映射一致 —— 依赖这些维度的旧权重仍然需要重训。
 
 ### 7.3 推理期掩码开关（实验 A）

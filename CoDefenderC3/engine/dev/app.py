@@ -32,7 +32,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from threading import Lock
 from concurrent.futures import ProcessPoolExecutor
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 from fastapi import Body, FastAPI, File, HTTPException, Query, Request, UploadFile
@@ -852,8 +852,21 @@ def _predict_per_model(
     view_meta: Optional[Dict[str, Dict[str, Any]]] = None,
     pe_path: Optional[str] = None,
     include_de: bool = True,
+    malgraph_sample: Optional[Dict[str, Any]] = None,
+    on_result: Optional[Callable[[Dict[str, Any]], None]] = None,
 ) -> List[Dict[str, Any]]:
+    """逐模型预测。
+
+    malgraph_sample：分阶段扫描（engine/staged_scan.py）已经把 MalGraph 特征
+        抽好了（analysis_worker 出的），直接传进来用，别再抽一遍。
+    on_result：每产出一条结果就回调一次（分阶段扫描要实时推进进度）。
+    """
     results: List[Dict[str, Any]] = []
+
+    def _emit(item: Dict[str, Any]) -> None:
+        results.append(item)
+        if on_result is not None:
+            on_result(item)
 
     for vname, model_names in ens.view_groups.items():
         x_view = views.get(vname)
@@ -872,15 +885,19 @@ def _predict_per_model(
                     if not include_de:
                         item["status"] = "skipped"
                         item["reason"] = "MalGraph requires D/E features; set include_de=true"
-                        results.append(item)
+                        _emit(item)
                         continue
                     if not pe_path:
                         item["status"] = "error"
                         item["reason"] = "missing pe_path for MalGraph inference"
-                        results.append(item)
+                        _emit(item)
                         continue
                     try:
-                        pred, score, mg_meta = _predict_malgraph_single(pe_path)
+                        if malgraph_sample:
+                            pred, score, mg_meta = _predict_malgraph_sample(
+                                malgraph_sample)
+                        else:
+                            pred, score, mg_meta = _predict_malgraph_single(pe_path)
                         item["status"] = "ok"
                         item["score"] = score
                         item["prediction"] = pred
@@ -888,11 +905,11 @@ def _predict_per_model(
                     except Exception as e:
                         item["status"] = "unavailable"
                         item["reason"] = str(e)
-                    results.append(item)
+                    _emit(item)
                     continue
                 item["status"] = "skipped"
                 item["reason"] = "special_pipeline_not_supported"
-                results.append(item)
+                _emit(item)
                 continue
 
             if x_view is None:
@@ -900,13 +917,13 @@ def _predict_per_model(
                 meta = (view_meta or {}).get(vname, {})
                 miss_reason = meta.get("reason", "missing_view_feature")
                 item["reason"] = f"missing_view_feature:{miss_reason}"
-                results.append(item)
+                _emit(item)
                 continue
 
             if model is None:
                 item["status"] = "unavailable"
                 item["reason"] = "model_not_loaded"
-                results.append(item)
+                _emit(item)
                 continue
 
             x_model = x_view
@@ -957,7 +974,7 @@ def _predict_per_model(
                 item["status"] = "error"
                 item["reason"] = str(e)
 
-            results.append(item)
+            _emit(item)
 
     return results
 
