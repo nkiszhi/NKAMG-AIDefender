@@ -445,18 +445,18 @@ D01（opcode 序列）、D02/D03（n-gram）、D04（类别分布）、D07（每
 
 ### 12.2 MalGraph 现在完全不需要 BinaryNinja
 
-`@
+```
 PE ──▶ ProgramIR ──▶ MalGraph 特征
       (backend_bn / backend_smda，由 CODEFENDER_DISASM_BACKEND 选)
-`@
+```
 
 `models/` 目录下**已无任何 `import binaryninja`**。实测：
 
-`@
+```
 $ CODEFENDER_DISASM_BACKEND=smda python -c "...extract_cfg_and_fcg(...)"
 ok funcs 1003 edges 2020 acfg 603 hash 002eae3bb1e9 vocab 400 1.8s
 binaryninja imported? False        ← SMDA 路径完全不碰 BN
-`@
+```
 
 ### 12.3 两个"分析档位"（不能混用）
 
@@ -473,18 +473,18 @@ binaryninja imported? False        ← SMDA 路径完全不碰 BN
 
 命令：
 
-`@
+```
 python tests/compare_malgraph_backends.py bn-equivalence --samples <样本目录>
-`@
+```
 
 判据（16 个样本，良性/恶意 × 32/64 位）：
 
-`@
+```
 等价性: 15 个一致 / 0 个不一致 / 1 个跳过
 BN 自身不稳定（同一 view 跑三遍就不一致）的块×维: 1021
 扣除不稳定项后，新实现与旧实现的不一致: 0
 结论: OK —— 同一 BinaryView 上，IR 路径与旧 BN 直读实现逐字段一致
-`@
+```
 
 比对的字段：函数数、函数名表、FCG 边、块数、块边、11 维块特征、外部函数词表。
 
@@ -510,10 +510,10 @@ BN 在**同一个 BinaryView 上重复渲染**时，「地址操作数」有时�
 
 旧实现的块特征是**逐 token 按优先级 elif 匹配**：
 
-`@
+```
 call > transfer > arithmetic > logic > compare > move >
 termination > data_declaration > constants
-`@
+```
 
 因为是 elif 链，**一个文本恰好是关键字的 token 会被算进它的类别，而不是
 算成常量**。实测撞到的真实例子：BN 把 `je xxx [0xa] { "or" }` 里的
@@ -526,7 +526,7 @@ termination > data_declaration > constants
 
 ### 12.6 BN ↔ SMDA 的 MalGraph 特征差异（16 个样本）
 
-`@
+```
 函数数     BN 14660   SMDA 12875   (87.8%)
 FCG 边     BN 28242   SMDA 29656   (105.0%)
 基本块     BN 70730   SMDA 59497   (84.1%)
@@ -543,7 +543,7 @@ FCG 边     BN 28242   SMDA 29656   (105.0%)
   total_instructions 424648   351283   -17.3%
   constants          141477    54700   -61.3%   ← 见下
   offspring           88356    75629   -14.4%
-`@
+```
 
 #### 差异 1：`termination` +5559% —— BN 渲染 `retn`，SMDA 渲染 `ret`
 
@@ -560,9 +560,9 @@ BN 的 x86 打印器把 near return 渲染成 **`retn`**，而关键字表里只
 逐样本查下来，差距几乎全部集中在 `add` 一个助记符上（6 个样本：BN 20539
 次 vs SMDA 3730 次）。抽样看 BN 里 `add` 最密集的块：
 
-`@
+```
 (204, '0x56859b9b', 'sub_56859b9b', ['add','add','add','add','add','rol','add','add'])
-`@
+```
 
 —— 整块都是 `add byte ptr [eax+edx*2], 0x0` 这种**把数据字节当指令解**
 的结果。BN 的线性扫描（linear sweep）会把 .text 里的非代码区域也扫成函数；
@@ -622,24 +622,25 @@ BN → SMDA 切换后 MalGraph 的输入**全变了**，而旧产物是**静默�
 
 `models/MalGraph_2022/artifact_guard.py` 给每个训练产物打指纹：
 
-`@
+```
 {feature_schema, ir_schema, backend, built_at, ...}
-`@
+```
 
 * 词表文件第一行写指纹（`artifact_guard.stamp_vocab_file`）
 * `Vocab.__init__` 加载时比对：指纹缺失 / backend 不同 / 口径不同 → **直接抛
   StaleArtifactError**，而不是默默用旧词表跑出新分数
 * 权重 `best_model.pt` 里也存了同样的指纹（诊断用）
 * `saved/feature_manifest.json` 记录这次重建用的后端、样本数、目录、随机种子
+
 ### 13.3 重建与重训（可复现）
 
-`@
+```
 # ① 作废旧产物 + 用 SMDA 重抽特征 + 重建词表 + 转 .pt
 python models/MalGraph_2022/rebuild_smda.py --dirs-file <样本目录.json> --limit-per-class 600 --workers 8
 
 # ② 训练（吃 .pt）
 python models/MalGraph_2022/train_malgraph.py --epochs 30
-`@
+```
 
 * 样本抽样是**确定性**的（排序 + 固定 seed），抽样清单写进 manifest
 * 词表排序也是确定性的（`(-count, name)`）—— 否则并行提取的完成顺序会
@@ -649,6 +650,7 @@ python models/MalGraph_2022/train_malgraph.py --epochs 30
   `train_malgraph.py` 是这次补上的；模型结构与推理侧
   `engine/app.py::DEFAULT_MALGRAPH_PARAMS` 一致（graphsage / global_max_pool /
   11→128→128→128）
+
 ### 13.4 BN 专用路径的切除
 
 | 删除的东西 | 替代 |
