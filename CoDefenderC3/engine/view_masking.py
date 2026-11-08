@@ -3,7 +3,7 @@
 
 背景
 ----
-D01/D02/D03/D07 在训练期由多个**独立子进程**（``feature_extraction/_de_worker_persistent.py``）
+D01/D02/D03/D07 在训练期由多个**独立子进程**（``feature_extraction/_ir_worker.py``）
 生成，映射用的是 Python 内置 ``hash()``；而 ``str`` 的 hash 每进程随机 ⇒ 训练集
 本身是多套随机 salt 的混合。推理端无论用哪种确定性映射都无法与之对齐，
 依赖这些维度的模型输出接近随机（实测：OpcodeLSTM 的 BN 侧 AUC 0.508，

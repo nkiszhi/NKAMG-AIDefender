@@ -20,7 +20,8 @@ Usage:
     features.update(ext.extract_de_only(pe_path))   # D/E (走 ProgramIR)
     features = ext.extract_batch(paths, n_workers=8)
 
-Requires: pip install binaryninja (commercial license)
+Requires: none for the default (SMDA) backend. The legacy BinaryNinja
+backend is optional: pip install binaryninja (commercial license).
 """
 import os, sys, hashlib, math, struct, time
 import logging
@@ -51,27 +52,14 @@ except ImportError:
         _spec.loader.exec_module(_sh)
         stable_hash = _sh.stable_hash
 
-# BinaryNinja 运行时引导（路径注入 + 许可激活）—— 见 feature_extraction/bn_bootstrap.py
-# 三级回退与上面 _stable_hash 同款:
-#   ① 包内导入 feature_extraction.extract_feature（服务进程 / ProcessPool 子进程）
-#   ② 同目录导入 extract_feature（worker 以顶层模块导入时）
-#   ③ 按文件路径加载（train/data_loader.py 用 importlib 按路径加载本文件时）
-try:
-    from .bn_bootstrap import bootstrap_bn
-except ImportError:
-    try:
-        from bn_bootstrap import bootstrap_bn
-    except ImportError:
-        import importlib.util as _ilu
-        _spec = _ilu.spec_from_file_location(
-            "_bn_bootstrap",
-            os.path.join(os.path.dirname(os.path.abspath(__file__)), "bn_bootstrap.py"))
-        _bm = _ilu.module_from_spec(_spec)
-        _spec.loader.exec_module(_bm)
-        bootstrap_bn = _bm.bootstrap_bn
-
-# BinaryNinja import (deferred to allow module-level import without crash)
-_BN = None
+# ⚠ 本模块**不再依赖 BinaryNinja**（2026-11-07）。
+#   D/E 特征走 ProgramIR（feature_extraction/backend.py，按
+#   CODEFENDER_DISASM_BACKEND 选 bn / smda），BN 只是其中一种后端。
+#
+#   之前这里有一份"顶层硬导入" bn_bootstrap 的代码：那份文件**没有入库**，
+#   一旦缺失就会让 import feature_extraction.extract_feature 直接失败
+#   → 整个服务起不来（BN 不可用时反而最需要能启动）。
+#   现在改成完全惰性：只有真正走 BN 后端时才由 backend_bn 去引导。
 
 def _env_int(name: str, default: int) -> int:
     """Helper to read integer from environment variable."""
@@ -81,14 +69,30 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
+def _ensure_binaryninja_lazy():
+    """惰性拿 binaryninja 模块（仅 BN 后端需要）。
+
+    走 feature_extraction/bn_runtime.py —— 它自带兜底实现，不依赖
+    未入库的 bn_bootstrap.py。
+    """
+    try:
+        from .bn_runtime import ensure_binaryninja
+    except ImportError:
+        from bn_runtime import ensure_binaryninja
+    return ensure_binaryninja()
+
+
 def _get_bn():
+    """加载 BinaryNinja（**仅 BN 后端需要**）。
+
+    路径注入 + 许可激活必须在 import binaryninja 之前完成:
+      ① BN 的 python 包目录不在 sys.path 上 → ModuleNotFoundError
+      ② BN 不会自动读 license.dat → 未激活 → bn.load() 抛 C++ 异常
+         (Windows Error 0xe06d7363) "Unable to create new BinaryView"
+    """
     global _BN
     if _BN is None:
-        # 路径注入 + 许可激活必须在 import binaryninja 之前完成:
-        #   ① BN 的 python 包目录不在 sys.path 上 → ModuleNotFoundError
-        #   ② BN 不会自动读 license.dat → 未激活 → bn.load() 抛 C++ 异常
-        #      (Windows Error 0xe06d7363) "Unable to create new BinaryView"
-        bn = bootstrap_bn()
+        bn = _ensure_binaryninja_lazy()
         _BN = bn
         
         # 设置BinaryNinja工作线程数（提升分析性能）
@@ -174,22 +178,11 @@ class BinjaExtractor:
     """
 
     def __init__(self, headless=True, require_bn=False):
-        # 延迟加载: 不在构造时 import binaryninja
-        # （BN 专用的 .bndb 批量缓存路径已删除：D/E 统一走 ProgramIR / IR 缓存）
-        # 这些方法通过子进程使用 BN, 不需要 Master 自身加载 BN C 核心
-        # 在 Master 中加载 BN 会导致 Windows 上 ACCESS_VIOLATION (0xC0000005)
-        self.bn = None
+        # ⚠ headless / require_bn 两个参数**只为兼容旧调用方**保留，已无实际作用：
+        #   BN 专用的 .bndb 批量缓存路径已删除，D/E 统一走 ProgramIR / IR 缓存，
+        #   本类不再直接调用任何 BN API。
         self._headless = headless
         self._require_bn = require_bn
-
-    def _ensure_bn(self):
-        """按需加载 BinaryNinja — 只在真正需要直接调用 BN API 时使用。"""
-        if self.bn is None:
-            try:
-                self.bn = _get_bn()
-            except Exception:
-                if self._require_bn:
-                    raise
 
     # ─── 快速提取: 纯 Python, 不需要 BinaryNinja ──────
     #

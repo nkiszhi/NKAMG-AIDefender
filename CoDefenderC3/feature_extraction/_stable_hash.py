@@ -13,7 +13,7 @@ CPython 3.3+ 起 str.__hash__ 默认使用 SipHash-1-3，且**每个进程启动
 这在本项目里造成实打实的特征错位：
 
     训练    D/E 特征在**子进程**抽取
-            feature_extraction/_de_worker_persistent.py（由 train/data_loader.py
+            feature_extraction/_ir_worker.py（由 train/data_loader.py
             的 ProcessPoolExecutor 拉起，4~16 个 worker）
     推理    D/E 特征在**主进程**抽取
             engine/app.py:666 -> ext.extract_de_only()
