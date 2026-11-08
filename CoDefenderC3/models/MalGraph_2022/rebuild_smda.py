@@ -269,6 +269,18 @@ def run_extraction(samples, workers: int, jsonl_out: str, resume: bool = True):
     return n_ok, n_fail, external_counter
 
 
+def _count_jsonl_lines(path):
+    """JSONL 里的样本数（续跑时 n_ok 只统计本次新抽的，不是总数）。"""
+    n = 0
+    try:
+        with open(path, "r", encoding="utf-8") as fr:
+            for line in fr:
+                if line.strip():
+                    n += 1
+    except Exception:
+        return 0
+    return n
+
 def main(argv=None):
     ap = argparse.ArgumentParser(
         description="用 SMDA 重建 MalGraph 的图特征 / 外部函数词表 / .pt")
@@ -351,7 +363,7 @@ def main(argv=None):
         backend=backend,
         built_at=datetime.now().isoformat(timespec="seconds"),
         extra={
-            "n_samples": n_ok,
+            "n_samples": _count_jsonl_lines(JSONL_OUT),
             "n_failed": n_fail,
             "n_external_names": len(external_counter),
             "n_pt": n_pt,
