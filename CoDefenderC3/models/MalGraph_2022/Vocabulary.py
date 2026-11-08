@@ -3,10 +3,38 @@ import os
 from collections import Counter
 from tqdm import tqdm
 
+from models.MalGraph_2022.artifact_guard import (
+    StaleArtifactError, current_fingerprint, fingerprint_mismatch,
+    read_vocab_meta,
+)
+
 
 class Vocab:
     def __init__(self, freq_file: str, max_vocab_size: int, min_freq: int = 1, unk_token: str = '<unk>',
-                 pad_token: str = '<pad>', special_tokens: list = None):
+                 pad_token: str = '<pad>', special_tokens: list = None,
+                 require_fresh: bool = True):
+
+        # ── 新鲜度校验 ────────────────────────────────────────────────
+        # 词表是"这份特征长什么样"的指纹：BN 时代与 SMDA 时代的外部函数
+        # 名集合 Jaccard 只有 0.755，索引映射完全不同。用旧词表配新特征
+        # 会让外部函数嵌入整体错位 —— 而且**不会报错**，只是分数变差。
+        # 这里直接拒绝加载，把问题暴露在启动阶段而不是线上。
+        if require_fresh:
+            meta = read_vocab_meta(freq_file)
+            if meta is None:
+                raise StaleArtifactError(
+                    "外部函数词表缺少指纹信息（%s）。\n"
+                    "该词表不是本次特征口径产出的（可能是 BN 时代的旧产物，"
+                    "或手工拷贝的文件）。\n"
+                    "请用 models/MalGraph_2022/rebuild_smda.py 重建。"
+                    % freq_file)
+            diffs = fingerprint_mismatch(current_fingerprint(), meta)
+            if diffs:
+                raise StaleArtifactError(
+                    "外部函数词表与当前特征口径不匹配（%s）：%s\n"
+                    "词表是 %r 产出的，当前跑的是 %r。"
+                    % (freq_file, "；".join(diffs),
+                       meta.get("backend"), current_fingerprint().get("backend")))
 
         self.max_vocab_size = max_vocab_size
         self.min_freq = min_freq

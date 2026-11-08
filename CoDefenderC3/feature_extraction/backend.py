@@ -42,9 +42,15 @@ def build_ir_for_features(path: str):
     """PE → ProgramIR（features 档：D01-D07 / E03-E04）。"""
     be = _env_backend()
     if be == "smda":
-        from .backend_smda import build_ir
+        try:
+            from .backend_smda import build_ir
+        except ImportError:              # worker 以顶层模块方式 import 时
+            from backend_smda import build_ir
         return build_ir(path, with_calls=False)
-    from .backend_bn import build_ir_from_path
+    try:
+        from .backend_bn import build_ir_from_path
+    except ImportError:
+        from backend_bn import build_ir_from_path
     return build_ir_from_path(path, analysis="basic")
 
 
@@ -52,7 +58,13 @@ def build_ir_for_graph(path: str):
     """PE → ProgramIR（graph 档：MalGraph 的 CFG/FCG，含 call_sites）。"""
     be = _env_backend()
     if be == "smda":
-        from .backend_smda import build_ir
+        try:
+            from .backend_smda import build_ir
+        except ImportError:
+            from backend_smda import build_ir
         return build_ir(path, with_calls=True)
-    from .backend_bn import build_ir_from_path
+    try:
+        from .backend_bn import build_ir_from_path
+    except ImportError:
+        from backend_bn import build_ir_from_path
     return build_ir_from_path(path, analysis="full")

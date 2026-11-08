@@ -34,7 +34,13 @@ BN 不确定的原因：多线程分析（`bn.set_worker_thread_count(8)`）、�
 | 门禁 | 锚点 | 覆盖 | 命令 |
 |---|---|---|---|
 | **G1** | PE | fast 路径 30 个特征（A/B/C/F/G/H） | `verify --fast-only` |
-| **G2** | **.bndb** | D/E 路径 9 个特征（D01-D07 / E03-E04） | `verify-bndb` |
+| **G2** | **IR 缓存**（原 .bndb） | D/E 路径 9 个特征（D01-D07 / E03-E04） | `verify-ir` |
+
+> ⚠ **2026-11-07**：G2 的锚点从 **.bndb** 改成 **IR**（`.ir.json.gz`）——
+> BN 专用的 .bndb 缓存路径已删除（见 docs/IR_CONTRACT.md 第 13 节），
+> D/E 统一从 ProgramIR 算。命令名同步改成 `ir` / `verify-ir`。
+> 同时 **D01-D07 的口径也变了**（旧实现装的是 BN 注解文本，新实现装真助记符），
+> 所以旧的 `bndb_manifest.json` **已作废**，需要用 `ir` 模式重新采集。
 
 Phase 1 改造的正是「BN 输出 → 特征」这一段，**G2 才是它的主判据**；G1 覆盖 fast 路径，
 顺带守住 PE 解析相关的改动。

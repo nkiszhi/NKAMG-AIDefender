@@ -42,6 +42,8 @@ CoDefenderC3/.feature_cache/
 # MalGraph 的图特征缓存与训练输出
 CoDefenderC3/models/MalGraph_2022/output/
 CoDefenderC3/models/MalGraph_2022/saved/features.jsonl
+# 作废的旧口径产物归档（重建脚本 invalidate_old 生成的）
+CoDefenderC3/models/MalGraph_2022/saved/_invalidated/
 
 # 各子模型的权重文件（.py 源码保留，只排权重）
 CoDefenderC3/models/**/*.pt

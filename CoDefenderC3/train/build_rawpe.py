@@ -404,37 +404,39 @@ def generate_metadata(all_records):
     return meta
 
 
-def binja_prevalidate(records, n_workers=8, batch_size=50):
-    """BinaryNinja 预加载验证 + bndb 预生成。
-    
-    阶段1 的 bndb 生成 = 验证 (能生成 bndb 的 PE 就是有效的)。
-    生成的 bndb 同时作为 run_all.py 特征提取的缓存 (不重复分析)。
-    
-    断点续传: bndb 文件存在即跳过。
+def ir_prevalidate(records, n_workers=8, batch_size=50):
+    """反汇编预加载验证 + IR 中间产物预生成。
+
+    阶段1 的 IR 生成 = 验证（能生成 IR 的 PE 就是有效的）。
+    生成的 IR 同时作为 run_all.py 特征提取的缓存（不重复分析）。
+
+    断点续传: IR 文件存在即跳过。
+
+    ⚠ 2026-11-07：原来是 BinaryNinja 的 binja_prevalidate —— 它同时做
+       验证和 .bndb 缓存生成。BN 时代的那条路径已删除，D/E 中间产物统一用
+       **IR**（feature_extraction/ir_cache.py），后端由
+       CODEFENDER_DISASM_BACKEND 决定。
     """
-    import subprocess as sp
-    from concurrent.futures import ThreadPoolExecutor
-    import threading
+    from feature_extraction.ir_cache import generate_irs_batch
 
     to_check = [(i, r) for i, r in enumerate(records) if "sha256" in r]
     if not to_check:
         return records
 
-    # bndb 缓存目录
-    bndb_dir = os.path.join(OUT_DIR, ".cache", "bndb")
-    os.makedirs(bndb_dir, exist_ok=True)
+    # IR 缓存目录（路径 key 必须与 data_loader._de_cache_path 一致）
+    ir_dir = os.path.join(OUT_DIR, ".cache", "ir")
+    os.makedirs(ir_dir, exist_ok=True)
 
-    # 已有 bndb 的跳过
-    def _bndb_path(sha):
-        """bndb 路径必须与 data_loader._bndb_cache_path 一致 (相同 md5 key)。"""
+    def _ir_path(sha):
+        """IR 路径必须与 data_loader._de_cache_path 一致 (相同 md5 key)。"""
         pe_path = os.path.join(SAMPLES_DIR, sha)
-        return os.path.join(bndb_dir, hashlib.md5(pe_path.encode()).hexdigest() + ".bndb")
+        return os.path.join(ir_dir, hashlib.md5(pe_path.encode()).hexdigest() + ".ir.json.gz")
 
     remaining = []
     passed = set()
     for idx, r in to_check:
-        bp = _bndb_path(r["sha256"])
-        if os.path.exists(bp) and os.path.getsize(bp) > 0:
+        ip = _ir_path(r["sha256"])
+        if os.path.exists(ip) and os.path.getsize(ip) > 0:
             passed.add(idx)
         else:
             remaining.append((idx, r))
@@ -442,126 +444,40 @@ def binja_prevalidate(records, n_workers=8, batch_size=50):
     total = len(to_check)
     n_done = len(passed)
     if not remaining:
-        print(f"  全部 {total} 个样本的 bndb 已存在, 跳过验证")
+        print(f"  全部 {total} 个样本的 IR 已存在, 跳过验证")
         clean = [r for i, r in enumerate(records) if i in passed]
         print(f"  最终数据集: {len(clean)} 样本")
         return clean
 
-    print(f"  验证+生成bndb: {len(remaining)} 个 (已有 {n_done}, "
+    print(f"  验证+生成IR: {len(remaining)} 个 (已有 {n_done}, "
           f"共 {total}, {n_workers} 并行, 每批 {batch_size})...")
-    t0 = time.time()
+    pairs = [(os.path.join(SAMPLES_DIR, r["sha256"]), _ir_path(r["sha256"]))
+             for _idx, r in remaining]
+    ok_set, fail_reasons = generate_irs_batch(pairs, n_workers=n_workers,
+                                             batch_size=batch_size)
 
-    # 写 worker 脚本
-    script_path = os.path.join(OUT_DIR, "_bndb_gen.py")
-    with open(script_path, "w") as f:
-        f.write('''import sys, gc
-try:
-    import binaryninja as bn
-    try: bn.log.log_to_stderr(bn.LogLevel.ErrorLog)
-    except: pass
-    try: bn.disable_default_log()
-    except: pass
-except ImportError:
-    for i in range(0, len(sys.argv[1:]), 2):
-        print(f"FAIL\\t{sys.argv[1+i]}\\tno_binaryninja", flush=True)
-    sys.exit(0)
-
-args = sys.argv[1:]
-for i in range(0, len(args), 2):
-    pe_path, bndb_path = args[i], args[i+1]
-    try:
-        bv = bn.load(pe_path, options={
-            "analysis.mode": "basic",
-            "analysis.linearSweep.autorun": True,
-            "analysis.limits.maxFunctionSize": 262144,
-        })
-        if bv is not None:
-            bv.update_analysis_and_wait()
-            bv.create_database(bndb_path)
-            bv.file.close()
-            del bv
-            print(f"OK\\t{pe_path}", flush=True)
-        else:
-            print(f"FAIL\\t{pe_path}\\tload_None", flush=True)
-    except Exception as e:
-        print(f"FAIL\\t{pe_path}\\t{str(e)[:80]}", flush=True)
-    gc.collect()
-''')
-
-    lock = threading.Lock()
+    pe_to_idx = {os.path.join(SAMPLES_DIR, r["sha256"]): idx
+                 for idx, r in remaining}
     failed = []
-    progress = [n_done]
+    for pe_path in ok_set:
+        idx = pe_to_idx.get(pe_path)
+        if idx is not None:
+            passed.add(idx)
+    for pe_path, reason in (fail_reasons or {}).items():
+        failed.append("%s\t%s" % (os.path.basename(pe_path)[:16], reason))
 
-    def _run_batch(batch_items):
-        args = []
-        pe_set = set()
-        for idx, r in batch_items:
-            pe_path = os.path.join(SAMPLES_DIR, r["sha256"])
-            bndb = _bndb_path(r["sha256"])
-            args.extend([pe_path, bndb])
-            pe_set.add(pe_path)
-
-        idx_map = {os.path.join(SAMPLES_DIR, r["sha256"]): idx for idx, r in batch_items}
-
-        try:
-            proc = sp.run([sys.executable, script_path] + args,
-                          capture_output=True, timeout=batch_size * 180)
-            stdout = (proc.stdout or b"").decode("utf-8", errors="replace")
-        except Exception:
-            stdout = ""
-
-        reported = set()
-        for line in stdout.strip().split("\n"):
-            parts = line.split("\t", 2)
-            if len(parts) >= 2 and parts[1] in idx_map:
-                reported.add(parts[1])
-                idx = idx_map[parts[1]]
-                with lock:
-                    progress[0] += 1
-                    if parts[0] == "OK":
-                        passed.add(idx)
-                    else:
-                        failed.append(parts[1])
-
-        for pe_path in pe_set:
-            if pe_path not in reported and pe_path in idx_map:
-                with lock:
-                    progress[0] += 1
-                    failed.append(os.path.basename(pe_path)[:16])
-
-        with lock:
-            done = progress[0]
-            if done % 200 == 0 or done >= total:
-                elapsed = time.time() - t0
-                rate = max(done - n_done, 1) / max(elapsed, 0.01)
-                eta = (total - done) / max(rate, 0.01)
-                print(f"\r  [{done}/{total}] {done/total*100:.1f}% "
-                      f"({rate:.1f}/s, ETA {eta:.0f}s, "
-                      f"pass={len(passed)}, fail={len(failed)})",
-                      end="", flush=True)
-
-    batches = [remaining[i:i+batch_size] for i in range(0, len(remaining), batch_size)]
-    with ThreadPoolExecutor(max_workers=n_workers) as pool:
-        futs = [pool.submit(_run_batch, b) for b in batches]
-        for f in futs:
-            f.result()
-
-    elapsed = time.time() - t0
-    print(f"\n  完成: {len(passed)} 通过, {len(failed)} 拒绝 ({elapsed:.0f}s)")
-
-    try: os.remove(script_path)
-    except: pass
+    print(f"\n  完成: {len(passed)} 通过, {len(failed)} 拒绝")
 
     if failed:
-        reject_path = os.path.join(OUT_DIR, "binja_rejected.txt")
+        reject_path = os.path.join(OUT_DIR, "ir_rejected.txt")
         with open(reject_path, "w") as f:
-            for name in failed: f.write(name + "\n")
+            for name in failed:
+                f.write(name + "\n")
         print(f"  拒绝列表: {reject_path}")
 
     clean = [r for i, r in enumerate(records) if i in passed]
     print(f"  最终数据集: {len(clean)} 样本")
     return clean
-
 
 def _load_records_from_csv():
     """从已有的 metadata.csv 恢复记录列表 (断点续传用)。"""
@@ -698,9 +614,9 @@ def main():
         generate_metadata(all_sampled)
         print(f"  Step 1-4 checkpoint 已保存")
 
-    # Step 5: BinaryNinja 预加载验证 (自带断点续传: binja_validated.txt)
-    print(f"\n  ── Step 5: BinaryNinja 预加载验证 ──")
-    all_sampled = binja_prevalidate(all_sampled, n_workers=8, batch_size=50)
+    # Step 5: 反汇编预加载验证 (IR 中间产物, 自带断点续传)
+    print(f"\n  ── Step 5: 反汇编预加载验证 (IR) ──")
+    all_sampled = ir_prevalidate(all_sampled, n_workers=8, batch_size=50)
 
     # Step 6: 重新生成 metadata (只含通过验证的样本)
     print(f"\n  ── Step 6: 生成 metadata (仅验证通过样本) ──")
@@ -708,7 +624,7 @@ def main():
 
     print("\n" + "=" * 60)
     print(f"  ✓ 完成")
-    print(f"  下一步: python run_all.py  (BinaryNinja 提取特征 → 33 模型)")
+    print(f"  下一步: python run_all.py  (提取特征 → 33 模型)")
     print("=" * 60)
 
 

@@ -602,3 +602,84 @@ SMDA 从 capstone 的 RIP 相对寻址直接算出 IAT 地址，**不丢**。
   必须作废重训**：函数集合、FCG 边、11 维块特征全都变了
 * 外部函数词表 `train_external_function_name_vocab.jsonl` 要用 SMDA 的
   导入表重建（BN 2594 个 vs SMDA 2571 个，Jaccard 0.755）
+
+## 13. Phase 4：MalGraph 作废 + SMDA 重建 + 重训；BN 专用路径切除
+
+### 13.1 为什么旧产物必须作废
+
+BN → SMDA 切换后 MalGraph 的输入**全变了**，而旧产物是**静默失效**的：
+
+| 产物 | 变化 | 后果 |
+|---|---|---|
+| 函数集合 | BN 12032 个里只有 2792 个带正常序言（77% 是数据噪声），SMDA 10269 个里 2836 个带序言 | 块特征分布整体偏移 |
+| FCG 边 | BN 的 MLIL_IMPORT 分支 83% 取不到符号 → 导入调用边被丢 | FCG 少了大半导入边 |
+| 11 维块特征 | retn/ret 渲染差异、常量口径差异 | 每维都有偏移 |
+| 外部函数词表 | 两后端导入名集合 Jaccard 只有 0.755 | 外部函数嵌入的索引映射整体错位 |
+
+⇒ 直接复用 = 推理输入与训练分布完全错位，**而且不会报错**，只是分数没有意义。
+
+### 13.2 新鲜度指纹（防止再次静默失效）
+
+`models/MalGraph_2022/artifact_guard.py` 给每个训练产物打指纹：
+
+`@
+{feature_schema, ir_schema, backend, built_at, ...}
+`@
+
+* 词表文件第一行写指纹（`artifact_guard.stamp_vocab_file`）
+* `Vocab.__init__` 加载时比对：指纹缺失 / backend 不同 / 口径不同 → **直接抛
+  StaleArtifactError**，而不是默默用旧词表跑出新分数
+* 权重 `best_model.pt` 里也存了同样的指纹（诊断用）
+* `saved/feature_manifest.json` 记录这次重建用的后端、样本数、目录、随机种子
+### 13.3 重建与重训（可复现）
+
+`@
+# ① 作废旧产物 + 用 SMDA 重抽特征 + 重建词表 + 转 .pt
+python models/MalGraph_2022/rebuild_smda.py --dirs-file <样本目录.json> --limit-per-class 600 --workers 8
+
+# ② 训练（吃 .pt）
+python models/MalGraph_2022/train_malgraph.py --epochs 30
+`@
+
+* 样本抽样是**确定性**的（排序 + 固定 seed），抽样清单写进 manifest
+* 词表排序也是确定性的（`(-count, name)`）—— 否则并行提取的完成顺序会
+  随机改变同频词的先后，而 `Counter.most_common()` 对同频项按插入顺序决胜，
+  于是"同一个词表"在不同机器上会得到不同的索引映射 → 权重对不上词表
+* 仓库里原本**没有** MalGraph 的训练脚本（只有特征抽取 + .pt 转换），
+  `train_malgraph.py` 是这次补上的；模型结构与推理侧
+  `engine/app.py::DEFAULT_MALGRAPH_PARAMS` 一致（graphsage / global_max_pool /
+  11→128→128→128）
+### 13.4 BN 专用路径的切除
+
+| 删除的东西 | 替代 |
+|---|---|
+| `feature_extraction/_bndb_worker.py` | `feature_extraction/_ir_worker.py`（改成走 backend 调度，bn/smda 都行） |
+| `BinjaExtractor.generate_bndbs_batch` | `feature_extraction/ir_cache.py::generate_irs_batch` |
+| `BinjaExtractor.extract_de_from_bndb_batch` | `feature_extraction/ir_cache.py::extract_de_from_ir_batch` |
+| `BinjaExtractor._extract_disassembly(bv)` | `feature_extraction/features_from_ir.py::disassembly_features` |
+| `BinjaExtractor._extract_graphs(bv)` | `feature_extraction/features_from_ir.py::graph_features` |
+| `BinjaExtractor._call_depth` | `features_from_ir.py::_call_depth_ir` |
+| `BinjaExtractor.extract()`（48 特征一次抽完的 BN 路径，仓库内无人调用） | `extract_fast()` + `extract_de_only()` |
+| `_extract_pe_structure(bv,…)` / `_extract_strings(bv,…)` / `_extract_hashes(bv,…)` / `_extract_metadata(bv,…)` | 对应的 `*_fast` 纯 Python 版本 |
+| `train/_drain_bndb_to_de.py` / `_fix_de_gap.py` / `_probe_de_coverage.py`（BN 时代的一次性修补脚本） | —— |
+| `train/apply_bn_optimizations.py` / `benchmark_bn_optimization.py` | —— |
+| `train/data_loader.py` 的 `CODEFENDER_DE_CACHE=bndb` 分支 | 只剩 `ir`（旧环境变量值会打告警并按 ir 处理） |
+| `train/build_rawpe.py::binja_prevalidate` | `ir_prevalidate`（IR 生成即验证，缓存 key 与 data_loader 一致） |
+
+**注意**：`extract_de_only` 换成 IR 之后，**D01-D07 的语义变了** ——
+旧实现取 `tokens[0].text` 当助记符，而 BN 5.x 的 `tokens[0]` 是**空的地址
+分隔符**，所以旧 D01-D07 装的是 `"{ Does not return }"` 这类注解文本；
+IR 路径装的是真正的助记符。⇒ **依赖 D01-D07 的 V6 系列模型
+（opcode_seq / func_embed / opcode_stat）必须重训**，否则推理输入与训练
+分布错位。（详见第 11 节。）
+
+### 13.5 还没切的部分
+
+* `feature_extraction/smda_extract.py`（另一条并行的 SMDA 实现，由另一条任务合入）
+  与本文件的 `backend_smda.py + features_from_ir.py` 功能重叠，两套并存有
+  漂移风险，建议二选一
+* `unified.py` 的 `_extract_opcode_seq` / `_extract_func_embeddings` /
+  `_extract_graph_stat` 还在直接调 BN（属 P0-5）
+* `engine/app.py` 的 `include_de` 现在走 IR 了，但**没有**后端开关 ——
+  推理侧要能分别用 bn/smda 跑一遍做对比，还需要把
+  `CODEFENDER_DISASM_BACKEND` 贯通到推理链

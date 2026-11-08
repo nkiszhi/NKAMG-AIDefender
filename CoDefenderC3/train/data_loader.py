@@ -255,9 +255,15 @@ class PELoader:
         #   "bndb"（默认）: BN 私有数据库, 6.0 MB/样本, 只有 BN 能读
         #   "ir"          : ProgramIR（后端中立）, 105 KB/样本, 抽特征不再需要 BN 许可
         # 见 feature_extraction/ir_cache.py 与 docs/IR_CONTRACT.md
-        self._de_cache_kind = os.environ.get("CODEFENDER_DE_CACHE", "bndb").lower()
-        if self._de_cache_kind not in ("bndb", "ir"):
-            self._de_cache_kind = "bndb"
+        # ⚠ 2026-11-07：BN 专用的 .bndb 缓存路径已删除，D/E 中间产物统一用
+        #   **IR**（feature_extraction/ir_cache.py）。保留 CODEFENDER_DE_CACHE
+        #   只是为了识别旧环境变量 —— 值为 bndb 时会打一条告警并按 ir 处理。
+        self._de_cache_kind = os.environ.get("CODEFENDER_DE_CACHE", "ir").lower()
+        if self._de_cache_kind not in ("ir",):
+            if self._de_cache_kind == "bndb":
+                print("[data_loader] 提示: .bndb 缓存路径已删除，改用 IR 缓存"
+                      "（D/E 特征口径也随之改变，见 docs/IR_CONTRACT.md 第 13 节）")
+            self._de_cache_kind = "ir"
         self._ir_cache = os.path.join(self.cache_dir, "ir")
         self._month_cache = os.path.join(self.cache_dir, "per_month")
 
@@ -307,29 +313,23 @@ class PELoader:
         return os.path.exists(self._de_cache_path(path))
 
     def _de_cache_path(self, path):
-        """D/E 中间产物的缓存路径（按当前缓存类型）。"""
-        if self._de_cache_kind == "ir":
-            return os.path.join(self._ir_cache,
-                               hashlib.md5(path.encode()).hexdigest() + ".ir.json.gz")
-        return self._de_cache_path(path)
+        """D/E 中间产物的缓存路径（IR）。"""
+        return os.path.join(self._ir_cache,
+                            hashlib.md5(path.encode()).hexdigest() + ".ir.json.gz")
 
     def _is_valid_de_cache(self, path):
         """D/E 中间产物是否已存在（按当前缓存类型）。"""
         return os.path.exists(self._de_cache_path(path))
 
     def _gen_de_cache(self, ext, pairs, **kw):
-        """按当前缓存类型生成 D/E 中间产物（bndb 或 IR）。"""
-        if self._de_cache_kind == "ir":
-            from feature_extraction.ir_cache import generate_irs_batch
-            return generate_irs_batch(pairs, **kw)
-        return ext.generate_bndbs_batch(pairs, **kw)
+        """生成 D/E 中间产物（IR 缓存）。"""
+        from feature_extraction.ir_cache import generate_irs_batch
+        return generate_irs_batch(pairs, **kw)
 
     def _extract_de(self, ext, pe_paths, cache_paths, npz_paths, **kw):
-        """按当前缓存类型从中间产物抽 D/E 特征。"""
-        if self._de_cache_kind == "ir":
-            from feature_extraction.ir_cache import extract_de_from_ir_batch
-            return extract_de_from_ir_batch(pe_paths, cache_paths, npz_paths, **kw)
-        return ext.extract_de_from_bndb_batch(pe_paths, cache_paths, npz_paths, **kw)
+        """从 IR 中间产物抽 D/E 特征。"""
+        from feature_extraction.ir_cache import extract_de_from_ir_batch
+        return extract_de_from_ir_batch(pe_paths, cache_paths, npz_paths, **kw)
 
     def _has_sample_cache(self, path):
         return os.path.exists(self._sample_cache_path(path))

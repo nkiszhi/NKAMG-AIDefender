@@ -582,87 +582,80 @@ def cmd_verify(args):
 #（PE → bndb 缓存 → 从 bndb 抽特征）。
 
 
-def _bndb_files(d):
+def _ir_files(d):
     import glob
-    return sorted(glob.glob(os.path.join(d, "*.bndb")))
+    return sorted(glob.glob(os.path.join(d, "*.ir.json.gz")))
 
 
-def _extract_from_bndb(bndb_path, ext):
-    bv = ext.bn.load(bndb_path)
-    if bv is None:
-        raise RuntimeError("bn.load 返回 None")
-    try:
-        feats = {}
-        feats.update(ext._extract_disassembly(bv))
-        feats.update(ext._extract_graphs(bv))
-        return feats
-    finally:
-        try:
-            bv.file.close()
-        except Exception:
-            pass
+def _extract_from_ir(ir_path):
+    """从 IR 缓存抽 D/E 特征（后端中立）。
+
+    ⚠ 2026-11-07：原来是 _extract_from_bndb() —— 打开 .bndb 走 BN 的
+       _extract_disassembly / _extract_graphs。BN 专用的 .bndb 路径已删除，
+       D/E 统一从 ProgramIR 算（feature_extraction/features_from_ir.py），
+       与推理/训练链走的是**同一套**代码。
+    """
+    from feature_extraction.ir import ProgramIR
+    from feature_extraction.features_from_ir import all_features
+    ir = ProgramIR.load(ir_path)
+    return all_features(ir)
 
 
-def cmd_bndb(args):
-    """从 .bndb 目录采集 D/E 特征指纹（确定性锚点）。"""
+def cmd_ir(args):
+    """从 IR 缓存目录采集 D/E 特征指纹（确定性锚点）。
+
+    ⚠ 2026-11-07：原名 cmd_bndb（.bndb 锚点）。BN 专用的 .bndb 缓存路径
+       已删除，D/E 的确定性锚点改成 **IR**（.ir.json.gz）。
+    """
     _ensure_deps(args.pkgs)
-    _activate_license(args.license)
-    import binaryninja as bn
-    BinjaExtractor = _load_extractor()
-    ext = BinjaExtractor.__new__(BinjaExtractor)
-    ext.bn = bn
-    ext._headless = True
-    files = _bndb_files(args.dir)
+    files = _ir_files(args.dir)
     if not files:
-        print("[bndb] 目录里没有 .bndb: %s" % args.dir)
+        print("[ir] 目录里没有 .ir.json.gz: %s" % args.dir)
         return 2
     entries = []
     t0 = time.time()
     for i, f in enumerate(files, 1):
         rec = {"id": os.path.basename(f), "path": f, "features": {}, "errors": {}}
         try:
-            feats = _extract_from_bndb(f, ext)
+            feats = _extract_from_ir(f)
             for fid in sorted(feats):
                 rec["features"][fid] = _fingerprint(feats[fid])
         except Exception as e:
-            rec["errors"]["bndb"] = "%s: %s" % (type(e).__name__, e)
+            rec["errors"]["ir"] = "%s: %s" % (type(e).__name__, e)
         entries.append(rec)
-        print("[bndb] %3d/%d %-40s nfeat=%2d  %.1fs" % (
+        print("[ir] %3d/%d %-40s nfeat=%2d  %.1fs" % (
             i, len(files), os.path.basename(f)[:40], len(rec["features"]), time.time() - t0))
     man = {
-        "schema": "codefender-bn-baseline/1",
-        "source": "bndb",
+        "schema": "codefender-ir-baseline/1",
+        "source": "ir",
         "created": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "env": _env_info(args.license),
-        "bndb_dir": os.path.abspath(args.dir),
+        "ir_dir": os.path.abspath(args.dir),
         "samples": entries,
     }
     out = os.path.abspath(args.out)
     os.makedirs(os.path.dirname(out), exist_ok=True)
     with open(out, "w", encoding="utf-8") as f:
         json.dump(man, f, ensure_ascii=False, indent=1)
-    print("[bndb] 写入 %s：%d 个 bndb / %d 个特征指纹"
+    print("[ir] 写入 %s：%d 个 IR / %d 个特征指纹"
           % (out, len(entries), sum(len(e["features"]) for e in entries)))
     return 0
 
 
-def cmd_verify_bndb(args):
-    """校验 bndb 锚定的 D/E 特征是否逐位不变。"""
+def cmd_verify_ir(args):
+    """校验 IR 锚定的 D/E 特征是否逐位不变。
+
+    ⚠ 2026-11-07：原名 cmd_verify_bndb（.bndb 锚点）—— .bndb 路径已删除。
+    """
     _ensure_deps(args.pkgs)
-    _activate_license(args.license)
-    import binaryninja as bn
-    BinjaExtractor = _load_extractor()
     with open(args.manifest, "r", encoding="utf-8") as f:
         man = json.load(f)
-    ext = BinjaExtractor.__new__(BinjaExtractor)
-    ext.bn = bn
-    ext._headless = True
     n_feat = 0
     n_bad = 0
     bad = 0
     for i, e in enumerate(man["samples"], 1):
         try:
-            feats = _extract_from_bndb(e["path"], ext)
+            feats = _extract_from_ir(e["path"])
         except Exception as ex:
             print("[verify] %3d/%d FAIL %s: %s" % (i, len(man["samples"]), e["id"], ex))
             bad += 1
@@ -710,7 +703,7 @@ def main():
     pc.add_argument("--pkgs", default=None, help="numpy/pefile 所在目录")
     pc.add_argument("--license", default=None, help="BN 许可文件（默认自动找）")
     pc.add_argument("--fast-only", action="store_true",
-                    help="只抽 fast 路径(A/B/C/F/G/H)；D/E 的确定性门禁用 bndb 模式")
+                    help="只抽 fast 路径(A/B/C/F/G/H)；D/E 的确定性门禁用 ir 模式")
     pc.add_argument("--require-de", action="store_true",
                     help="要求 D/E 视角必须采集成功（BN 不可用时直接失败，用于 CI 门禁）")
     pc.set_defaults(func=cmd_capture)
@@ -722,17 +715,17 @@ def main():
     pv.add_argument("--fast-only", action="store_true",
                     help="只验 fast 路径特征（与 capture --fast-only 对应）")
     pv.set_defaults(func=cmd_verify)
-    pb = sub.add_parser("bndb", help="从 .bndb 采集 D/E 特征指纹（确定性锚点）")
-    pb.add_argument("--dir", required=True, help="含 .bndb 的目录")
+    pb = sub.add_parser("ir", help="从 IR 缓存采集 D/E 特征指纹（确定性锚点）")
+    pb.add_argument("--dir", required=True, help="含 .ir.json.gz 的目录")
     pb.add_argument("--out", required=True)
     pb.add_argument("--pkgs", default=None)
     pb.add_argument("--license", default=None)
-    pb.set_defaults(func=cmd_bndb)
-    pvb = sub.add_parser("verify-bndb", help="校验 bndb 锚定的 D/E 特征")
+    pb.set_defaults(func=cmd_ir)
+    pvb = sub.add_parser("verify-ir", help="校验 IR 锚定的 D/E 特征")
     pvb.add_argument("--manifest", required=True)
     pvb.add_argument("--pkgs", default=None)
     pvb.add_argument("--license", default=None)
-    pvb.set_defaults(func=cmd_verify_bndb)
+    pvb.set_defaults(func=cmd_verify_ir)
     args = ap.parse_args()
     if not getattr(args, "func", None):
         ap.print_help()

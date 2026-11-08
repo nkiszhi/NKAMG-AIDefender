@@ -1,0 +1,32 @@
+{
+  "backend": "smda",
+  "benign_dirs": [
+    "E:\\nkproject\\00 样本库\\01 白样本\\benign_samples_20260909_110353_f41761f0\\samples"
+  ],
+  "best_val_auc": 0.9926793013749535,
+  "built_at": "2026-11-07T15:31:09",
+  "feature_schema": "malgraph-ir/2",
+  "ir_schema": "codefender-ir/1",
+  "malicious_dirs": [
+    "E:\\nkproject\\00 样本库\\00 原始旧样本-2024恶意\\2024"
+  ],
+  "max_vocab_size": 10000,
+  "n_external_names": 29531,
+  "n_failed": 1,
+  "n_pt": 1199,
+  "n_samples": 535,
+  "n_train": 927,
+  "n_val": 232,
+  "params": {
+    "ablation_models": "none",
+    "acfg_init_dims": 11,
+    "cfg_filters": "128-128-128",
+    "dropout_rate": 0.3,
+    "fcg_filters": "128-128-128",
+    "gnn_type": "graphsage",
+    "number_classes": 2,
+    "pool_type": "global_max_pool"
+  },
+  "sample_limit_per_class": 600,
+  "seed": 20261107
+}
