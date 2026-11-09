@@ -368,7 +368,7 @@ const incompleteCount = computed(() => modelRows.value.filter(row => !['Maliciou
 onMounted(async () => {
   window.addEventListener('pagehide', notifyPageLeave)
   loading.value = Boolean(localStorage.getItem(TASK_KEY))
-  if (loading.value) modelsOpen.value = ['detectionStats']
+  if (loading.value) modelsOpen.value = []
   await loadConfig()
   try {
     const { data } = await apiService.get(`${apiBaseUrl.value}/upload-policy`, { timeout: 5000 })
@@ -466,6 +466,7 @@ async function searchSample() {
     return
   }
   searching.value = true
+  modelsOpen.value = []
   try {
     const response = await apiService.get(`${apiBaseUrl.value}/samples/${hashQuery.value}`, { timeout: 15000 })
     setDetectionResult(response.data)
@@ -643,7 +644,7 @@ function setDetectionResult(data) {
   const normalized = normalizeDetectionResponse(data)
   uploadResult.value = normalized
   showSection.value = normalized.is_pe && !normalized.database_hit ? 'modelDetection' : 'fileInfo'
-  modelsOpen.value = ['detectionStats']
+  modelsOpen.value = []
   void detectionStatsPanel.value?.refresh()
   nextTick(() => resultSection.value?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
 }
