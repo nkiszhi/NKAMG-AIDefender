@@ -39,9 +39,8 @@ CoDefenderC3/ensemble.pkl
 CoDefenderC3/ensemble2.pkl
 benign.csv
 malware.csv
-test_eval/sample_index.json
-test_eval/eval_output/
-test2_eval/eval_output/*.jsonl
-test2_eval/eval_output/*.json
+# 测评工具链与全部产物（仅本机使用，不入库）
+test_eval/
+test2_eval/
 .tmp/
 .vscode/
