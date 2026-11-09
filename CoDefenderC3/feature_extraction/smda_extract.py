@@ -77,6 +77,32 @@ except ImportError:  # 仅 feature_extraction/ 在 sys.path 时
     from hashing import stable_bucket as _stable_bucket
 
 
+def de_features_are_empty(feats: Dict[str, np.ndarray]) -> bool:
+    """判断 D/E 特征是否"什么都没抽到"。
+
+    SMDA 对无法解析的文件（不是 PE / 被截断 / 加密壳）不会抛异常，而是返回一份
+    **全零**的指令与图统计。若不拦截，这些样本会被当成"抽取成功"写进数据集，
+    污染训练与推理（推理侧同样会拿到全零特征去打分）。
+
+    判据：D01（opcode 序列）全为 0 ⇒ 一条指令都没解出来 ⇒ 抽取失败。
+    """
+    d01 = feats.get("D01")
+    if d01 is None:
+        return True
+    d05 = feats.get("D05")
+    try:
+        no_opcode = not bool(np.any(np.asarray(d01)))
+    except Exception:
+        no_opcode = True
+    n_funcs = 0
+    if d05 is not None:
+        try:
+            n_funcs = int(np.asarray(d05).reshape(-1)[0])   # D05[0] = 函数数
+        except Exception:
+            n_funcs = 0
+    # 一条指令没解出来 且 一个函数都没识别 ⇒ 抽取失败
+    return bool(no_opcode and n_funcs == 0)
+
 class SmdaExtractor:
     """SMDA 后端的特征提取器，接口与 BinjaExtractor 对齐。"""
 
@@ -351,6 +377,12 @@ class SmdaExtractor:
             e04[8] = max(in_degrees)
         e04[9] = len(set().union(*cg_adj.values())) if cg_adj else 0
         feats["E04"] = e04
+
+        # 抽取失败守卫：全零特征必须报错，不能当成"抽取成功"
+        if de_features_are_empty(feats):
+            raise RuntimeError(
+                "SMDA extracted no instructions (not a PE / truncated / packed): "
+                + str(pe_path))
 
         return feats
 

@@ -21,9 +21,10 @@
 2. **换 SMDA 本身没有让引擎整体变差**：同批 2417 样本上，快通道集成 AUC 0.9124→**0.9350**
    （+0.0225，CI [+0.0168,+0.0287]），全 33 模型 0.9261→**0.9345**；代价集中在 D/E 族
    （0.7539→**0.5323**，−0.2215）。
-3. **真正的阻塞在训练侧**：训练流水线的 D/E 提取仍走 BinaryNinja 私有格式
-   （`train/data_loader.py:541/571` → `extract_de_from_bndb_batch`），而推理侧已切 SMDA。
-   **不统一就重训 = 白训。**
+3. **训练侧阻塞已于 2026-11-09 解除**：训练流水线默认后端已切到 SMDA
+   （`train/data_loader.py` 新增 SMDA 分支 + `extract_feature.py::extract_de_smda_batch`），
+   训练与推理现在共用同一套 `smda_extract` 与同一套稳定哈希。**BN 路径完整保留**，
+   需要回退时设 `CODEFENDER_DISASM_BACKEND=bn`。
 4. **"图模型"目前是扁平特征 MLP**：5 个图模型（CFGGAT/GCN/DGCNN/CallGraphGNN/GraphStatNet）在
    训练与推理两端都只吃 22 维统计向量，**从未接触真实图拓扑**。文献 [1] 指出：扁平特征模型
    在同分布内最强、跨时间边界最差——这与我们的观测完全一致，说明**图分支必须真正启用**，
@@ -138,17 +139,22 @@ SaxeBerlinDNN / EmberDNN / HashEmbedNet / MalGraph 等）。
 
 ## 2. 重训前必须完成的前置改造（阻塞项）
 
-### B1 · 训练侧 D/E 提取切到 SMDA（**最高优先级**）
+### B1 · 训练侧 D/E 提取切到 SMDA（**最高优先级**）✅ 已完成 2026-11-09
 
 - **证据**：`train/data_loader.py:541/571` 调用 `ext.extract_de_from_bndb_batch(have_bndb, [bndb路径], [npz路径], n_workers=...)`；
   该实现依赖 `.bndb` 缓存与 4 个长驻 worker 子进程（`_de_worker_persistent.py`）。
 - **后果**：训练得到的是 BN 域特征、推理是 SMDA 域特征 ⇒ 重训后权重依旧对不上。
-- **改法（二选一）**
-  - **路线 A（快）**：新增 `extract_de_smda_batch()`，用 `SmdaExtractor.extract_de` 批量写 npz，
-    复用同一 npz schema（`data_loader.py:56` 的 `np.savez(npz_path, **feats)`）。
-  - **路线 B（稳，推荐）**：引入 **ProgramIR 中间表示**——`PE →(BN/SMDA)→ IR →(纯函数)→ D01-D07/E03-E04`，
-    训练侧消费**与后端无关的 IR 缓存**，后端可换、特征口径可审计、可逐位回归。
-    参考 `test_lm` 分支的 `docs/IR_CONTRACT.md` + `feature_extraction/ir.py` + `backend_smda.py`。
+- **实际改法（路线 A 已落地）**
+  - `feature_extraction/extract_feature.py`：新增 `append_to_npz()`（增量写盘）、进程池 worker
+    （`_smda_worker_init` / `_smda_extract_one`）与 `extract_de_smda_batch()`
+    ——**不生成 .bndb**，PE→D/E 一步到位，返回契约与 BN 路径一致（`(ok_set, fail_reasons)` + `on_ok` 回调）。
+  - `train/data_loader.py`：`extract_features()` 增加后端分支，**默认 SMDA**；
+    新增 `_extract_de_stage_smda()`，日志契约与 BN 路径一致
+    （成功→`de_done`，硬失败→`de_fail`，超时→软失败留待重跑）。
+  - `feature_extraction/smda_extract.py`：新增 `de_features_are_empty()` 守卫 ——
+    SMDA 对解不出的文件会返回**全零**特征而不报错，守卫把它判为抽取失败并抛错，
+    避免脏样本被当成有效样本写进数据集（worker 侧双保险）。
+  - 路线 B（ProgramIR）仍是更彻底的方案，见 `test_lm` 分支，本轮未采用。
 - **验收**：① 同一批 PE，SMDA 路径与 BN 路径的 D/E 特征**逐位一致或差异可解释**；
   ② 同一批样本连抽两次，npz **逐位相同**（跨进程验证 hash 稳定性）。
 
@@ -478,8 +484,10 @@ curl -X POST http://127.0.0.1:8000/reload-model
 
 | 文件 | 改动 | 优先级 | 状态 |
 |---|---|---|---|
-| `CoDefenderC3/train/data_loader.py` | D/E 提取改 SMDA（替换 541/571 的 BN 调用），或改消费 IR 缓存 | P0 | 待做 |
-| `CoDefenderC3/train/_de_worker_persistent.py` | 同步后端；启动设 `PYTHONHASHSEED=0` | P0 | 待做 |
+| `CoDefenderC3/train/data_loader.py` | D/E 提取改 SMDA（新增分支，BN 路径保留） | P0 | **已完成** |
+| `CoDefenderC3/feature_extraction/extract_feature.py` | 新增 `extract_de_smda_batch()` + 进程池 worker + `append_to_npz()` | P0 | **已完成** |
+| `CoDefenderC3/feature_extraction/smda_extract.py` | 新增 `de_features_are_empty()` 空特征守卫 | P0 | **已完成** |
+| `CoDefenderC3/train/_de_worker_persistent.py` | 启动设 `PYTHONHASHSEED=0` 兜底 | P1 | 待做 |
 | `CoDefenderC3/train/build_minimal_dataset.py` | 支持**时间线切分**（现仅随机月份） | P1 | 待做 |
 | `CoDefenderC3/feature_extraction/extract_feature.py` | `_disasm_backend()` 默认值与 `selected_backend()` 统一 | P1 | 待做 |
 | `CoDefenderC3/engine/analysis_worker.py` | 同上 | P1 | 待做 |

@@ -34,6 +34,59 @@ def _disasm_backend() -> str:
     return os.environ.get("CODEFENDER_DISASM_BACKEND", "smda").strip().lower() or "smda"
 
 
+def append_to_npz(npz_path, arrays):
+    """把特征追加进 npz（已存在的 key 不覆盖）——训练侧增量写盘用。"""
+    import io, zipfile
+    with zipfile.ZipFile(npz_path, "a", zipfile.ZIP_STORED) as zf:
+        existing = set(zf.namelist())
+        for key, arr in arrays.items():
+            fname = key + ".npy"
+            if fname in existing:
+                continue
+            buf = io.BytesIO()
+            np.save(buf, arr)
+            zf.writestr(fname, buf.getvalue())
+
+
+# ── SMDA 进程池 worker（训练侧 D/E 抽取）─────────────────────────────
+#  SMDA 自带协作式时间预算，不会像 BinaryNinja 那样在畸形样本上撞死整台机器，
+#  因此用进程池（天然隔离崩溃）而不是 BN 那套常驻 worker 协议。
+_SMDA_WORKER_STATE: Dict[str, object] = {}
+
+
+def _smda_worker_init(timeout: int) -> None:
+    """进程池 worker 初始化：每个进程建一个 SMDA 提取器（该进程内复用）。"""
+    try:
+        from feature_extraction.smda_extract import SmdaExtractor
+        _SMDA_WORKER_STATE["ex"] = SmdaExtractor(timeout=timeout)
+        _SMDA_WORKER_STATE["err"] = ""
+    except Exception as e:
+        _SMDA_WORKER_STATE["ex"] = None
+        _SMDA_WORKER_STATE["err"] = str(e)[:200]
+
+
+def _smda_extract_one(args):
+    """进程池任务：抽一个 PE 的 D/E 并写入样本 npz。返回 (pe_path, ok, reason)。"""
+    pe_path, npz_path = args
+    ex = _SMDA_WORKER_STATE.get("ex")
+    if ex is None:
+        return pe_path, False, _SMDA_WORKER_STATE.get("err", "worker_init_failed")
+    try:
+        feats = ex.extract_de(pe_path)
+        if not feats:
+            return pe_path, False, "empty_feats"
+        # 双保险：抽取器内部已校验，这里再挡一次"什么都没抽到"的脏样本
+        try:
+            from feature_extraction.smda_extract import de_features_are_empty
+            if de_features_are_empty(feats):
+                return pe_path, False, "empty_de_features"
+        except ImportError:
+            pass
+        append_to_npz(npz_path, feats)
+        return pe_path, True, ""
+    except Exception as e:
+        return pe_path, False, str(e)[:160]
+
 def _env_int(name: str, default: int) -> int:
     """Helper to read integer from environment variable."""
     try:
@@ -701,6 +754,53 @@ for line in lines:
 
         return ok_set, fail_reasons
 
+    def extract_de_smda_batch(self, pe_paths, npz_paths, n_workers=4, on_ok=None):
+        """用 SMDA 批量抽取 D/E（训练侧默认路径）。
+
+        与 extract_de_from_bndb_batch 的契约一致：返回 (ok_set, fail_reasons)，
+        每个成功样本回调 on_ok(pe_path)。三点差别：
+          1. 不需要 .bndb 缓存 —— 直接吃 PE（省掉整个 bndb 生成阶段与磁盘占用）
+          2. 用进程池而非常驻 worker —— SMDA 不会像 BN 那样 segfault，进程池天然隔离崩溃
+          3. 特征口径与推理侧完全一致（同一份 smda_extract + 同一套稳定哈希）
+        """
+        from concurrent.futures import ProcessPoolExecutor, as_completed
+
+        total = len(pe_paths)
+        if total == 0:
+            return set(), {}
+
+        timeout = _env_int("CODEFENDER_SMDA_TIMEOUT",
+                            _env_int("CODEFENDER_DE_PER_FILE_TIMEOUT", 180))
+        workers = max(1, min(int(n_workers), total))
+        ok_set, fail_reasons = set(), {}
+        tasks = list(zip(pe_paths, npz_paths))
+        t0 = time.time()
+        done = 0
+        with ProcessPoolExecutor(max_workers=workers,
+                                 initializer=_smda_worker_init,
+                                 initargs=(timeout,)) as pool:
+            futures = [pool.submit(_smda_extract_one, task) for task in tasks]
+            for fut in as_completed(futures):
+                pe_path, ok, reason = fut.result()
+                done += 1
+                if ok:
+                    ok_set.add(pe_path)
+                    if on_ok is not None:
+                        try:
+                            on_ok(pe_path)
+                        except Exception:
+                            pass
+                else:
+                    fail_reasons[pe_path] = reason
+                if done % 20 == 0 or done == 1 or done >= total:
+                    el = time.time() - t0
+                    rate = done / max(el, 0.01)
+                    print("\r    D/E[SMDA] [%d/%d] %.1f%% (%.1f/s, ETA %ds, ok=%d, fail=%d)"
+                          % (done, total, done / total * 100, rate,
+                             (total - done) / max(rate, 0.01), len(ok_set), len(fail_reasons)),
+                          end="", flush=True)
+        print()
+        return ok_set, fail_reasons
     def extract_de_from_bndb_batch(self, pe_paths, bndb_paths, npz_paths,
                                     n_workers=4, batch_size=10,
                                     on_ok=None):

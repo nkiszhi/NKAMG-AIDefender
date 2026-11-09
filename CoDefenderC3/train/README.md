@@ -5,6 +5,43 @@
 
 ---
 
+## 0.5 反汇编后端：训练侧默认 **SMDA**（2026-11-09 起）
+
+训练侧的 D/E 特征抽取**默认走 SMDA**（`CODEFENDER_DISASM_BACKEND` 未设时 = `smda`）。
+
+| 维度 | BN 路径 | SMDA 路径（默认） |
+|---|---|---|
+| 中间缓存 | 每样本一个 `.bndb`（GB 级） | **无**（直接吃 PE） |
+| 抽取方式 | 阶段1 生成 bndb → 阶段2 bndb→D/E（常驻 worker） | **一步**：PE→D/E（进程池） |
+| 单样本耗时 | 30~130 s | **p50 6.3 s** |
+| 崩溃风险 | 会 segfault（需进程隔离 + 超时重试） | 协作式时间预算，不会挂死 |
+| 授权 | 需商业 license | 无（BSD-3） |
+| 与推理侧一致性 | ❌ 不同源 | ✅ **同一套 `smda_extract` + 同一套稳定哈希** |
+
+**为什么必须默认 SMDA**：训练与推理必须同源。用 BN 训练、SMDA 推理 = 权重对不上特征，
+重训也救不回来（这正是 2026 重训计划 §2-B1 的阻塞项）。
+
+**相关环境变量**
+
+| 变量 | 默认 | 含义 |
+|---|---|---|
+| `CODEFENDER_DISASM_BACKEND` | `smda` | 训练侧反汇编后端；设 `bn` 回退旧的 BinaryNinja 路径 |
+| `CODEFENDER_SMDA_WORKERS` | `n_workers` | SMDA 抽取并发进程数 |
+| `CODEFENDER_SMDA_TIMEOUT` | `180` | 单样本反汇编预算（秒），SMDA 超时是常态不是损坏 |
+| `CODEFENDER_DE_PER_FILE_TIMEOUT` | `180` | 同上（兼容旧变量名） |
+| `PYTHONHASHSEED` | 未设 | 建议在训练 worker 里显式设 `0` 兜底 |
+
+**依赖**：训练环境需安装 `smda`（`pip install smda`，需 capstone）。
+
+**日志契约与 BN 路径一致**：成功 → `de_done`；硬失败（解析不了）→ `de_fail`（不再重试）；
+超时类软失败 → 不写 `de_fail`，留给下次重跑。`_find_need_de` / `_probe_de_coverage.py` 无需改动。
+
+**失败样本会被守卫拦住**：SMDA 对无法解析的文件（不是 PE / 截断 / 加密壳）不抛异常而是返回
+**全零**特征；`smda_extract.de_features_are_empty()` 会把它判为抽取失败并抛错，
+避免"全零特征"被当成有效样本写进数据集。
+
+**注意**：`_fix_de_gap.py` / `_drain_bndb_to_de.py` 是 **BN 专用**的修复脚本；
+SMDA 路径的 D/E 缺口直接重跑构建命令即可自愈（`_find_need_de` 会重新挑出缺 D/E 的样本）。
 ## 1. 为什么是这些文件搬进来、那些留在根
 
 判断标准只有一条：**是否被推理服务（`engine/`）依赖**。

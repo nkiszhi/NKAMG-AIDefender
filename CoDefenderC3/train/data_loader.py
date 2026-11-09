@@ -326,7 +326,18 @@ class PELoader:
 
         # ── D/E 特征 (BinaryNinja): 先生成 bndb, 再提取 ──
         need_binja = self._find_need_de(paths)
-        if need_binja:
+
+        # ── 反汇编后端选择：训练侧默认 SMDA ──────────────────────────────
+        # 训练侧默认走 SMDA 的理由：
+        #   1) 与推理侧（engine）同一套后端与特征代码 → 训练/推理口径同源
+        #   2) 无商业授权依赖（BN 需 license，且授权状态不可控）
+        #   3) 速度 p50 6.3s vs BN 30~130s，且不会 segfault 拖垮整机
+        # 需要回退到旧的 BinaryNinja 路径时：export CODEFENDER_DISASM_BACKEND=bn
+        de_backend = (os.environ.get("CODEFENDER_DISASM_BACKEND", "smda")
+                      or "smda").strip().lower()
+        if need_binja and de_backend == "smda":
+            self._extract_de_stage_smda(need_binja)
+        elif need_binja:
             os.makedirs(self._bndb_cache, exist_ok=True)
             ext = BinjaExtractor()
 
@@ -613,6 +624,61 @@ class PELoader:
         n_fail = sum(1 for p in paths if p in de_fail)
         print(f"  总计: npz={n_npz}/{len(paths)}, D/E完成={n_de}, D/E失败={n_fail}")
 
+    def _extract_de_stage_smda(self, need_de):
+        """SMDA 后端的 D/E 抽取阶段（训练侧默认路径）。
+
+        与 BN 路径的差别：**不生成 .bndb**，直接从 PE 抽 D/E 写进样本 npz。
+        日志契约与 BN 路径保持一致，_find_need_de / _probe_de_coverage 都能直接用：
+          - 成功 → 追加 de_done
+          - 硬失败（解析不了）→ 追加 de_fail（不再重试）
+          - 超时类软失败 → 不写 de_fail，留给下次重跑（SMDA 自带时间预算，超时是常态而非损坏）
+        """
+        from feature_extraction.extract_feature import BinjaExtractor
+
+        ext = BinjaExtractor()
+        de_fail = self._load_log("de_fail")
+        todo = [p for p in need_de if p not in de_fail]
+        n_skip = len(need_de) - len(todo)
+        if n_skip:
+            print(f"  D/E[SMDA]: 跳过 {n_skip} 个已记录失败的样本")
+        if not todo:
+            return
+
+        workers = int(os.environ.get("CODEFENDER_SMDA_WORKERS", self.n_workers))
+        budget = os.environ.get("CODEFENDER_SMDA_TIMEOUT", "180")
+        print(f"  D/E[SMDA]: {len(todo)} 个样本, {workers} 并行 (单样本预算 {budget}s)")
+        t0 = time.time()
+
+        # 增量写 de_done：每个成功立刻落盘，避免中断丢进度
+        fh = open(self._log_path("de_done"), "a", encoding="utf-8")
+
+        def _on_ok(path):
+            fh.write(path + "\n")
+            fh.flush()
+
+        try:
+            ok_set, fail_reasons = ext.extract_de_smda_batch(
+                todo,
+                [self._sample_cache_path(p) for p in todo],
+                n_workers=workers,
+                on_ok=_on_ok,
+            )
+        finally:
+            fh.close()
+
+        # 超时类 = 软失败（下次重试）；其余 = 永久失败
+        hard, soft = [], []
+        for path, reason in fail_reasons.items():
+            r = str(reason).upper()
+            if "TIMEOUT" in r or "TIME BUDGET" in r or "EXCEEDED" in r:
+                soft.append(path)
+            else:
+                hard.append(path)
+        if hard:
+            self._append_log("de_fail", hard)
+        print(f"  D/E[SMDA]: 完成 {len(ok_set)}/{len(todo)} ({time.time() - t0:.0f}s)"
+              + (f", 永久失败 {len(hard)}" if hard else "")
+              + (f", 待重试(超时) {len(soft)}" if soft else ""))
     def _extract_fast_parallel(self, paths):
         """纯 Python 特征提取 — 多进程并行。"""
         from concurrent.futures import ProcessPoolExecutor, as_completed
