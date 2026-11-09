@@ -124,6 +124,14 @@ _probe_*.py
 #    挡住后「代码层」由 ~116MB 降到 ~2.8MB，改一行 .py 的重建代价同步变小。
 models/MalGraph_2022/**/features.jsonl
 models/MalGraph_2022/**/bad_files.txt
+#  · MalGraph 重建产物（2026-11-07 SMDA 重建）：1199 个 .pt 图特征缓存 +
+#    作废归档目录。单个 .pt 可达 76MB，整个 pt_files/ 目录 ~2.9GB ——
+#    绝不能进构建上下文（每 GB 都要过一次 hgfs，纯等）。
+#    运行期只需要 best_model.pt + train_external_function_name_vocab.jsonl。
+models/MalGraph_2022/saved/pt_files
+models/MalGraph_2022/saved/pt_files/**
+models/MalGraph_2022/saved/_invalidated
+models/MalGraph_2022/saved/_invalidated/**
 #  · MalGraph 训练脚本（AST 闭包与全仓 import 均未触达）
 models/MalGraph_2022/1_exec_model.py
 models/MalGraph_2022/build_malgraph_cache_fast.py

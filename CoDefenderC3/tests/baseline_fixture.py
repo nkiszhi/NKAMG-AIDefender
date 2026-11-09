@@ -379,7 +379,8 @@ def _activate_license(path=None):
     # Windows GUI 的存放位置
     cands.append(os.path.join(os.path.expanduser("~"), "AppData", "Roaming",
                               "Binary Ninja", "license.dat"))
-    cands.append(os.path.join(REPO, "license.txt"))
+    # 仓库里**不再分发** BN 商业许可（2026-11-07 起删除），
+    # 需要 BN 时请用 CODEFENDER_BN_LICENSE 指向自己的 license.dat。
     tried = []
     for c in cands:
         if not c or not os.path.isfile(c):

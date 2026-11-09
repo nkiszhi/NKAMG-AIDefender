@@ -498,7 +498,8 @@ bash docker/build.sh codefender-c3:v8
 ```
 
 **构建说明**:
-- 基础镜像: `multiscan_basic_v3:with_binja` (CentOS, 预装 Python3 + BinaryNinja)
+- 基础镜像: `python:3.10-slim-bookworm`（公开镜像；2026-11-07 起不再用内网的
+  `multiscan_basic_v3:with_binja`，该镜像预装了 BinaryNinja）
 - `ensemble.pkl` (736 MiB) **与 sha256/md5/fuzzy 三族签名库**均在构建期打包进镜像，**无需任何运行时挂载**
 - 层序按「改动频率从低到高」：`base → pip → 模型(736MB) → 签名库(~1GB) → 代码 → 自检`
   （缓存失效会向下传染，所以最常改的代码排在两个大件之后 → 改一行 `.py` 不必重做 1.7GB）

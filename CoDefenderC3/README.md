@@ -144,4 +144,9 @@ PYTHONIOENCODING=utf-8 python -u CoDefenderC3/train/verify_trained_ensemble.py -
 
 ## License
 
-见 [`license.txt`](license.txt)。
+反汇编后端已从 BinaryNinja 切到 **SMDA**（BSD-3，无需商业授权）。
+
+BinaryNinja 相关的**商业许可文件不再随仓库分发**（2026-11-07 起从版本库删除，
+也不进镜像）。旧 BN 后端（`feature_extraction/backend_bn.py`）保留仅供 A/B 对照：
+需自行安装 `binaryninja` 并提供 `license.dat`，
+然后设 `CODEFENDER_DISASM_BACKEND=bn`。
