@@ -28,7 +28,12 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 
-from insn_categories import CAT_LOOKUP, CAT_NAMES
+try:
+    from insn_categories import CAT_LOOKUP, CAT_NAMES
+except ImportError:  # 仅把 feature_extraction/ 放进 sys.path 的场景（如训练侧 worker）
+    import os as _os, sys as _sys
+    _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+    from insn_categories import CAT_LOOKUP, CAT_NAMES
 
 def _api_name(name: str) -> str:
     """SMDA 的导入名形如 "api-ms-win-core...dll!EventWriteTransfer"。
@@ -64,9 +69,12 @@ BLOCK_FEATURE_DIM = 11
 _REPORT_CACHE: Dict[str, Any] = {}
 
 
-def _stable_bucket(text: str, modulo: int) -> int:
-    """稳定哈希（替代进程随机的 hash()）。"""
-    return zlib.crc32(text.encode("utf-8", "ignore")) % modulo
+# 稳定哈希：与 extract_feature.py 共用同一实现（feature_extraction/hashing.py），
+# 保证 SMDA 后端与 fast/BN 路径的编码口径完全一致。
+try:
+    from feature_extraction.hashing import stable_bucket as _stable_bucket
+except ImportError:  # 仅 feature_extraction/ 在 sys.path 时
+    from hashing import stable_bucket as _stable_bucket
 
 
 class SmdaExtractor:

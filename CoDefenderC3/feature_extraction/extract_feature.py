@@ -83,7 +83,18 @@ ENTROPY_BINS   = 256              # entropy histogram bins (B04)
 BLOCK_SIZE     = 1024             # entropy block size
 
 # x86 instruction categories (15 classes, D04) —— 与 SMDA 后端共用（顶层模块，避免包依赖）
-from insn_categories import INSN_CATEGORIES, CAT_LOOKUP as _CAT_LOOKUP, CAT_NAMES as _CAT_NAMES
+try:
+    from insn_categories import INSN_CATEGORIES, CAT_LOOKUP as _CAT_LOOKUP, CAT_NAMES as _CAT_NAMES
+except ImportError:  # 仅把 feature_extraction/ 放进 sys.path 的场景（如训练侧 worker）
+    import os as _os, sys as _sys
+    _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+    from insn_categories import INSN_CATEGORIES, CAT_LOOKUP as _CAT_LOOKUP, CAT_NAMES as _CAT_NAMES
+
+# 确定性哈希（替代进程随机的内置 hash()）：训练/推理、SMDA/BN 两条路径口径统一
+try:
+    from feature_extraction.hashing import stable_bucket
+except ImportError:  # 同上：仅 feature_extraction/ 在 sys.path 时
+    from hashing import stable_bucket
 
 
 # ═══════════════════════════════════════
@@ -262,7 +273,7 @@ class BinjaExtractor:
                     for func in entry.imports:
                         name = (func.name or b"").decode("ascii", errors="ignore")
                         if name:
-                            imp[hash(name) % IMPORT_BUCKETS] += 1
+                            imp[stable_bucket(name, IMPORT_BUCKETS)] += 1
                 if imp.sum() > 0:
                     imp /= imp.sum()
         except Exception:
@@ -297,7 +308,7 @@ class BinjaExtractor:
         # C01: String embedding (256d hash trick)
         c01 = np.zeros(256, dtype=np.float32)
         for s in strings[:2000]:
-            c01[hash(s) % 256] += 1
+            c01[stable_bucket(s, 256)] += 1
         if c01.max() > 0:
             c01 /= c01.max() + 1e-8
         feats["C01"] = c01
@@ -337,7 +348,7 @@ class BinjaExtractor:
         c04 = np.zeros(256, dtype=np.float32)
         for s in strings[:200]:
             for i in range(len(s) - 2):
-                h = hash(s[i:i+3]) % 256
+                h = stable_bucket(s[i:i+3], 256)
                 c04[h] += 1
         if c04.sum() > 0:
             c04 = np.log1p(c04)
@@ -1111,7 +1122,7 @@ for line in lines:
         # A06: Import Table (IMPORT_BUCKETS d) — hash-bucketed
         imp = np.zeros(IMPORT_BUCKETS, dtype=np.float32)
         for sym in bv.get_symbols_of_type(self.bn.SymbolType.ImportedFunctionSymbol):
-            h = hash(sym.full_name) % IMPORT_BUCKETS
+            h = stable_bucket(sym.full_name, IMPORT_BUCKETS)
             imp[h] += 1.0
         if imp.sum() > 0:
             imp /= imp.sum()
@@ -1252,7 +1263,7 @@ for line in lines:
         # C01: String content (variable → 256d embedding via hash trick)
         c01 = np.zeros(256, dtype=np.float32)
         for s in strings:
-            h = hash(s) % 256
+            h = stable_bucket(s, 256)
             c01[h] += 1
         if c01.sum() > 0:
             c01 = np.log1p(c01)
@@ -1294,7 +1305,7 @@ for line in lines:
         c04 = np.zeros(256, dtype=np.float32)
         for s in strings[:200]:
             for i in range(len(s) - 2):
-                h = hash(s[i:i+3]) % 256
+                h = stable_bucket(s[i:i+3], 256)
                 c04[h] += 1
         if c04.sum() > 0:
             c04 = np.log1p(c04)
@@ -1390,13 +1401,13 @@ for line in lines:
         # ── D01: Opcode sequence ──
         d01 = np.zeros(MAX_OPCODES, dtype=np.int64)
         for i, op in enumerate(all_opcodes[:MAX_OPCODES]):
-            d01[i] = hash(op) % 511 + 1
+            d01[i] = stable_bucket(op, 511) + 1
         feats["D01"] = d01
 
         # ── D02: Opcode bigram ──
         d02 = np.zeros(NGRAM_DIM, dtype=np.float32)
         for i in range(len(all_opcodes) - 1):
-            d02[hash(all_opcodes[i] + "_" + all_opcodes[i+1]) % NGRAM_DIM] += 1
+            d02[stable_bucket(all_opcodes[i] + "_" + all_opcodes[i+1], NGRAM_DIM)] += 1
         if d02.sum() > 0:
             d02 = np.log1p(d02); d02 /= np.linalg.norm(d02) + 1e-8
         feats["D02"] = d02
@@ -1404,7 +1415,7 @@ for line in lines:
         # ── D03: Opcode trigram ──
         d03 = np.zeros(NGRAM_DIM, dtype=np.float32)
         for i in range(len(all_opcodes) - 2):
-            d03[hash("_".join(all_opcodes[i:i+3])) % NGRAM_DIM] += 1
+            d03[stable_bucket("_".join(all_opcodes[i:i+3]), NGRAM_DIM)] += 1
         if d03.sum() > 0:
             d03 = np.log1p(d03); d03 /= np.linalg.norm(d03) + 1e-8
         feats["D03"] = d03
@@ -1455,7 +1466,7 @@ for line in lines:
         for fi in range(min(n_funcs, MAX_FUNCTIONS)):
             emb = np.zeros(128, dtype=np.float32)
             for op, cnt in func_data[fi]["ops"].items():
-                emb[hash(op) % 128] += cnt
+                emb[stable_bucket(op, 128)] += cnt
             if emb.sum() > 0:
                 emb /= np.linalg.norm(emb) + 1e-8
             d07[fi*128:(fi+1)*128] = emb
