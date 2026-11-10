@@ -1,0 +1,2015 @@
+{
+  "timestamp": "2026-11-10T13:18:50.414057+00:00",
+  "python": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\.venv\\Scripts\\python.exe",
+  "psutil_version": "7.2.2",
+  "scope": "Local Windows model-only shared engine HTTP; not production signature DB or Docker deployment.",
+  "sample": {
+    "path": "D:\\VM_Share\\CoDefenderC3_v9\\_pe_ascii\\s06_benign_64.bin",
+    "bytes": 88576,
+    "sha256": "07a3f464e479003a9c598cb8a8feab17cc55298d74de34315ae78c31256fb9c7"
+  },
+  "ports": {
+    "web": 62665,
+    "production": 62666,
+    "development": 62667
+  },
+  "health": {
+    "web": {
+      "status": "ok",
+      "pid": 9680,
+      "started_at": "2026-11-10 21:18:51",
+      "env": "dev",
+      "engine_mode": "model_only",
+      "disasm_backend": "smda",
+      "runtime_cfg_file": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\runtime_config.json",
+      "runtime_cfg_file_enabled": false,
+      "runtime_cfg_disabled_reason": "CODEFENDER_RUNTIME_CFG_DISABLE=1",
+      "runtime_cfg_applied": [],
+      "runtime_cfg_error": "",
+      "require_hash_db": false,
+      "model_path": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\ensemble.pkl",
+      "model_md5": "6cb4c2b9861d189f8d8e59f1677d3300",
+      "model_count": 33,
+      "view_count": 15,
+      "views": [
+        "V1_byte",
+        "V2_byte_stat",
+        "V3_pe_struct",
+        "V4_import",
+        "V5_string",
+        "V6_opcode_seq",
+        "V6_opcode_stat",
+        "V6_func_embed",
+        "V7_graph",
+        "V8_gray",
+        "V8_color",
+        "V8_markov",
+        "V8_entropy",
+        "V9_hash",
+        "V10_metadata"
+      ],
+      "malgraph": {
+        "enabled": true,
+        "checkpoint": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\models\\MalGraph_2022\\best_model.pt",
+        "vocab": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\models\\MalGraph_2022\\saved\\train_external_function_name_vocab.jsonl",
+        "status": "ready",
+        "device": "cpu",
+        "params": {
+          "gnn_type": "graphsage",
+          "pool_type": "global_max_pool",
+          "acfg_init_dims": 11,
+          "cfg_filters": "200-200",
+          "fcg_filters": "200-200",
+          "number_classes": 2,
+          "dropout_rate": 0.3,
+          "ablation_models": "none"
+        },
+        "vocab_max_size": 1000,
+        "missing_keys": [],
+        "unexpected_keys": []
+      },
+      "hash_db": {
+        "enabled": false,
+        "fuzzy_enabled": false,
+        "mode": "model_only",
+        "dir": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\signatures",
+        "sha256": null,
+        "md5": null,
+        "fuzzy": null
+      }
+    },
+    "production": {
+      "status": "ok",
+      "pid": 9680,
+      "started_at": "2026-11-10 21:18:51",
+      "env": "dev",
+      "engine_mode": "model_only",
+      "disasm_backend": "smda",
+      "runtime_cfg_file": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\runtime_config.json",
+      "runtime_cfg_file_enabled": false,
+      "runtime_cfg_disabled_reason": "CODEFENDER_RUNTIME_CFG_DISABLE=1",
+      "runtime_cfg_applied": [],
+      "runtime_cfg_error": "",
+      "require_hash_db": false,
+      "model_path": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\ensemble.pkl",
+      "model_md5": "6cb4c2b9861d189f8d8e59f1677d3300",
+      "model_count": 33,
+      "view_count": 15,
+      "views": [
+        "V1_byte",
+        "V2_byte_stat",
+        "V3_pe_struct",
+        "V4_import",
+        "V5_string",
+        "V6_opcode_seq",
+        "V6_opcode_stat",
+        "V6_func_embed",
+        "V7_graph",
+        "V8_gray",
+        "V8_color",
+        "V8_markov",
+        "V8_entropy",
+        "V9_hash",
+        "V10_metadata"
+      ],
+      "malgraph": {
+        "enabled": true,
+        "checkpoint": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\models\\MalGraph_2022\\best_model.pt",
+        "vocab": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\models\\MalGraph_2022\\saved\\train_external_function_name_vocab.jsonl",
+        "status": "ready",
+        "device": "cpu",
+        "params": {
+          "gnn_type": "graphsage",
+          "pool_type": "global_max_pool",
+          "acfg_init_dims": 11,
+          "cfg_filters": "200-200",
+          "fcg_filters": "200-200",
+          "number_classes": 2,
+          "dropout_rate": 0.3,
+          "ablation_models": "none"
+        },
+        "vocab_max_size": 1000,
+        "missing_keys": [],
+        "unexpected_keys": []
+      },
+      "hash_db": {
+        "enabled": false,
+        "fuzzy_enabled": false,
+        "mode": "model_only",
+        "dir": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\signatures",
+        "sha256": null,
+        "md5": null,
+        "fuzzy": null
+      }
+    },
+    "development": {
+      "status": "ok",
+      "pid": 9680,
+      "started_at": "2026-11-10 21:18:51",
+      "env": "dev",
+      "engine_mode": "model_only",
+      "disasm_backend": "smda",
+      "runtime_cfg_file": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\runtime_config.json",
+      "runtime_cfg_file_enabled": false,
+      "runtime_cfg_disabled_reason": "CODEFENDER_RUNTIME_CFG_DISABLE=1",
+      "runtime_cfg_applied": [],
+      "runtime_cfg_error": "",
+      "require_hash_db": false,
+      "model_path": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\ensemble.pkl",
+      "model_md5": "6cb4c2b9861d189f8d8e59f1677d3300",
+      "model_count": 33,
+      "view_count": 15,
+      "views": [
+        "V1_byte",
+        "V2_byte_stat",
+        "V3_pe_struct",
+        "V4_import",
+        "V5_string",
+        "V6_opcode_seq",
+        "V6_opcode_stat",
+        "V6_func_embed",
+        "V7_graph",
+        "V8_gray",
+        "V8_color",
+        "V8_markov",
+        "V8_entropy",
+        "V9_hash",
+        "V10_metadata"
+      ],
+      "malgraph": {
+        "enabled": true,
+        "checkpoint": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\models\\MalGraph_2022\\best_model.pt",
+        "vocab": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\models\\MalGraph_2022\\saved\\train_external_function_name_vocab.jsonl",
+        "status": "ready",
+        "device": "cpu",
+        "params": {
+          "gnn_type": "graphsage",
+          "pool_type": "global_max_pool",
+          "acfg_init_dims": 11,
+          "cfg_filters": "200-200",
+          "fcg_filters": "200-200",
+          "number_classes": 2,
+          "dropout_rate": 0.3,
+          "ablation_models": "none"
+        },
+        "vocab_max_size": 1000,
+        "missing_keys": [],
+        "unexpected_keys": []
+      },
+      "hash_db": {
+        "enabled": false,
+        "fuzzy_enabled": false,
+        "mode": "model_only",
+        "dir": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\signatures",
+        "sha256": null,
+        "md5": null,
+        "fuzzy": null
+      }
+    }
+  },
+  "requests": [
+    {
+      "listener": "web",
+      "endpoint": "predict-single",
+      "http_status": 200,
+      "seconds": 6.406,
+      "response": {
+        "MD5": "0a99c1fbc2e19352240c29620e90ce32",
+        "SHA256": "07a3f464e479003a9c598cb8a8feab17cc55298d74de34315ae78c31256fb9c7",
+        "CRC32": "c096ef09",
+        "FileName": "sample.bin",
+        "FileSize": 88576,
+        "Status": 0,
+        "StatusLabel": "Benign",
+        "IsMalicious": false,
+        "Score": 0.4323277771472931,
+        "ScanResult": {
+          "Packed": {
+            "IsPacked": false,
+            "PackerName": "",
+            "IsArchive": false,
+            "ArchiveName": ""
+          },
+          "PerModelScores": {
+            "MalConv": 0.09614349901676178,
+            "MalConv2": 0.1726592779159546,
+            "ByteTransformer": 0.1780281960964203,
+            "SaxeBerlinDNN": 0.1633598357439041,
+            "EmberDNN": 0.20766247808933258,
+            "NatarajKNN": 7.553801850690434e-08,
+            "DrebinSVM": 0.33964961767196655,
+            "DL4MD": 1.0,
+            "PEMinerRF": 0.10542029142379761,
+            "DrebinImport": 0.4739017188549042,
+            "ALOHANet": 0.3938499689102173,
+            "EmberGBDT_Import": 0.3602801263332367,
+            "RaffFeatureNet": 0.43365511298179626,
+            "DrebinString": 0.4177747368812561,
+            "OpcodeLSTM": 0.5189710259437561,
+            "OpcodeTransformer": 0.4337642192840576,
+            "OpcodeStatNet": 0.6618345975875854,
+            "AsmEmbedNet": 0.8443429470062256,
+            "MalGraph": 0.5803078413009644,
+            "CFGGAT": 0.53071129322052,
+            "CFGGCN": 0.4971923828125,
+            "CFGDGCNN": 0.5480257272720337,
+            "CallGraphGNN": 0.5442920923233032,
+            "GraphStatNet": 0.5675902366638184,
+            "GrayscaleCNN": 0.4555087685585022,
+            "InceptionV3": 0.3083668053150177,
+            "IMCFN": 0.49593183398246765,
+            "ColorCNN": 0.4355463683605194,
+            "MarkovCNN": 0.6847122311592102,
+            "EntropyMapCNN": 0.4465908110141754,
+            "HashEmbedNet": 0.3910313546657562,
+            "MetadataNet": 0.4721795618534088,
+            "ResourceNet": 0.5075318217277527
+          },
+          "PerModelPreds": {
+            "MalConv": 0,
+            "MalConv2": 0,
+            "ByteTransformer": 0,
+            "SaxeBerlinDNN": 0,
+            "EmberDNN": 0,
+            "NatarajKNN": 0,
+            "DrebinSVM": 0,
+            "DL4MD": 1,
+            "PEMinerRF": 0,
+            "DrebinImport": 0,
+            "ALOHANet": 0,
+            "EmberGBDT_Import": 0,
+            "RaffFeatureNet": 0,
+            "DrebinString": 0,
+            "OpcodeLSTM": 1,
+            "OpcodeTransformer": 0,
+            "OpcodeStatNet": 1,
+            "AsmEmbedNet": 1,
+            "MalGraph": 1,
+            "CFGGAT": 1,
+            "CFGGCN": 0,
+            "CFGDGCNN": 1,
+            "CallGraphGNN": 1,
+            "GraphStatNet": 1,
+            "GrayscaleCNN": 0,
+            "InceptionV3": 0,
+            "IMCFN": 0,
+            "ColorCNN": 0,
+            "MarkovCNN": 1,
+            "EntropyMapCNN": 0,
+            "HashEmbedNet": 0,
+            "MetadataNet": 0,
+            "ResourceNet": 1
+          },
+          "DriftEvidence": {
+            "surface": 0.0,
+            "structure": 0.0,
+            "global": 0.0
+          },
+          "SampleDriftType": "none",
+          "AnomalyScore": 0.0,
+          "IsDriftCandidate": false,
+          "ModelStats": {
+            "TotalModels": 33,
+            "OkModels": 33,
+            "SkippedModels": 0,
+            "ErrorModels": 0,
+            "MaliciousVotes": 11,
+            "BenignVotes": 22,
+            "AgreementRate": 0.3333,
+            "EnsembleScore": 0.432328,
+            "EnsemblePred": 0,
+            "ScoreRange": [
+              0.0,
+              1.0
+            ]
+          },
+          "PerModelDetails": [
+            {
+              "model": "MalConv",
+              "view": "V1_byte",
+              "engine": "pytorch",
+              "status": "ok",
+              "score": 0.09614349901676178,
+              "prediction": 0
+            },
+            {
+              "model": "MalConv2",
+              "view": "V1_byte",
+              "engine": "pytorch",
+              "status": "ok",
+              "score": 0.1726592779159546,
+              "prediction": 0
+            },
+            {
+              "model": "ByteTransformer",
+              "view": "V1_byte",
+              "engine": "pytorch",
+              "status": "ok",
+              "score": 0.1780281960964203,
+              "prediction": 0
+            },
+            {
+              "model": "SaxeBerlinDNN",
+              "view": "V2_byte_stat",
+              "engine": "pytorch",
+              "status": "ok",
+              "score": 0.1633598357439041,
+              "prediction": 0
+            },
+            {
+              "model": "EmberDNN",
+              "view": "V2_byte_stat",
+              "engine": "pytorch",
+              "status": "ok",
+              "score": 0.20766247808933258,
+              "prediction": 0
+            },
+            {
+              "model": "NatarajKNN",
+              "view": "V2_byte_stat",
+              "engine": "numpy",
+              "status": "ok",
+              "score": 7.553801850690434e-08,
+              "prediction": 0
+            },
+            {
+              "model": "DrebinSVM",
+              "view": "V3_pe_struct",
+              "engine": "numpy",
+              "status": "ok",
+              "score": 0.3396496306770453,
+              "prediction": 0
+            },
+            {
+              "model": "DL4MD",
+              "view": "V3_pe_struct",
+              "engine": "pytorch",
+              "status": "ok",
+              "score": 1.0,
+              "prediction": 1
+            },
+            {
+              "model": "PEMinerRF",
+              "view": "V3_pe_struct",
+              "engine": "numpy",
+              "status": "ok",
+              "score": 0.10542028940652345,
+              "prediction": 0
+            },
+            {
+              "model": "DrebinImport",
+              "view": "V4_import",
+              "engine": "numpy",
+              "status": "ok",
+              "score": 0.4739017075887098,
+              "prediction": 0
+            },
+            {
+              "model": "ALOHANet",
+              "view": "V4_import",
+              "engine": "pytorch",
+              "status": "ok",
+              "score": 0.3938499689102173,
+              "prediction": 0
+            },
+            {
+              "model": "EmberGBDT_Import",
+              "view": "V4_import",
+              "engine": "numpy",
+              "status": "ok",
+              "score": 0.3602801203061421,
+              "prediction": 0
+            },
+            {
+              "model": "RaffFeatureNet",
+              "view": "V5_string",
+              "engine": "pytorch",
+              "status": "ok",
+              "score": 0.43365511298179626,
+              "prediction": 0
+            },
+            {
+              "model": "DrebinString",
+              "view": "V5_string",
+              "engine": "numpy",
+              "status": "ok",
+              "score": 0.4177747226741927,
+              "prediction": 0
+            },
+            {
+              "model": "GrayscaleCNN",
+              "view": "V8_gray",
+              "engine": "pytorch",
+              "status": "ok",
+              "score": 0.4555087685585022,
+              "prediction": 0
+            },
+            {
+              "model": "InceptionV3",
+              "view": "V8_gray",
+              "engine": "pytorch",
+              "status": "ok",
+              "score": 0.3083668053150177,
+              "prediction": 0
+            },
+            {
+              "model": "IMCFN",
+              "view": "V8_color",
+              "engine": "pytorch",
+              "status": "ok",
+              "score": 0.49593183398246765,
+              "prediction": 0
+            },
+            {
+              "model": "ColorCNN",
+              "view": "V8_color",
+              "engine": "pytorch",
+              "status": "ok",
+              "score": 0.4355463683605194,
+              "prediction": 0
+            },
+            {
+              "model": "MarkovCNN",
+              "view": "V8_markov",
+              "engine": "pytorch",
+              "status": "ok",
+              "score": 0.6847122311592102,
+              "prediction": 1
+            },
+            {
+              "model": "EntropyMapCNN",
+              "view": "V8_entropy",
+              "engine": "pytorch",
+              "status": "ok",
+              "score": 0.4465908110141754,
+              "prediction": 0
+            },
+            {
+              "model": "HashEmbedNet",
+              "view": "V9_hash",
+              "engine": "pytorch",
+              "status": "ok",
+              "score": 0.3910313546657562,
+              "prediction": 0
+            },
+            {
+              "model": "MetadataNet",
+              "view": "V10_metadata",
+              "engine": "pytorch",
+              "status": "ok",
+              "score": 0.4721795618534088,
+              "prediction": 0
+            },
+            {
+              "model": "ResourceNet",
+              "view": "V10_metadata",
+              "engine": "numpy",
+              "status": "ok",
+              "score": 0.5075318341715541,
+              "prediction": 1
+            },
+            {
+              "model": "OpcodeLSTM",
+              "view": "V6_opcode_seq",
+              "engine": "pytorch",
+              "status": "ok",
+              "score": 0.5189710259437561,
+              "prediction": 1
+            },
+            {
+              "model": "OpcodeTransformer",
+              "view": "V6_opcode_seq",
+              "engine": "pytorch",
+              "status": "ok",
+              "score": 0.4337642192840576,
+              "prediction": 0
+            },
+            {
+              "model": "OpcodeStatNet",
+              "view": "V6_opcode_stat",
+              "engine": "numpy",
+              "status": "ok",
+              "score": 0.6618346220541559,
+              "prediction": 1
+            },
+            {
+              "model": "AsmEmbedNet",
+              "view": "V6_func_embed",
+              "engine": "pytorch",
+              "status": "ok",
+              "score": 0.8443429470062256,
+              "prediction": 1
+            },
+            {
+              "model": "MalGraph",
+              "view": "V7_graph",
+              "engine": "special",
+              "status": "ok",
+              "score": 0.5803078413009644,
+              "prediction": 1,
+              "malgraph_meta": {
+                "local_functions": 236,
+                "external_functions": 144,
+                "fcg_edges": 308,
+                "checkpoint": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\models\\MalGraph_2022\\best_model.pt",
+                "vocab": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\models\\MalGraph_2022\\saved\\train_external_function_name_vocab.jsonl"
+              }
+            },
+            {
+              "model": "CFGGAT",
+              "view": "V7_graph",
+              "engine": "pytorch",
+              "status": "ok",
+              "score": 0.53071129322052,
+              "prediction": 1
+            },
+            {
+              "model": "CFGGCN",
+              "view": "V7_graph",
+              "engine": "pytorch",
+              "status": "ok",
+              "score": 0.4971923828125,
+              "prediction": 0
+            },
+            {
+              "model": "CFGDGCNN",
+              "view": "V7_graph",
+              "engine": "pytorch",
+              "status": "ok",
+              "score": 0.5480257272720337,
+              "prediction": 1
+            },
+            {
+              "model": "CallGraphGNN",
+              "view": "V7_graph",
+              "engine": "pytorch",
+              "status": "ok",
+              "score": 0.5442920923233032,
+              "prediction": 1
+            },
+            {
+              "model": "GraphStatNet",
+              "view": "V7_graph",
+              "engine": "pytorch",
+              "status": "ok",
+              "score": 0.5675902366638184,
+              "prediction": 1
+            }
+          ],
+          "StageTiming": {
+            "fast_features_seconds": 0.125,
+            "fast_models_seconds": 0.453,
+            "binaryninja_seconds": 4.781,
+            "disassembly_features_seconds": 0.422,
+            "malgraph_features_seconds": 2.375,
+            "slow_models_seconds": 0.5,
+            "total_model_seconds": 5.859
+          }
+        }
+      },
+      "verified_model_count": 33
+    },
+    {
+      "listener": "web",
+      "endpoint": "predict-directory",
+      "http_status": 200,
+      "seconds": 5.86,
+      "response": {
+        "Summary": {
+          "TotalFiles": 1,
+          "TotalFilesInDirectory": 1,
+          "SkippedNonPE": 0,
+          "ScannedFiles": 1,
+          "MaliciousCount": 0,
+          "BenignCount": 1,
+          "ErrorCount": 0,
+          "TimeoutCount": 0,
+          "Directory": "C:\\Users\\lenovo\\AppData\\Local\\Temp\\codefender-smda-http-53s_c92z\\samples",
+          "Timing": {
+            "TotalTime": 5.86,
+            "ModelLoadTime": 0.0,
+            "BatchScanTime": 5.86,
+            "AvgSampleTime": 5.86,
+            "MedianSampleTime": 5.86,
+            "MinSampleTime": 5.86,
+            "MaxSampleTime": 5.86,
+            "Throughput": 0.171
+          }
+        },
+        "Results": [
+          {
+            "MD5": "0a99c1fbc2e19352240c29620e90ce32",
+            "SHA256": "07a3f464e479003a9c598cb8a8feab17cc55298d74de34315ae78c31256fb9c7",
+            "CRC32": "c096ef09",
+            "FileName": "sample.bin",
+            "FileSize": 88576,
+            "Status": 0,
+            "StatusLabel": "Benign",
+            "IsMalicious": false,
+            "Score": 0.4323277771472931,
+            "ScanResult": {
+              "Packed": {
+                "IsPacked": false,
+                "PackerName": "",
+                "IsArchive": false,
+                "ArchiveName": ""
+              },
+              "PerModelScores": {
+                "MalConv": 0.09614349901676178,
+                "MalConv2": 0.1726592779159546,
+                "ByteTransformer": 0.1780281960964203,
+                "SaxeBerlinDNN": 0.1633598357439041,
+                "EmberDNN": 0.20766247808933258,
+                "NatarajKNN": 7.553801850690434e-08,
+                "DrebinSVM": 0.33964961767196655,
+                "DL4MD": 1.0,
+                "PEMinerRF": 0.10542029142379761,
+                "DrebinImport": 0.4739017188549042,
+                "ALOHANet": 0.3938499689102173,
+                "EmberGBDT_Import": 0.3602801263332367,
+                "RaffFeatureNet": 0.43365511298179626,
+                "DrebinString": 0.4177747368812561,
+                "OpcodeLSTM": 0.5189710259437561,
+                "OpcodeTransformer": 0.4337642192840576,
+                "OpcodeStatNet": 0.6618345975875854,
+                "AsmEmbedNet": 0.8443429470062256,
+                "MalGraph": 0.5803078413009644,
+                "CFGGAT": 0.53071129322052,
+                "CFGGCN": 0.4971923828125,
+                "CFGDGCNN": 0.5480257272720337,
+                "CallGraphGNN": 0.5442920923233032,
+                "GraphStatNet": 0.5675902366638184,
+                "GrayscaleCNN": 0.4555087685585022,
+                "InceptionV3": 0.3083668053150177,
+                "IMCFN": 0.49593183398246765,
+                "ColorCNN": 0.4355463683605194,
+                "MarkovCNN": 0.6847122311592102,
+                "EntropyMapCNN": 0.4465908110141754,
+                "HashEmbedNet": 0.3910313546657562,
+                "MetadataNet": 0.4721795618534088,
+                "ResourceNet": 0.5075318217277527
+              },
+              "PerModelPreds": {
+                "MalConv": 0,
+                "MalConv2": 0,
+                "ByteTransformer": 0,
+                "SaxeBerlinDNN": 0,
+                "EmberDNN": 0,
+                "NatarajKNN": 0,
+                "DrebinSVM": 0,
+                "DL4MD": 1,
+                "PEMinerRF": 0,
+                "DrebinImport": 0,
+                "ALOHANet": 0,
+                "EmberGBDT_Import": 0,
+                "RaffFeatureNet": 0,
+                "DrebinString": 0,
+                "OpcodeLSTM": 1,
+                "OpcodeTransformer": 0,
+                "OpcodeStatNet": 1,
+                "AsmEmbedNet": 1,
+                "MalGraph": 1,
+                "CFGGAT": 1,
+                "CFGGCN": 0,
+                "CFGDGCNN": 1,
+                "CallGraphGNN": 1,
+                "GraphStatNet": 1,
+                "GrayscaleCNN": 0,
+                "InceptionV3": 0,
+                "IMCFN": 0,
+                "ColorCNN": 0,
+                "MarkovCNN": 1,
+                "EntropyMapCNN": 0,
+                "HashEmbedNet": 0,
+                "MetadataNet": 0,
+                "ResourceNet": 1
+              },
+              "DriftEvidence": {
+                "surface": 0.0,
+                "structure": 0.0,
+                "global": 0.0
+              },
+              "SampleDriftType": "none",
+              "AnomalyScore": 0.0,
+              "IsDriftCandidate": false,
+              "ModelStats": {
+                "TotalModels": 33,
+                "OkModels": 33,
+                "SkippedModels": 0,
+                "ErrorModels": 0,
+                "MaliciousVotes": 11,
+                "BenignVotes": 22,
+                "AgreementRate": 0.3333,
+                "EnsembleScore": 0.432328,
+                "EnsemblePred": 0,
+                "ScoreRange": [
+                  0.0,
+                  1.0
+                ],
+                "AggregationMethod": "equal_weight_mean",
+                "DecisionThreshold": 0.5,
+                "AggregatedModels": [
+                  "MalConv",
+                  "MalConv2",
+                  "ByteTransformer",
+                  "SaxeBerlinDNN",
+                  "EmberDNN",
+                  "NatarajKNN",
+                  "DrebinSVM",
+                  "DL4MD",
+                  "PEMinerRF",
+                  "DrebinImport",
+                  "ALOHANet",
+                  "EmberGBDT_Import",
+                  "RaffFeatureNet",
+                  "DrebinString",
+                  "OpcodeLSTM",
+                  "OpcodeTransformer",
+                  "OpcodeStatNet",
+                  "AsmEmbedNet",
+                  "MalGraph",
+                  "CFGGAT",
+                  "CFGGCN",
+                  "CFGDGCNN",
+                  "CallGraphGNN",
+                  "GraphStatNet",
+                  "GrayscaleCNN",
+                  "InceptionV3",
+                  "IMCFN",
+                  "ColorCNN",
+                  "MarkovCNN",
+                  "EntropyMapCNN",
+                  "HashEmbedNet",
+                  "MetadataNet",
+                  "ResourceNet"
+                ],
+                "ExcludedModels": {}
+              },
+              "PerModelDetails": [
+                {
+                  "model": "MalConv",
+                  "view": "V1_byte",
+                  "engine": "pytorch",
+                  "status": "ok",
+                  "score": 0.09614349901676178,
+                  "prediction": 0
+                },
+                {
+                  "model": "MalConv2",
+                  "view": "V1_byte",
+                  "engine": "pytorch",
+                  "status": "ok",
+                  "score": 0.1726592779159546,
+                  "prediction": 0
+                },
+                {
+                  "model": "ByteTransformer",
+                  "view": "V1_byte",
+                  "engine": "pytorch",
+                  "status": "ok",
+                  "score": 0.1780281960964203,
+                  "prediction": 0
+                },
+                {
+                  "model": "SaxeBerlinDNN",
+                  "view": "V2_byte_stat",
+                  "engine": "pytorch",
+                  "status": "ok",
+                  "score": 0.1633598357439041,
+                  "prediction": 0
+                },
+                {
+                  "model": "EmberDNN",
+                  "view": "V2_byte_stat",
+                  "engine": "pytorch",
+                  "status": "ok",
+                  "score": 0.20766247808933258,
+                  "prediction": 0
+                },
+                {
+                  "model": "NatarajKNN",
+                  "view": "V2_byte_stat",
+                  "engine": "numpy",
+                  "status": "ok",
+                  "score": 7.553801850690434e-08,
+                  "prediction": 0
+                },
+                {
+                  "model": "DrebinSVM",
+                  "view": "V3_pe_struct",
+                  "engine": "numpy",
+                  "status": "ok",
+                  "score": 0.33964961767196655,
+                  "prediction": 0
+                },
+                {
+                  "model": "DL4MD",
+                  "view": "V3_pe_struct",
+                  "engine": "pytorch",
+                  "status": "ok",
+                  "score": 1.0,
+                  "prediction": 1
+                },
+                {
+                  "model": "PEMinerRF",
+                  "view": "V3_pe_struct",
+                  "engine": "numpy",
+                  "status": "ok",
+                  "score": 0.10542029142379761,
+                  "prediction": 0
+                },
+                {
+                  "model": "DrebinImport",
+                  "view": "V4_import",
+                  "engine": "numpy",
+                  "status": "ok",
+                  "score": 0.4739017188549042,
+                  "prediction": 0
+                },
+                {
+                  "model": "ALOHANet",
+                  "view": "V4_import",
+                  "engine": "pytorch",
+                  "status": "ok",
+                  "score": 0.3938499689102173,
+                  "prediction": 0
+                },
+                {
+                  "model": "EmberGBDT_Import",
+                  "view": "V4_import",
+                  "engine": "numpy",
+                  "status": "ok",
+                  "score": 0.3602801263332367,
+                  "prediction": 0
+                },
+                {
+                  "model": "RaffFeatureNet",
+                  "view": "V5_string",
+                  "engine": "pytorch",
+                  "status": "ok",
+                  "score": 0.43365511298179626,
+                  "prediction": 0
+                },
+                {
+                  "model": "DrebinString",
+                  "view": "V5_string",
+                  "engine": "numpy",
+                  "status": "ok",
+                  "score": 0.4177747368812561,
+                  "prediction": 0
+                },
+                {
+                  "model": "OpcodeLSTM",
+                  "view": "V6_opcode_seq",
+                  "engine": "pytorch",
+                  "status": "ok",
+                  "score": 0.5189710259437561,
+                  "prediction": 1
+                },
+                {
+                  "model": "OpcodeTransformer",
+                  "view": "V6_opcode_seq",
+                  "engine": "pytorch",
+                  "status": "ok",
+                  "score": 0.4337642192840576,
+                  "prediction": 0
+                },
+                {
+                  "model": "OpcodeStatNet",
+                  "view": "V6_opcode_stat",
+                  "engine": "numpy",
+                  "status": "ok",
+                  "score": 0.6618345975875854,
+                  "prediction": 1
+                },
+                {
+                  "model": "AsmEmbedNet",
+                  "view": "V6_func_embed",
+                  "engine": "pytorch",
+                  "status": "ok",
+                  "score": 0.8443429470062256,
+                  "prediction": 1
+                },
+                {
+                  "model": "MalGraph",
+                  "view": "V7_graph",
+                  "engine": "special",
+                  "malgraph_meta": {
+                    "local_functions": 236,
+                    "external_functions": 144,
+                    "fcg_edges": 308,
+                    "checkpoint": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\models\\MalGraph_2022\\best_model.pt",
+                    "vocab": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\models\\MalGraph_2022\\saved\\train_external_function_name_vocab.jsonl"
+                  },
+                  "status": "ok",
+                  "score": 0.5803078413009644,
+                  "prediction": 1
+                },
+                {
+                  "model": "CFGGAT",
+                  "view": "V7_graph",
+                  "engine": "pytorch",
+                  "status": "ok",
+                  "score": 0.53071129322052,
+                  "prediction": 1
+                },
+                {
+                  "model": "CFGGCN",
+                  "view": "V7_graph",
+                  "engine": "pytorch",
+                  "status": "ok",
+                  "score": 0.4971923828125,
+                  "prediction": 0
+                },
+                {
+                  "model": "CFGDGCNN",
+                  "view": "V7_graph",
+                  "engine": "pytorch",
+                  "status": "ok",
+                  "score": 0.5480257272720337,
+                  "prediction": 1
+                },
+                {
+                  "model": "CallGraphGNN",
+                  "view": "V7_graph",
+                  "engine": "pytorch",
+                  "status": "ok",
+                  "score": 0.5442920923233032,
+                  "prediction": 1
+                },
+                {
+                  "model": "GraphStatNet",
+                  "view": "V7_graph",
+                  "engine": "pytorch",
+                  "status": "ok",
+                  "score": 0.5675902366638184,
+                  "prediction": 1
+                },
+                {
+                  "model": "GrayscaleCNN",
+                  "view": "V8_gray",
+                  "engine": "pytorch",
+                  "status": "ok",
+                  "score": 0.4555087685585022,
+                  "prediction": 0
+                },
+                {
+                  "model": "InceptionV3",
+                  "view": "V8_gray",
+                  "engine": "pytorch",
+                  "status": "ok",
+                  "score": 0.3083668053150177,
+                  "prediction": 0
+                },
+                {
+                  "model": "IMCFN",
+                  "view": "V8_color",
+                  "engine": "pytorch",
+                  "status": "ok",
+                  "score": 0.49593183398246765,
+                  "prediction": 0
+                },
+                {
+                  "model": "ColorCNN",
+                  "view": "V8_color",
+                  "engine": "pytorch",
+                  "status": "ok",
+                  "score": 0.4355463683605194,
+                  "prediction": 0
+                },
+                {
+                  "model": "MarkovCNN",
+                  "view": "V8_markov",
+                  "engine": "pytorch",
+                  "status": "ok",
+                  "score": 0.6847122311592102,
+                  "prediction": 1
+                },
+                {
+                  "model": "EntropyMapCNN",
+                  "view": "V8_entropy",
+                  "engine": "pytorch",
+                  "status": "ok",
+                  "score": 0.4465908110141754,
+                  "prediction": 0
+                },
+                {
+                  "model": "HashEmbedNet",
+                  "view": "V9_hash",
+                  "engine": "pytorch",
+                  "status": "ok",
+                  "score": 0.3910313546657562,
+                  "prediction": 0
+                },
+                {
+                  "model": "MetadataNet",
+                  "view": "V10_metadata",
+                  "engine": "pytorch",
+                  "status": "ok",
+                  "score": 0.4721795618534088,
+                  "prediction": 0
+                },
+                {
+                  "model": "ResourceNet",
+                  "view": "V10_metadata",
+                  "engine": "numpy",
+                  "status": "ok",
+                  "score": 0.5075318217277527,
+                  "prediction": 1
+                }
+              ]
+            },
+            "FilePath": "C:\\Users\\lenovo\\AppData\\Local\\Temp\\codefender-smda-http-53s_c92z\\samples\\sample.bin",
+            "ProcessingTime": 5.86,
+            "TimingMethod": "feature_time_plus_shared_batch_forward_and_format"
+          }
+        ]
+      },
+      "verified_model_count": 33
+    },
+    {
+      "listener": "production",
+      "endpoint": "predict-single",
+      "http_status": 200,
+      "seconds": 5.75,
+      "response": {
+        "MD5": "0a99c1fbc2e19352240c29620e90ce32",
+        "SHA256": "07a3f464e479003a9c598cb8a8feab17cc55298d74de34315ae78c31256fb9c7",
+        "IsMalicious": false,
+        "ScanResult": {
+          "VirusName": "Benign",
+          "Packed": {
+            "IsPacked": false,
+            "PackerName": "",
+            "IsArchive": false,
+            "ArchiveName": ""
+          }
+        }
+      }
+    },
+    {
+      "listener": "production",
+      "endpoint": "predict-directory",
+      "http_status": 200,
+      "seconds": 5.781,
+      "response": {
+        "Summary": {
+          "TotalFiles": 1,
+          "ScannedFiles": 1,
+          "MaliciousCount": 0,
+          "BenignCount": 1,
+          "ErrorCount": 0
+        },
+        "Results": [
+          {
+            "MD5": "0a99c1fbc2e19352240c29620e90ce32",
+            "SHA256": "07a3f464e479003a9c598cb8a8feab17cc55298d74de34315ae78c31256fb9c7",
+            "FilePath": "C:\\Users\\lenovo\\AppData\\Local\\Temp\\codefender-smda-http-53s_c92z\\samples\\sample.bin",
+            "IsMalicious": false,
+            "ScanResult": {
+              "VirusName": "Benign",
+              "Packed": {
+                "IsPacked": false,
+                "PackerName": "",
+                "IsArchive": false,
+                "ArchiveName": ""
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "listener": "development",
+      "endpoint": "predict-single",
+      "http_status": 200,
+      "seconds": 5.844,
+      "response": {
+        "MD5": "0a99c1fbc2e19352240c29620e90ce32",
+        "SHA256": "07a3f464e479003a9c598cb8a8feab17cc55298d74de34315ae78c31256fb9c7",
+        "CRC32": "c096ef09",
+        "FileName": "sample.bin",
+        "FileSize": 88576,
+        "Status": 0,
+        "StatusLabel": "Benign",
+        "IsMalicious": false,
+        "Score": 0.4323277771472931,
+        "ScanResult": {
+          "VirusName": "Benign",
+          "Packed": {
+            "IsPacked": false,
+            "PackerName": "",
+            "IsArchive": false,
+            "ArchiveName": ""
+          },
+          "PerModelScores": {
+            "MalConv": 0.09614349901676178,
+            "MalConv2": 0.1726592779159546,
+            "ByteTransformer": 0.1780281960964203,
+            "SaxeBerlinDNN": 0.1633598357439041,
+            "EmberDNN": 0.20766247808933258,
+            "NatarajKNN": 7.553801850690434e-08,
+            "DrebinSVM": 0.33964961767196655,
+            "DL4MD": 1.0,
+            "PEMinerRF": 0.10542029142379761,
+            "DrebinImport": 0.4739017188549042,
+            "ALOHANet": 0.3938499689102173,
+            "EmberGBDT_Import": 0.3602801263332367,
+            "RaffFeatureNet": 0.43365511298179626,
+            "DrebinString": 0.4177747368812561,
+            "OpcodeLSTM": 0.5189710259437561,
+            "OpcodeTransformer": 0.4337642192840576,
+            "OpcodeStatNet": 0.6618345975875854,
+            "AsmEmbedNet": 0.8443429470062256,
+            "MalGraph": 0.5803078413009644,
+            "CFGGAT": 0.53071129322052,
+            "CFGGCN": 0.4971923828125,
+            "CFGDGCNN": 0.5480257272720337,
+            "CallGraphGNN": 0.5442920923233032,
+            "GraphStatNet": 0.5675902366638184,
+            "GrayscaleCNN": 0.4555087685585022,
+            "InceptionV3": 0.3083668053150177,
+            "IMCFN": 0.49593183398246765,
+            "ColorCNN": 0.4355463683605194,
+            "MarkovCNN": 0.6847122311592102,
+            "EntropyMapCNN": 0.4465908110141754,
+            "HashEmbedNet": 0.3910313546657562,
+            "MetadataNet": 0.4721795618534088,
+            "ResourceNet": 0.5075318217277527
+          },
+          "PerModelPreds": {
+            "MalConv": 0,
+            "MalConv2": 0,
+            "ByteTransformer": 0,
+            "SaxeBerlinDNN": 0,
+            "EmberDNN": 0,
+            "NatarajKNN": 0,
+            "DrebinSVM": 0,
+            "DL4MD": 1,
+            "PEMinerRF": 0,
+            "DrebinImport": 0,
+            "ALOHANet": 0,
+            "EmberGBDT_Import": 0,
+            "RaffFeatureNet": 0,
+            "DrebinString": 0,
+            "OpcodeLSTM": 1,
+            "OpcodeTransformer": 0,
+            "OpcodeStatNet": 1,
+            "AsmEmbedNet": 1,
+            "MalGraph": 1,
+            "CFGGAT": 1,
+            "CFGGCN": 0,
+            "CFGDGCNN": 1,
+            "CallGraphGNN": 1,
+            "GraphStatNet": 1,
+            "GrayscaleCNN": 0,
+            "InceptionV3": 0,
+            "IMCFN": 0,
+            "ColorCNN": 0,
+            "MarkovCNN": 1,
+            "EntropyMapCNN": 0,
+            "HashEmbedNet": 0,
+            "MetadataNet": 0,
+            "ResourceNet": 1
+          },
+          "DriftEvidence": {
+            "surface": 0.0,
+            "structure": 0.0,
+            "global": 0.0
+          },
+          "SampleDriftType": "none",
+          "AnomalyScore": 0.0,
+          "IsDriftCandidate": false,
+          "ModelStats": {
+            "TotalModels": 33,
+            "OkModels": 33,
+            "SkippedModels": 0,
+            "ErrorModels": 0,
+            "MaliciousVotes": 11,
+            "BenignVotes": 22,
+            "AgreementRate": 0.3333,
+            "EnsembleScore": 0.432328,
+            "EnsemblePred": 0,
+            "ScoreRange": [
+              0.0,
+              1.0
+            ],
+            "AggregationMethod": "equal_weight_mean",
+            "DecisionThreshold": 0.5,
+            "AggregatedModels": [
+              "MalConv",
+              "MalConv2",
+              "ByteTransformer",
+              "SaxeBerlinDNN",
+              "EmberDNN",
+              "NatarajKNN",
+              "DrebinSVM",
+              "DL4MD",
+              "PEMinerRF",
+              "DrebinImport",
+              "ALOHANet",
+              "EmberGBDT_Import",
+              "RaffFeatureNet",
+              "DrebinString",
+              "OpcodeLSTM",
+              "OpcodeTransformer",
+              "OpcodeStatNet",
+              "AsmEmbedNet",
+              "MalGraph",
+              "CFGGAT",
+              "CFGGCN",
+              "CFGDGCNN",
+              "CallGraphGNN",
+              "GraphStatNet",
+              "GrayscaleCNN",
+              "InceptionV3",
+              "IMCFN",
+              "ColorCNN",
+              "MarkovCNN",
+              "EntropyMapCNN",
+              "HashEmbedNet",
+              "MetadataNet",
+              "ResourceNet"
+            ],
+            "ExcludedModels": {}
+          },
+          "PerModelDetails": [
+            {
+              "model": "MalConv",
+              "view": "V1_byte",
+              "engine": "pytorch",
+              "status": "ok",
+              "score": 0.09614349901676178,
+              "prediction": 0
+            },
+            {
+              "model": "MalConv2",
+              "view": "V1_byte",
+              "engine": "pytorch",
+              "status": "ok",
+              "score": 0.1726592779159546,
+              "prediction": 0
+            },
+            {
+              "model": "ByteTransformer",
+              "view": "V1_byte",
+              "engine": "pytorch",
+              "status": "ok",
+              "score": 0.1780281960964203,
+              "prediction": 0
+            },
+            {
+              "model": "SaxeBerlinDNN",
+              "view": "V2_byte_stat",
+              "engine": "pytorch",
+              "status": "ok",
+              "score": 0.1633598357439041,
+              "prediction": 0
+            },
+            {
+              "model": "EmberDNN",
+              "view": "V2_byte_stat",
+              "engine": "pytorch",
+              "status": "ok",
+              "score": 0.20766247808933258,
+              "prediction": 0
+            },
+            {
+              "model": "NatarajKNN",
+              "view": "V2_byte_stat",
+              "engine": "numpy",
+              "status": "ok",
+              "score": 7.553801850690434e-08,
+              "prediction": 0
+            },
+            {
+              "model": "DrebinSVM",
+              "view": "V3_pe_struct",
+              "engine": "numpy",
+              "status": "ok",
+              "score": 0.33964961767196655,
+              "prediction": 0
+            },
+            {
+              "model": "DL4MD",
+              "view": "V3_pe_struct",
+              "engine": "pytorch",
+              "status": "ok",
+              "score": 1.0,
+              "prediction": 1
+            },
+            {
+              "model": "PEMinerRF",
+              "view": "V3_pe_struct",
+              "engine": "numpy",
+              "status": "ok",
+              "score": 0.10542029142379761,
+              "prediction": 0
+            },
+            {
+              "model": "DrebinImport",
+              "view": "V4_import",
+              "engine": "numpy",
+              "status": "ok",
+              "score": 0.4739017188549042,
+              "prediction": 0
+            },
+            {
+              "model": "ALOHANet",
+              "view": "V4_import",
+              "engine": "pytorch",
+              "status": "ok",
+              "score": 0.3938499689102173,
+              "prediction": 0
+            },
+            {
+              "model": "EmberGBDT_Import",
+              "view": "V4_import",
+              "engine": "numpy",
+              "status": "ok",
+              "score": 0.3602801263332367,
+              "prediction": 0
+            },
+            {
+              "model": "RaffFeatureNet",
+              "view": "V5_string",
+              "engine": "pytorch",
+              "status": "ok",
+              "score": 0.43365511298179626,
+              "prediction": 0
+            },
+            {
+              "model": "DrebinString",
+              "view": "V5_string",
+              "engine": "numpy",
+              "status": "ok",
+              "score": 0.4177747368812561,
+              "prediction": 0
+            },
+            {
+              "model": "OpcodeLSTM",
+              "view": "V6_opcode_seq",
+              "engine": "pytorch",
+              "status": "ok",
+              "score": 0.5189710259437561,
+              "prediction": 1
+            },
+            {
+              "model": "OpcodeTransformer",
+              "view": "V6_opcode_seq",
+              "engine": "pytorch",
+              "status": "ok",
+              "score": 0.4337642192840576,
+              "prediction": 0
+            },
+            {
+              "model": "OpcodeStatNet",
+              "view": "V6_opcode_stat",
+              "engine": "numpy",
+              "status": "ok",
+              "score": 0.6618345975875854,
+              "prediction": 1
+            },
+            {
+              "model": "AsmEmbedNet",
+              "view": "V6_func_embed",
+              "engine": "pytorch",
+              "status": "ok",
+              "score": 0.8443429470062256,
+              "prediction": 1
+            },
+            {
+              "model": "MalGraph",
+              "view": "V7_graph",
+              "engine": "special",
+              "malgraph_meta": {
+                "local_functions": 236,
+                "external_functions": 144,
+                "fcg_edges": 308,
+                "checkpoint": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\models\\MalGraph_2022\\best_model.pt",
+                "vocab": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\models\\MalGraph_2022\\saved\\train_external_function_name_vocab.jsonl"
+              },
+              "status": "ok",
+              "score": 0.5803078413009644,
+              "prediction": 1
+            },
+            {
+              "model": "CFGGAT",
+              "view": "V7_graph",
+              "engine": "pytorch",
+              "status": "ok",
+              "score": 0.53071129322052,
+              "prediction": 1
+            },
+            {
+              "model": "CFGGCN",
+              "view": "V7_graph",
+              "engine": "pytorch",
+              "status": "ok",
+              "score": 0.4971923828125,
+              "prediction": 0
+            },
+            {
+              "model": "CFGDGCNN",
+              "view": "V7_graph",
+              "engine": "pytorch",
+              "status": "ok",
+              "score": 0.5480257272720337,
+              "prediction": 1
+            },
+            {
+              "model": "CallGraphGNN",
+              "view": "V7_graph",
+              "engine": "pytorch",
+              "status": "ok",
+              "score": 0.5442920923233032,
+              "prediction": 1
+            },
+            {
+              "model": "GraphStatNet",
+              "view": "V7_graph",
+              "engine": "pytorch",
+              "status": "ok",
+              "score": 0.5675902366638184,
+              "prediction": 1
+            },
+            {
+              "model": "GrayscaleCNN",
+              "view": "V8_gray",
+              "engine": "pytorch",
+              "status": "ok",
+              "score": 0.4555087685585022,
+              "prediction": 0
+            },
+            {
+              "model": "InceptionV3",
+              "view": "V8_gray",
+              "engine": "pytorch",
+              "status": "ok",
+              "score": 0.3083668053150177,
+              "prediction": 0
+            },
+            {
+              "model": "IMCFN",
+              "view": "V8_color",
+              "engine": "pytorch",
+              "status": "ok",
+              "score": 0.49593183398246765,
+              "prediction": 0
+            },
+            {
+              "model": "ColorCNN",
+              "view": "V8_color",
+              "engine": "pytorch",
+              "status": "ok",
+              "score": 0.4355463683605194,
+              "prediction": 0
+            },
+            {
+              "model": "MarkovCNN",
+              "view": "V8_markov",
+              "engine": "pytorch",
+              "status": "ok",
+              "score": 0.6847122311592102,
+              "prediction": 1
+            },
+            {
+              "model": "EntropyMapCNN",
+              "view": "V8_entropy",
+              "engine": "pytorch",
+              "status": "ok",
+              "score": 0.4465908110141754,
+              "prediction": 0
+            },
+            {
+              "model": "HashEmbedNet",
+              "view": "V9_hash",
+              "engine": "pytorch",
+              "status": "ok",
+              "score": 0.3910313546657562,
+              "prediction": 0
+            },
+            {
+              "model": "MetadataNet",
+              "view": "V10_metadata",
+              "engine": "pytorch",
+              "status": "ok",
+              "score": 0.4721795618534088,
+              "prediction": 0
+            },
+            {
+              "model": "ResourceNet",
+              "view": "V10_metadata",
+              "engine": "numpy",
+              "status": "ok",
+              "score": 0.5075318217277527,
+              "prediction": 1
+            }
+          ]
+        }
+      },
+      "verified_model_count": 33
+    },
+    {
+      "listener": "development",
+      "endpoint": "predict-directory",
+      "http_status": 200,
+      "seconds": 5.812,
+      "response": {
+        "Summary": {
+          "TotalFiles": 1,
+          "TotalFilesInDirectory": 1,
+          "SkippedNonPE": 0,
+          "ScannedFiles": 1,
+          "MaliciousCount": 0,
+          "BenignCount": 1,
+          "ErrorCount": 0,
+          "TimeoutCount": 0,
+          "Directory": "C:\\Users\\lenovo\\AppData\\Local\\Temp\\codefender-smda-http-53s_c92z\\samples",
+          "Timing": {
+            "TotalTime": 5.812,
+            "ModelLoadTime": 0.0,
+            "BatchScanTime": 5.812,
+            "AvgSampleTime": 5.812,
+            "MedianSampleTime": 5.812,
+            "MinSampleTime": 5.812,
+            "MaxSampleTime": 5.812,
+            "Throughput": 0.172
+          }
+        },
+        "Results": [
+          {
+            "MD5": "0a99c1fbc2e19352240c29620e90ce32",
+            "SHA256": "07a3f464e479003a9c598cb8a8feab17cc55298d74de34315ae78c31256fb9c7",
+            "CRC32": "c096ef09",
+            "FileName": "sample.bin",
+            "FileSize": 88576,
+            "Status": 0,
+            "StatusLabel": "Benign",
+            "IsMalicious": false,
+            "Score": 0.4323277771472931,
+            "ScanResult": {
+              "VirusName": "Benign",
+              "Packed": {
+                "IsPacked": false,
+                "PackerName": "",
+                "IsArchive": false,
+                "ArchiveName": ""
+              },
+              "PerModelScores": {
+                "MalConv": 0.09614349901676178,
+                "MalConv2": 0.1726592779159546,
+                "ByteTransformer": 0.1780281960964203,
+                "SaxeBerlinDNN": 0.1633598357439041,
+                "EmberDNN": 0.20766247808933258,
+                "NatarajKNN": 7.553801850690434e-08,
+                "DrebinSVM": 0.33964961767196655,
+                "DL4MD": 1.0,
+                "PEMinerRF": 0.10542029142379761,
+                "DrebinImport": 0.4739017188549042,
+                "ALOHANet": 0.3938499689102173,
+                "EmberGBDT_Import": 0.3602801263332367,
+                "RaffFeatureNet": 0.43365511298179626,
+                "DrebinString": 0.4177747368812561,
+                "OpcodeLSTM": 0.5189710259437561,
+                "OpcodeTransformer": 0.4337642192840576,
+                "OpcodeStatNet": 0.6618345975875854,
+                "AsmEmbedNet": 0.8443429470062256,
+                "MalGraph": 0.5803078413009644,
+                "CFGGAT": 0.53071129322052,
+                "CFGGCN": 0.4971923828125,
+                "CFGDGCNN": 0.5480257272720337,
+                "CallGraphGNN": 0.5442920923233032,
+                "GraphStatNet": 0.5675902366638184,
+                "GrayscaleCNN": 0.4555087685585022,
+                "InceptionV3": 0.3083668053150177,
+                "IMCFN": 0.49593183398246765,
+                "ColorCNN": 0.4355463683605194,
+                "MarkovCNN": 0.6847122311592102,
+                "EntropyMapCNN": 0.4465908110141754,
+                "HashEmbedNet": 0.3910313546657562,
+                "MetadataNet": 0.4721795618534088,
+                "ResourceNet": 0.5075318217277527
+              },
+              "PerModelPreds": {
+                "MalConv": 0,
+                "MalConv2": 0,
+                "ByteTransformer": 0,
+                "SaxeBerlinDNN": 0,
+                "EmberDNN": 0,
+                "NatarajKNN": 0,
+                "DrebinSVM": 0,
+                "DL4MD": 1,
+                "PEMinerRF": 0,
+                "DrebinImport": 0,
+                "ALOHANet": 0,
+                "EmberGBDT_Import": 0,
+                "RaffFeatureNet": 0,
+                "DrebinString": 0,
+                "OpcodeLSTM": 1,
+                "OpcodeTransformer": 0,
+                "OpcodeStatNet": 1,
+                "AsmEmbedNet": 1,
+                "MalGraph": 1,
+                "CFGGAT": 1,
+                "CFGGCN": 0,
+                "CFGDGCNN": 1,
+                "CallGraphGNN": 1,
+                "GraphStatNet": 1,
+                "GrayscaleCNN": 0,
+                "InceptionV3": 0,
+                "IMCFN": 0,
+                "ColorCNN": 0,
+                "MarkovCNN": 1,
+                "EntropyMapCNN": 0,
+                "HashEmbedNet": 0,
+                "MetadataNet": 0,
+                "ResourceNet": 1
+              },
+              "DriftEvidence": {
+                "surface": 0.0,
+                "structure": 0.0,
+                "global": 0.0
+              },
+              "SampleDriftType": "none",
+              "AnomalyScore": 0.0,
+              "IsDriftCandidate": false,
+              "ModelStats": {
+                "TotalModels": 33,
+                "OkModels": 33,
+                "SkippedModels": 0,
+                "ErrorModels": 0,
+                "MaliciousVotes": 11,
+                "BenignVotes": 22,
+                "AgreementRate": 0.3333,
+                "EnsembleScore": 0.432328,
+                "EnsemblePred": 0,
+                "ScoreRange": [
+                  0.0,
+                  1.0
+                ],
+                "AggregationMethod": "equal_weight_mean",
+                "DecisionThreshold": 0.5,
+                "AggregatedModels": [
+                  "MalConv",
+                  "MalConv2",
+                  "ByteTransformer",
+                  "SaxeBerlinDNN",
+                  "EmberDNN",
+                  "NatarajKNN",
+                  "DrebinSVM",
+                  "DL4MD",
+                  "PEMinerRF",
+                  "DrebinImport",
+                  "ALOHANet",
+                  "EmberGBDT_Import",
+                  "RaffFeatureNet",
+                  "DrebinString",
+                  "OpcodeLSTM",
+                  "OpcodeTransformer",
+                  "OpcodeStatNet",
+                  "AsmEmbedNet",
+                  "MalGraph",
+                  "CFGGAT",
+                  "CFGGCN",
+                  "CFGDGCNN",
+                  "CallGraphGNN",
+                  "GraphStatNet",
+                  "GrayscaleCNN",
+                  "InceptionV3",
+                  "IMCFN",
+                  "ColorCNN",
+                  "MarkovCNN",
+                  "EntropyMapCNN",
+                  "HashEmbedNet",
+                  "MetadataNet",
+                  "ResourceNet"
+                ],
+                "ExcludedModels": {}
+              },
+              "PerModelDetails": [
+                {
+                  "model": "MalConv",
+                  "view": "V1_byte",
+                  "engine": "pytorch",
+                  "status": "ok",
+                  "score": 0.09614349901676178,
+                  "prediction": 0
+                },
+                {
+                  "model": "MalConv2",
+                  "view": "V1_byte",
+                  "engine": "pytorch",
+                  "status": "ok",
+                  "score": 0.1726592779159546,
+                  "prediction": 0
+                },
+                {
+                  "model": "ByteTransformer",
+                  "view": "V1_byte",
+                  "engine": "pytorch",
+                  "status": "ok",
+                  "score": 0.1780281960964203,
+                  "prediction": 0
+                },
+                {
+                  "model": "SaxeBerlinDNN",
+                  "view": "V2_byte_stat",
+                  "engine": "pytorch",
+                  "status": "ok",
+                  "score": 0.1633598357439041,
+                  "prediction": 0
+                },
+                {
+                  "model": "EmberDNN",
+                  "view": "V2_byte_stat",
+                  "engine": "pytorch",
+                  "status": "ok",
+                  "score": 0.20766247808933258,
+                  "prediction": 0
+                },
+                {
+                  "model": "NatarajKNN",
+                  "view": "V2_byte_stat",
+                  "engine": "numpy",
+                  "status": "ok",
+                  "score": 7.553801850690434e-08,
+                  "prediction": 0
+                },
+                {
+                  "model": "DrebinSVM",
+                  "view": "V3_pe_struct",
+                  "engine": "numpy",
+                  "status": "ok",
+                  "score": 0.33964961767196655,
+                  "prediction": 0
+                },
+                {
+                  "model": "DL4MD",
+                  "view": "V3_pe_struct",
+                  "engine": "pytorch",
+                  "status": "ok",
+                  "score": 1.0,
+                  "prediction": 1
+                },
+                {
+                  "model": "PEMinerRF",
+                  "view": "V3_pe_struct",
+                  "engine": "numpy",
+                  "status": "ok",
+                  "score": 0.10542029142379761,
+                  "prediction": 0
+                },
+                {
+                  "model": "DrebinImport",
+                  "view": "V4_import",
+                  "engine": "numpy",
+                  "status": "ok",
+                  "score": 0.4739017188549042,
+                  "prediction": 0
+                },
+                {
+                  "model": "ALOHANet",
+                  "view": "V4_import",
+                  "engine": "pytorch",
+                  "status": "ok",
+                  "score": 0.3938499689102173,
+                  "prediction": 0
+                },
+                {
+                  "model": "EmberGBDT_Import",
+                  "view": "V4_import",
+                  "engine": "numpy",
+                  "status": "ok",
+                  "score": 0.3602801263332367,
+                  "prediction": 0
+                },
+                {
+                  "model": "RaffFeatureNet",
+                  "view": "V5_string",
+                  "engine": "pytorch",
+                  "status": "ok",
+                  "score": 0.43365511298179626,
+                  "prediction": 0
+                },
+                {
+                  "model": "DrebinString",
+                  "view": "V5_string",
+                  "engine": "numpy",
+                  "status": "ok",
+                  "score": 0.4177747368812561,
+                  "prediction": 0
+                },
+                {
+                  "model": "OpcodeLSTM",
+                  "view": "V6_opcode_seq",
+                  "engine": "pytorch",
+                  "status": "ok",
+                  "score": 0.5189710259437561,
+                  "prediction": 1
+                },
+                {
+                  "model": "OpcodeTransformer",
+                  "view": "V6_opcode_seq",
+                  "engine": "pytorch",
+                  "status": "ok",
+                  "score": 0.4337642192840576,
+                  "prediction": 0
+                },
+                {
+                  "model": "OpcodeStatNet",
+                  "view": "V6_opcode_stat",
+                  "engine": "numpy",
+                  "status": "ok",
+                  "score": 0.6618345975875854,
+                  "prediction": 1
+                },
+                {
+                  "model": "AsmEmbedNet",
+                  "view": "V6_func_embed",
+                  "engine": "pytorch",
+                  "status": "ok",
+                  "score": 0.8443429470062256,
+                  "prediction": 1
+                },
+                {
+                  "model": "MalGraph",
+                  "view": "V7_graph",
+                  "engine": "special",
+                  "malgraph_meta": {
+                    "local_functions": 236,
+                    "external_functions": 144,
+                    "fcg_edges": 308,
+                    "checkpoint": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\models\\MalGraph_2022\\best_model.pt",
+                    "vocab": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\models\\MalGraph_2022\\saved\\train_external_function_name_vocab.jsonl"
+                  },
+                  "status": "ok",
+                  "score": 0.5803078413009644,
+                  "prediction": 1
+                },
+                {
+                  "model": "CFGGAT",
+                  "view": "V7_graph",
+                  "engine": "pytorch",
+                  "status": "ok",
+                  "score": 0.53071129322052,
+                  "prediction": 1
+                },
+                {
+                  "model": "CFGGCN",
+                  "view": "V7_graph",
+                  "engine": "pytorch",
+                  "status": "ok",
+                  "score": 0.4971923828125,
+                  "prediction": 0
+                },
+                {
+                  "model": "CFGDGCNN",
+                  "view": "V7_graph",
+                  "engine": "pytorch",
+                  "status": "ok",
+                  "score": 0.5480257272720337,
+                  "prediction": 1
+                },
+                {
+                  "model": "CallGraphGNN",
+                  "view": "V7_graph",
+                  "engine": "pytorch",
+                  "status": "ok",
+                  "score": 0.5442920923233032,
+                  "prediction": 1
+                },
+                {
+                  "model": "GraphStatNet",
+                  "view": "V7_graph",
+                  "engine": "pytorch",
+                  "status": "ok",
+                  "score": 0.5675902366638184,
+                  "prediction": 1
+                },
+                {
+                  "model": "GrayscaleCNN",
+                  "view": "V8_gray",
+                  "engine": "pytorch",
+                  "status": "ok",
+                  "score": 0.4555087685585022,
+                  "prediction": 0
+                },
+                {
+                  "model": "InceptionV3",
+                  "view": "V8_gray",
+                  "engine": "pytorch",
+                  "status": "ok",
+                  "score": 0.3083668053150177,
+                  "prediction": 0
+                },
+                {
+                  "model": "IMCFN",
+                  "view": "V8_color",
+                  "engine": "pytorch",
+                  "status": "ok",
+                  "score": 0.49593183398246765,
+                  "prediction": 0
+                },
+                {
+                  "model": "ColorCNN",
+                  "view": "V8_color",
+                  "engine": "pytorch",
+                  "status": "ok",
+                  "score": 0.4355463683605194,
+                  "prediction": 0
+                },
+                {
+                  "model": "MarkovCNN",
+                  "view": "V8_markov",
+                  "engine": "pytorch",
+                  "status": "ok",
+                  "score": 0.6847122311592102,
+                  "prediction": 1
+                },
+                {
+                  "model": "EntropyMapCNN",
+                  "view": "V8_entropy",
+                  "engine": "pytorch",
+                  "status": "ok",
+                  "score": 0.4465908110141754,
+                  "prediction": 0
+                },
+                {
+                  "model": "HashEmbedNet",
+                  "view": "V9_hash",
+                  "engine": "pytorch",
+                  "status": "ok",
+                  "score": 0.3910313546657562,
+                  "prediction": 0
+                },
+                {
+                  "model": "MetadataNet",
+                  "view": "V10_metadata",
+                  "engine": "pytorch",
+                  "status": "ok",
+                  "score": 0.4721795618534088,
+                  "prediction": 0
+                },
+                {
+                  "model": "ResourceNet",
+                  "view": "V10_metadata",
+                  "engine": "numpy",
+                  "status": "ok",
+                  "score": 0.5075318217277527,
+                  "prediction": 1
+                }
+              ]
+            },
+            "FilePath": "C:\\Users\\lenovo\\AppData\\Local\\Temp\\codefender-smda-http-53s_c92z\\samples\\sample.bin",
+            "ProcessingTime": 5.812,
+            "TimingMethod": "feature_time_plus_shared_batch_forward_and_format"
+          }
+        ]
+      },
+      "verified_model_count": 33
+    }
+  ],
+  "passed": true,
+  "server_log": "2026-11-10 21:18:51 [INFO] codefender.engine: [hashdb] 哈希库预检已禁用 (CODEFENDER_HASH_DB_ENABLED=0)\n2026-11-10 21:18:51 [INFO] codefender.engine: [hashdb] 过滤引擎未启用 → 所有样本走模型集成（纯模型模式）\n2026-11-10 21:18:51 [INFO] codefender.engine: [startup] 环境档位=dev 运行时覆盖文件=禁用（CODEFENDER_RUNTIME_CFG_DISABLE=1）\n2026-11-10 21:18:51 [INFO] codefender.engine: [startup] 过滤引擎要求=允许降级为纯模型\nINFO:     Started server process [9680]\nINFO:     Waiting for application startup.\nINFO:     Started server process [9680]\nINFO:     Waiting for application startup.\nINFO:     Started server process [9680]\nINFO:     Waiting for application startup.\nD:\\conda\\envs\\ml\\Lib\\site-packages\\torchvision\\models\\_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and may be removed in the future, please use 'weights' instead.\n  warnings.warn(\nD:\\conda\\envs\\ml\\Lib\\site-packages\\torchvision\\models\\_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and may be removed in the future. The current behavior is equivalent to passing `weights=None`.\n  warnings.warn(msg)\nD:\\conda\\envs\\ml\\Lib\\site-packages\\torchvision\\models\\inception.py:43: FutureWarning: The default weight initialization of inception_v3 will be changed in future releases of torchvision. If you wish to keep the old behavior (which leads to long initialization times due to scipy/scipy#11299), please set init_weights=True.\n  warnings.warn(\n2026-11-10 21:18:55 [INFO] codefender.engine: [device] 推理设备: CPU\nINFO:     Application startup complete.\nINFO:     Application startup complete.\nINFO:     Application startup complete.\nINFO:     127.0.0.1:62678 - \"GET /readyz HTTP/1.1\" 200 OK\nINFO:     127.0.0.1:62679 - \"GET /readyz HTTP/1.1\" 200 OK\nINFO:     127.0.0.1:62680 - \"GET /readyz HTTP/1.1\" 200 OK\n\nLoad frequency list from the file of C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\models\\MalGraph_2022\\saved\\train_external_function_name_vocab.jsonl ... : 0it [00:00, ?it/s]\nLoad frequency list from the file of C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\models\\MalGraph_2022\\saved\\train_external_function_name_vocab.jsonl ... : 6890it [00:00, 861261.09it/s]\n\ncreating vocab ... :   0%|          | 0/1000 [00:00<?, ?it/s]\ncreating vocab ... : 100%|██████████| 1000/1000 [00:00<00:00, 333331.00it/s]\nINFO:     127.0.0.1:62678 - \"GET /health HTTP/1.1\" 200 OK\nC:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\models\\MalConv2_2021\\Checkpoint.py:30: UserWarning: None of the inputs have requires_grad=True. Gradients will be None\n  warnings.warn(\"None of the inputs have requires_grad=True. Gradients will be None\")\n2026-11-10 21:19:01 [INFO] codefender.stages: Disassembly process finished seconds=4.781 returncode=0\n2026-11-10 21:19:02 [INFO] codefender.stages: Scan stage timing seconds={'fast_features_seconds': 0.125, 'fast_models_seconds': 0.453, 'binaryninja_seconds': 4.781, 'disassembly_features_seconds': 0.422, 'malgraph_features_seconds': 2.375, 'slow_models_seconds': 0.5, 'total_model_seconds': 5.859}\nINFO:     127.0.0.1:62678 - \"POST /predict-single?include_de=true HTTP/1.1\" 200 OK\n2026-11-10 21:19:07 [INFO] codefender.stages: Disassembly process finished seconds=4.828 returncode=0\nC:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\models\\MalConv2_2021\\Checkpoint.py:30: UserWarning: None of the inputs have requires_grad=True. Gradients will be None\n  warnings.warn(\"None of the inputs have requires_grad=True. Gradients will be None\")\nINFO:     127.0.0.1:62678 - \"POST /predict-directory?directory=C%3A%5CUsers%5Clenovo%5CAppData%5CLocal%5CTemp%5Ccodefender-smda-http-53s_c92z%5Csamples&include_de=true HTTP/1.1\" 200 OK\nINFO:     127.0.0.1:62690 - \"GET /health HTTP/1.1\" 200 OK\n2026-11-10 21:19:14 [INFO] codefender.stages: Disassembly process finished seconds=4.703 returncode=0\nINFO:     127.0.0.1:62690 - \"POST /predict-single?include_de=true HTTP/1.1\" 200 OK\n2026-11-10 21:19:20 [INFO] codefender.stages: Disassembly process finished seconds=4.734 returncode=0\nINFO:     127.0.0.1:62690 - \"POST /predict-directory?directory=C%3A%5CUsers%5Clenovo%5CAppData%5CLocal%5CTemp%5Ccodefender-smda-http-53s_c92z%5Csamples&include_de=true HTTP/1.1\" 200 OK\nINFO:     127.0.0.1:62707 - \"GET /health HTTP/1.1\" 200 OK\n2026-11-10 21:19:26 [INFO] codefender.stages: Disassembly process finished seconds=4.797 returncode=0\nINFO:     127.0.0.1:62707 - \"POST /predict-single?include_de=true HTTP/1.1\" 200 OK\n2026-11-10 21:19:32 [INFO] codefender.stages: Disassembly process finished seconds=4.781 returncode=0\nINFO:     127.0.0.1:62707 - \"POST /predict-directory?directory=C%3A%5CUsers%5Clenovo%5CAppData%5CLocal%5CTemp%5Ccodefender-smda-http-53s_c92z%5Csamples&include_de=true HTTP/1.1\" 200 OK\n"
+}

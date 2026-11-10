@@ -1,0 +1,4593 @@
+{
+  "timestamp": "2026-11-10T12:58:57.012849+00:00",
+  "scope": "Real local PE static analysis + main weights CPU forward; not accuracy, BN parity, GPU, hash DB or Docker certification.",
+  "python": "3.11.17 | packaged by conda-forge | (main, Oct 13 2026, 16:36:10) [MSC v.1944 64 bit (AMD64)]",
+  "executable": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\.venv\\Scripts\\python.exe",
+  "base_prefix": "D:\\conda\\envs\\ml",
+  "previous_backend_removed_for_default_test": null,
+  "versions": {
+    "smda": "4.3.10",
+    "dnfile": "0.18.0",
+    "dncil": "1.0.2",
+    "capstone": "5.0.9",
+    "lief": "1.0.0",
+    "pefile": "2024.8.26",
+    "numpy": "2.4.6",
+    "scipy": "1.17.1",
+    "scikit-learn": "1.9.1",
+    "torch": "2.11.0+cu130",
+    "torchvision": "0.26.0+cu130",
+    "torch-geometric": "2.8.1",
+    "fastapi": "0.162.0",
+    "starlette": "1.10.0",
+    "httpx": "0.28.1",
+    "uvicorn": "0.54.0",
+    "python-multipart": "0.0.32",
+    "safetensors": "0.8.0",
+    "ppdeep": "20260221",
+    "yara-python": "4.5.4"
+  },
+  "artifacts": {
+    "ensemble": {
+      "path": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\ensemble.pkl",
+      "bytes": 771598004,
+      "sha256": "c7c20bb80ebb24372c5dedc0880fec49fd82020cf7da18056ed3bf0d995849c4"
+    },
+    "ensemble_source": {
+      "path": "D:\\VM_Share\\CoDefenderC3_v9\\CoDefenderC3\\ensemble.pkl",
+      "bytes": 771598004,
+      "sha256": "c7c20bb80ebb24372c5dedc0880fec49fd82020cf7da18056ed3bf0d995849c4"
+    },
+    "malgraph": {
+      "path": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\models\\MalGraph_2022\\best_model.pt",
+      "bytes": 1892386,
+      "sha256": "ddcf05645044bcdb339b043dd8c78a0cc2ec7950823079cabdd116d27370e585"
+    },
+    "malgraph_vocab": {
+      "path": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\models\\MalGraph_2022\\saved\\train_external_function_name_vocab.jsonl",
+      "bytes": 362486,
+      "sha256": "6c9e04b91416660bdb6a65d0151a7f400df166a462fcff8192de3bc9dc5e75e7"
+    }
+  },
+  "samples": [
+    {
+      "input": {
+        "path": "D:\\VM_Share\\CoDefenderC3_v9\\_pe_ascii\\s00_benign_32.bin",
+        "bytes": 692224,
+        "sha256": "000028670db2a67449efeaa1a6e96afe1124094bb6123144780c9eca19767b61"
+      },
+      "passed": true,
+      "pe": {
+        "machine": "0x14c",
+        "bitness": 32,
+        "entrypoint_rva": 685102,
+        "clr_header": true
+      },
+      "analysis_errors": {},
+      "timing": {
+        "disassembly_features_seconds": 2.64,
+        "malgraph_features_seconds": 2.5
+      },
+      "analysis_seconds": 7.328,
+      "de": {
+        "D01": {
+          "shape": [
+            4096
+          ],
+          "finite": true,
+          "nonzero": 4096,
+          "sha256": "23b6b57d0ab98facdcca1f003db0c064c6534dbd03899445448c109e75c2b1b6"
+        },
+        "D02": {
+          "shape": [
+            256
+          ],
+          "finite": true,
+          "nonzero": 256,
+          "sha256": "51d8646ba1f815e5682f7d716ad46d0c3244efa35bb5c5f28928fce43769ba3e"
+        },
+        "D03": {
+          "shape": [
+            256
+          ],
+          "finite": true,
+          "nonzero": 256,
+          "sha256": "9ee88385d4a213bb99a1d829a9e4f504ea1db56783c7d7e42498488989ab101f"
+        },
+        "D04": {
+          "shape": [
+            15
+          ],
+          "finite": true,
+          "nonzero": 5,
+          "sha256": "f99b11b0a4d6d5ea965059f838418c8602ee108182eb66c0ec96a012d0acfb6b"
+        },
+        "D05": {
+          "shape": [
+            12
+          ],
+          "finite": true,
+          "nonzero": 11,
+          "sha256": "20292ba018f5cca28f8cc6c633bc8e325bfb5afa7cc00732b10aa90cb76a9078"
+        },
+        "D06": {
+          "shape": [
+            10
+          ],
+          "finite": true,
+          "nonzero": 10,
+          "sha256": "08334af7b342bf28d13841d399c14cf4e7dade714715a4f496c4db071ec98632"
+        },
+        "D07": {
+          "shape": [
+            6144
+          ],
+          "finite": true,
+          "nonzero": 558,
+          "sha256": "1072892e5c2465fbfcc25d34a651bbc42e5c7f2dc3758b2fcaf5390f63d9e7ba"
+        },
+        "E03": {
+          "shape": [
+            12
+          ],
+          "finite": true,
+          "nonzero": 12,
+          "sha256": "11a25aabcd618749c5cd174a2b2866a87e544ce56790a8ccb5163cd680e4f49c"
+        },
+        "E04": {
+          "shape": [
+            10
+          ],
+          "finite": true,
+          "nonzero": 2,
+          "sha256": "c3591f186273bae078cfcdcb8086b6115b293595a6f103b67ecab9c90249aaf2"
+        }
+      },
+      "graph": {
+        "local_functions": 2565,
+        "external_functions": 420,
+        "blocks": 10671,
+        "cfg_edges": 12638,
+        "fcg_edges": 0
+      },
+      "view_shapes": {
+        "V1_byte": [
+          1,
+          32768
+        ],
+        "V2_byte_stat": [
+          1,
+          776
+        ],
+        "V3_pe_struct": [
+          1,
+          264
+        ],
+        "V4_import": [
+          1,
+          339
+        ],
+        "V5_string": [
+          1,
+          553
+        ],
+        "V6_opcode_seq": [
+          1,
+          4096
+        ],
+        "V6_opcode_stat": [
+          1,
+          549
+        ],
+        "V6_func_embed": [
+          1,
+          6144
+        ],
+        "V7_graph": [
+          1,
+          22
+        ],
+        "V8_gray": [
+          1,
+          65536
+        ],
+        "V8_color": [
+          1,
+          196608
+        ],
+        "V8_markov": [
+          1,
+          65536
+        ],
+        "V8_entropy": [
+          1,
+          65536
+        ],
+        "V9_hash": [
+          1,
+          512
+        ],
+        "V10_metadata": [
+          1,
+          60
+        ]
+      },
+      "view_meta": {
+        "V1_byte": {
+          "status": "ok",
+          "source": "binja:B01/raw_fallback",
+          "shape": [
+            1,
+            32768
+          ],
+          "expected_dim": 32768
+        },
+        "V2_byte_stat": {
+          "status": "ok",
+          "source": "binja:B02,B03,B04,B05",
+          "shape": [
+            1,
+            776
+          ],
+          "expected_dim": 776
+        },
+        "V3_pe_struct": {
+          "status": "ok",
+          "source": "binja:A01,A02,A03,A04,A05",
+          "shape": [
+            1,
+            264
+          ],
+          "expected_dim": 264
+        },
+        "V4_import": {
+          "status": "ok",
+          "source": "binja:A06,A07,A08_A15",
+          "shape": [
+            1,
+            339
+          ],
+          "expected_dim": 339
+        },
+        "V5_string": {
+          "status": "ok",
+          "source": "binja:C01,C02,C03,C04",
+          "shape": [
+            1,
+            553
+          ],
+          "expected_dim": 553
+        },
+        "V6_opcode_seq": {
+          "status": "ok",
+          "source": "binja:D01",
+          "shape": [
+            1,
+            4096
+          ],
+          "expected_dim": 4096
+        },
+        "V6_opcode_stat": {
+          "status": "ok",
+          "source": "binja:D02,D03,D04,D05,D06",
+          "shape": [
+            1,
+            549
+          ],
+          "expected_dim": 549
+        },
+        "V6_func_embed": {
+          "status": "ok",
+          "source": "binja:D07",
+          "shape": [
+            1,
+            6144
+          ],
+          "expected_dim": 6144
+        },
+        "V7_graph": {
+          "status": "ok",
+          "source": "binja:E03,E04",
+          "shape": [
+            1,
+            22
+          ],
+          "expected_dim": 22,
+          "note": "partial_binja_features_missing:E01,E02"
+        },
+        "V8_gray": {
+          "status": "ok",
+          "source": "binja:F01",
+          "shape": [
+            1,
+            65536
+          ],
+          "expected_dim": 65536
+        },
+        "V8_color": {
+          "status": "ok",
+          "source": "binja:F02",
+          "shape": [
+            1,
+            196608
+          ],
+          "expected_dim": 196608
+        },
+        "V8_markov": {
+          "status": "ok",
+          "source": "binja:F03",
+          "shape": [
+            1,
+            65536
+          ],
+          "expected_dim": 65536
+        },
+        "V8_entropy": {
+          "status": "ok",
+          "source": "binja:F04",
+          "shape": [
+            1,
+            65536
+          ],
+          "expected_dim": 65536
+        },
+        "V9_hash": {
+          "status": "ok",
+          "source": "binja:G01,G02,G03,G04",
+          "shape": [
+            1,
+            512
+          ],
+          "expected_dim": 512
+        },
+        "V10_metadata": {
+          "status": "ok",
+          "source": "binja:H01,H02,H03",
+          "shape": [
+            1,
+            60
+          ],
+          "expected_dim": 60
+        },
+        "_de_feature_extraction": {
+          "status": "skipped"
+        }
+      },
+      "model_scope": "all_models",
+      "model_results": [
+        {
+          "model": "MalConv",
+          "view": "V1_byte",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.34808212518692017,
+          "prediction": 0
+        },
+        {
+          "model": "MalConv2",
+          "view": "V1_byte",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.45052871108055115,
+          "prediction": 0
+        },
+        {
+          "model": "ByteTransformer",
+          "view": "V1_byte",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.5498260855674744,
+          "prediction": 1
+        },
+        {
+          "model": "SaxeBerlinDNN",
+          "view": "V2_byte_stat",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.3920323848724365,
+          "prediction": 0
+        },
+        {
+          "model": "EmberDNN",
+          "view": "V2_byte_stat",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.2782517075538635,
+          "prediction": 0
+        },
+        {
+          "model": "NatarajKNN",
+          "view": "V2_byte_stat",
+          "engine": "numpy",
+          "status": "ok",
+          "score": 0.32819971442222595,
+          "prediction": 0
+        },
+        {
+          "model": "DrebinSVM",
+          "view": "V3_pe_struct",
+          "engine": "numpy",
+          "status": "ok",
+          "score": 0.5540375317901319,
+          "prediction": 1
+        },
+        {
+          "model": "DL4MD",
+          "view": "V3_pe_struct",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 1.0,
+          "prediction": 1
+        },
+        {
+          "model": "PEMinerRF",
+          "view": "V3_pe_struct",
+          "engine": "numpy",
+          "status": "ok",
+          "score": 0.30848010058234604,
+          "prediction": 0
+        },
+        {
+          "model": "DrebinImport",
+          "view": "V4_import",
+          "engine": "numpy",
+          "status": "ok",
+          "score": 0.47687958090114546,
+          "prediction": 0
+        },
+        {
+          "model": "ALOHANet",
+          "view": "V4_import",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.42977604269981384,
+          "prediction": 0
+        },
+        {
+          "model": "EmberGBDT_Import",
+          "view": "V4_import",
+          "engine": "numpy",
+          "status": "ok",
+          "score": 0.6771888493429677,
+          "prediction": 1
+        },
+        {
+          "model": "RaffFeatureNet",
+          "view": "V5_string",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.4818240702152252,
+          "prediction": 0
+        },
+        {
+          "model": "DrebinString",
+          "view": "V5_string",
+          "engine": "numpy",
+          "status": "ok",
+          "score": 0.4739148960925656,
+          "prediction": 0
+        },
+        {
+          "model": "OpcodeLSTM",
+          "view": "V6_opcode_seq",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.6175827980041504,
+          "prediction": 1
+        },
+        {
+          "model": "OpcodeTransformer",
+          "view": "V6_opcode_seq",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.4508269727230072,
+          "prediction": 0
+        },
+        {
+          "model": "OpcodeStatNet",
+          "view": "V6_opcode_stat",
+          "engine": "numpy",
+          "status": "ok",
+          "score": 0.5634514799212862,
+          "prediction": 1
+        },
+        {
+          "model": "AsmEmbedNet",
+          "view": "V6_func_embed",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.8315121531486511,
+          "prediction": 1
+        },
+        {
+          "model": "MalGraph",
+          "view": "V7_graph",
+          "engine": "special",
+          "status": "ok",
+          "score": 0.5907292366027832,
+          "prediction": 1,
+          "malgraph_meta": {
+            "local_functions": 2565,
+            "external_functions": 420,
+            "fcg_edges": 0,
+            "checkpoint": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\models\\MalGraph_2022\\best_model.pt",
+            "vocab": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\models\\MalGraph_2022\\saved\\train_external_function_name_vocab.jsonl"
+          }
+        },
+        {
+          "model": "CFGGAT",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.48586413264274597,
+          "prediction": 0
+        },
+        {
+          "model": "CFGGCN",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.49382826685905457,
+          "prediction": 0
+        },
+        {
+          "model": "CFGDGCNN",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.4423541724681854,
+          "prediction": 0
+        },
+        {
+          "model": "CallGraphGNN",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.4824763834476471,
+          "prediction": 0
+        },
+        {
+          "model": "GraphStatNet",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.23945605754852295,
+          "prediction": 0
+        },
+        {
+          "model": "GrayscaleCNN",
+          "view": "V8_gray",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.32483434677124023,
+          "prediction": 0
+        },
+        {
+          "model": "InceptionV3",
+          "view": "V8_gray",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.4643777310848236,
+          "prediction": 0
+        },
+        {
+          "model": "IMCFN",
+          "view": "V8_color",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.49593183398246765,
+          "prediction": 0
+        },
+        {
+          "model": "ColorCNN",
+          "view": "V8_color",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.3098542392253876,
+          "prediction": 0
+        },
+        {
+          "model": "MarkovCNN",
+          "view": "V8_markov",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.46736469864845276,
+          "prediction": 0
+        },
+        {
+          "model": "EntropyMapCNN",
+          "view": "V8_entropy",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.49145016074180603,
+          "prediction": 0
+        },
+        {
+          "model": "HashEmbedNet",
+          "view": "V9_hash",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.10638698190450668,
+          "prediction": 0
+        },
+        {
+          "model": "MetadataNet",
+          "view": "V10_metadata",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.35592395067214966,
+          "prediction": 0
+        },
+        {
+          "model": "ResourceNet",
+          "view": "V10_metadata",
+          "engine": "numpy",
+          "status": "ok",
+          "score": 0.45935163205285073,
+          "prediction": 0
+        }
+      ],
+      "seconds": 9.203
+    },
+    {
+      "input": {
+        "path": "D:\\VM_Share\\CoDefenderC3_v9\\_pe_ascii\\s01_benign_32.bin",
+        "bytes": 6144,
+        "sha256": "001830912328a236128244726a75b32f7d668afbb6c4130f7f0a9d80433d697e"
+      },
+      "passed": false,
+      "pe": {
+        "machine": "0x14c",
+        "bitness": 32,
+        "entrypoint_rva": 12254,
+        "clr_header": true
+      },
+      "analysis_errors": {
+        "disassembly": "SMDA extracted no instructions (not a PE / truncated / packed): D:\\VM_Share\\CoDefenderC3_v9\\_pe_ascii\\s01_benign_32.bin",
+        "malgraph": "No valid MalGraph features"
+      },
+      "timing": {
+        "disassembly_features_seconds": 0.266,
+        "malgraph_features_seconds": 2.5
+      },
+      "analysis_seconds": 4.812,
+      "de": {
+        "D01": {
+          "shape": [
+            0
+          ],
+          "finite": true,
+          "nonzero": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "error": "missing/invalid D/E feature: D01",
+      "traceback": "Traceback (most recent call last):\n  File \"C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\tools\\verify_smda_runtime.py\", line 146, in main\n    raise ValueError('missing/invalid D/E feature: ' + key)\nValueError: missing/invalid D/E feature: D01\n",
+      "seconds": 4.937
+    },
+    {
+      "input": {
+        "path": "D:\\VM_Share\\CoDefenderC3_v9\\_pe_ascii\\s02_benign_32.bin",
+        "bytes": 155136,
+        "sha256": "002eae3bb1e9592dd233df1b67a975294a5de91cbc86dc47c8077991118b15b8"
+      },
+      "passed": true,
+      "pe": {
+        "machine": "0x14c",
+        "bitness": 32,
+        "entrypoint_rva": 73533,
+        "clr_header": false
+      },
+      "analysis_errors": {},
+      "timing": {
+        "disassembly_features_seconds": 0.75,
+        "malgraph_features_seconds": 2.5
+      },
+      "analysis_seconds": 5.359,
+      "de": {
+        "D01": {
+          "shape": [
+            4096
+          ],
+          "finite": true,
+          "nonzero": 4096,
+          "sha256": "e315b06d2c2616565d88e7d008fa0538d73acb69bda7095bb981f1531a02f2b2"
+        },
+        "D02": {
+          "shape": [
+            256
+          ],
+          "finite": true,
+          "nonzero": 208,
+          "sha256": "fd0bf6aa5e0d199a9f811577b86884addb6a17359af4f2739d2f3b11786ab541"
+        },
+        "D03": {
+          "shape": [
+            256
+          ],
+          "finite": true,
+          "nonzero": 255,
+          "sha256": "26a78da4d7227ae839f65b6a6f74a7c0bc817386876fd8f9c327ab01d83bd28e"
+        },
+        "D04": {
+          "shape": [
+            15
+          ],
+          "finite": true,
+          "nonzero": 8,
+          "sha256": "7fa334092a980e7b5eac19226ef7fc0b5cef3b31a282e2b829a430877944671d"
+        },
+        "D05": {
+          "shape": [
+            12
+          ],
+          "finite": true,
+          "nonzero": 11,
+          "sha256": "f37e2675f0c6751061054f3b7d4021e6e7d1589048b0fe0647c4dba82bfada3d"
+        },
+        "D06": {
+          "shape": [
+            10
+          ],
+          "finite": true,
+          "nonzero": 10,
+          "sha256": "7e64dd790f979ccb82a60321105ebbac296eeb0654b6b9d943a8e1896de67807"
+        },
+        "D07": {
+          "shape": [
+            6144
+          ],
+          "finite": true,
+          "nonzero": 169,
+          "sha256": "78d446cce04a51c7d74cc9ddc19a958dce79a658fa1afb00854f5ab64125db81"
+        },
+        "E03": {
+          "shape": [
+            12
+          ],
+          "finite": true,
+          "nonzero": 10,
+          "sha256": "67e43ea53a566a1378db8cf4bb8d06a809ff1e45cba320d4978b5b6aad589e0a"
+        },
+        "E04": {
+          "shape": [
+            10
+          ],
+          "finite": true,
+          "nonzero": 9,
+          "sha256": "d1e51169d0237206d1ede1a7e3bb0bf86f1687a8076dcf98943c3c8a8c55eb73"
+        }
+      },
+      "graph": {
+        "local_functions": 605,
+        "external_functions": 373,
+        "blocks": 2626,
+        "cfg_edges": 2926,
+        "fcg_edges": 883
+      },
+      "view_shapes": {
+        "V1_byte": [
+          1,
+          32768
+        ],
+        "V2_byte_stat": [
+          1,
+          776
+        ],
+        "V3_pe_struct": [
+          1,
+          264
+        ],
+        "V4_import": [
+          1,
+          339
+        ],
+        "V5_string": [
+          1,
+          553
+        ],
+        "V6_opcode_seq": [
+          1,
+          4096
+        ],
+        "V6_opcode_stat": [
+          1,
+          549
+        ],
+        "V6_func_embed": [
+          1,
+          6144
+        ],
+        "V7_graph": [
+          1,
+          22
+        ],
+        "V8_gray": [
+          1,
+          65536
+        ],
+        "V8_color": [
+          1,
+          196608
+        ],
+        "V8_markov": [
+          1,
+          65536
+        ],
+        "V8_entropy": [
+          1,
+          65536
+        ],
+        "V9_hash": [
+          1,
+          512
+        ],
+        "V10_metadata": [
+          1,
+          60
+        ]
+      },
+      "view_meta": {
+        "V1_byte": {
+          "status": "ok",
+          "source": "binja:B01/raw_fallback",
+          "shape": [
+            1,
+            32768
+          ],
+          "expected_dim": 32768
+        },
+        "V2_byte_stat": {
+          "status": "ok",
+          "source": "binja:B02,B03,B04,B05",
+          "shape": [
+            1,
+            776
+          ],
+          "expected_dim": 776
+        },
+        "V3_pe_struct": {
+          "status": "ok",
+          "source": "binja:A01,A02,A03,A04,A05",
+          "shape": [
+            1,
+            264
+          ],
+          "expected_dim": 264
+        },
+        "V4_import": {
+          "status": "ok",
+          "source": "binja:A06,A07,A08_A15",
+          "shape": [
+            1,
+            339
+          ],
+          "expected_dim": 339
+        },
+        "V5_string": {
+          "status": "ok",
+          "source": "binja:C01,C02,C03,C04",
+          "shape": [
+            1,
+            553
+          ],
+          "expected_dim": 553
+        },
+        "V6_opcode_seq": {
+          "status": "ok",
+          "source": "binja:D01",
+          "shape": [
+            1,
+            4096
+          ],
+          "expected_dim": 4096
+        },
+        "V6_opcode_stat": {
+          "status": "ok",
+          "source": "binja:D02,D03,D04,D05,D06",
+          "shape": [
+            1,
+            549
+          ],
+          "expected_dim": 549
+        },
+        "V6_func_embed": {
+          "status": "ok",
+          "source": "binja:D07",
+          "shape": [
+            1,
+            6144
+          ],
+          "expected_dim": 6144
+        },
+        "V7_graph": {
+          "status": "ok",
+          "source": "binja:E03,E04",
+          "shape": [
+            1,
+            22
+          ],
+          "expected_dim": 22,
+          "note": "partial_binja_features_missing:E01,E02"
+        },
+        "V8_gray": {
+          "status": "ok",
+          "source": "binja:F01",
+          "shape": [
+            1,
+            65536
+          ],
+          "expected_dim": 65536
+        },
+        "V8_color": {
+          "status": "ok",
+          "source": "binja:F02",
+          "shape": [
+            1,
+            196608
+          ],
+          "expected_dim": 196608
+        },
+        "V8_markov": {
+          "status": "ok",
+          "source": "binja:F03",
+          "shape": [
+            1,
+            65536
+          ],
+          "expected_dim": 65536
+        },
+        "V8_entropy": {
+          "status": "ok",
+          "source": "binja:F04",
+          "shape": [
+            1,
+            65536
+          ],
+          "expected_dim": 65536
+        },
+        "V9_hash": {
+          "status": "ok",
+          "source": "binja:G01,G02,G03,G04",
+          "shape": [
+            1,
+            512
+          ],
+          "expected_dim": 512
+        },
+        "V10_metadata": {
+          "status": "ok",
+          "source": "binja:H01,H02,H03",
+          "shape": [
+            1,
+            60
+          ],
+          "expected_dim": 60
+        },
+        "_de_feature_extraction": {
+          "status": "skipped"
+        }
+      },
+      "model_scope": "all_models",
+      "model_results": [
+        {
+          "model": "MalConv",
+          "view": "V1_byte",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.1658797711133957,
+          "prediction": 0
+        },
+        {
+          "model": "MalConv2",
+          "view": "V1_byte",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.16658912599086761,
+          "prediction": 0
+        },
+        {
+          "model": "ByteTransformer",
+          "view": "V1_byte",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.25148141384124756,
+          "prediction": 0
+        },
+        {
+          "model": "SaxeBerlinDNN",
+          "view": "V2_byte_stat",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.04413110762834549,
+          "prediction": 0
+        },
+        {
+          "model": "EmberDNN",
+          "view": "V2_byte_stat",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.03642655909061432,
+          "prediction": 0
+        },
+        {
+          "model": "NatarajKNN",
+          "view": "V2_byte_stat",
+          "engine": "numpy",
+          "status": "ok",
+          "score": 0.0,
+          "prediction": 0
+        },
+        {
+          "model": "DrebinSVM",
+          "view": "V3_pe_struct",
+          "engine": "numpy",
+          "status": "ok",
+          "score": 0.5540375317901309,
+          "prediction": 1
+        },
+        {
+          "model": "DL4MD",
+          "view": "V3_pe_struct",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 1.0,
+          "prediction": 1
+        },
+        {
+          "model": "PEMinerRF",
+          "view": "V3_pe_struct",
+          "engine": "numpy",
+          "status": "ok",
+          "score": 0.22834525624775864,
+          "prediction": 0
+        },
+        {
+          "model": "DrebinImport",
+          "view": "V4_import",
+          "engine": "numpy",
+          "status": "ok",
+          "score": 0.4742303117247108,
+          "prediction": 0
+        },
+        {
+          "model": "ALOHANet",
+          "view": "V4_import",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.3975127339363098,
+          "prediction": 0
+        },
+        {
+          "model": "EmberGBDT_Import",
+          "view": "V4_import",
+          "engine": "numpy",
+          "status": "ok",
+          "score": 0.11310198590354739,
+          "prediction": 0
+        },
+        {
+          "model": "RaffFeatureNet",
+          "view": "V5_string",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.47882139682769775,
+          "prediction": 0
+        },
+        {
+          "model": "DrebinString",
+          "view": "V5_string",
+          "engine": "numpy",
+          "status": "ok",
+          "score": 0.427965266049494,
+          "prediction": 0
+        },
+        {
+          "model": "OpcodeLSTM",
+          "view": "V6_opcode_seq",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.5168691873550415,
+          "prediction": 1
+        },
+        {
+          "model": "OpcodeTransformer",
+          "view": "V6_opcode_seq",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.4251418709754944,
+          "prediction": 0
+        },
+        {
+          "model": "OpcodeStatNet",
+          "view": "V6_opcode_stat",
+          "engine": "numpy",
+          "status": "ok",
+          "score": 0.5327876760798402,
+          "prediction": 1
+        },
+        {
+          "model": "AsmEmbedNet",
+          "view": "V6_func_embed",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.8035581111907959,
+          "prediction": 1
+        },
+        {
+          "model": "MalGraph",
+          "view": "V7_graph",
+          "engine": "special",
+          "status": "ok",
+          "score": 0.6756666302680969,
+          "prediction": 1,
+          "malgraph_meta": {
+            "local_functions": 605,
+            "external_functions": 373,
+            "fcg_edges": 883,
+            "checkpoint": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\models\\MalGraph_2022\\best_model.pt",
+            "vocab": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\models\\MalGraph_2022\\saved\\train_external_function_name_vocab.jsonl"
+          }
+        },
+        {
+          "model": "CFGGAT",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.5576274991035461,
+          "prediction": 1
+        },
+        {
+          "model": "CFGGCN",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.49949079751968384,
+          "prediction": 0
+        },
+        {
+          "model": "CFGDGCNN",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.5855758190155029,
+          "prediction": 1
+        },
+        {
+          "model": "CallGraphGNN",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.5743339657783508,
+          "prediction": 1
+        },
+        {
+          "model": "GraphStatNet",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.7049200534820557,
+          "prediction": 1
+        },
+        {
+          "model": "GrayscaleCNN",
+          "view": "V8_gray",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.37633684277534485,
+          "prediction": 0
+        },
+        {
+          "model": "InceptionV3",
+          "view": "V8_gray",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.42473286390304565,
+          "prediction": 0
+        },
+        {
+          "model": "IMCFN",
+          "view": "V8_color",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.49593183398246765,
+          "prediction": 0
+        },
+        {
+          "model": "ColorCNN",
+          "view": "V8_color",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.4384528696537018,
+          "prediction": 0
+        },
+        {
+          "model": "MarkovCNN",
+          "view": "V8_markov",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.30234548449516296,
+          "prediction": 0
+        },
+        {
+          "model": "EntropyMapCNN",
+          "view": "V8_entropy",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.4465908110141754,
+          "prediction": 0
+        },
+        {
+          "model": "HashEmbedNet",
+          "view": "V9_hash",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.32234615087509155,
+          "prediction": 0
+        },
+        {
+          "model": "MetadataNet",
+          "view": "V10_metadata",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.35592395067214966,
+          "prediction": 0
+        },
+        {
+          "model": "ResourceNet",
+          "view": "V10_metadata",
+          "engine": "numpy",
+          "status": "ok",
+          "score": 0.45935163205285073,
+          "prediction": 0
+        }
+      ],
+      "seconds": 6.422
+    },
+    {
+      "input": {
+        "path": "D:\\VM_Share\\CoDefenderC3_v9\\_pe_ascii\\s03_benign_32.bin",
+        "bytes": 326152,
+        "sha256": "00469f797a5c872bb6e7eed7cda8b10442347ecc78ad8bbfdddf9f8097e9550f"
+      },
+      "passed": true,
+      "pe": {
+        "machine": "0x14c",
+        "bitness": 32,
+        "entrypoint_rva": 59661,
+        "clr_header": false
+      },
+      "analysis_errors": {},
+      "timing": {
+        "disassembly_features_seconds": 1.641,
+        "malgraph_features_seconds": 2.5
+      },
+      "analysis_seconds": 6.328,
+      "de": {
+        "D01": {
+          "shape": [
+            4096
+          ],
+          "finite": true,
+          "nonzero": 4096,
+          "sha256": "96631dc7bc616ac506feab459b5947e2897deb7d5c9f87fe8e95afe08894c844"
+        },
+        "D02": {
+          "shape": [
+            256
+          ],
+          "finite": true,
+          "nonzero": 244,
+          "sha256": "060f18831c701b80b35c09f1ccf103e495200fc71878c462cecbaa7b8e8a6e7d"
+        },
+        "D03": {
+          "shape": [
+            256
+          ],
+          "finite": true,
+          "nonzero": 256,
+          "sha256": "2c726d8583064ca662c573bef4e245fbebd4b00f9ef41f0c0bc863587d82937a"
+        },
+        "D04": {
+          "shape": [
+            15
+          ],
+          "finite": true,
+          "nonzero": 11,
+          "sha256": "a30cf7d2d80390ad16492964673f5b5f5b335a618656123a64990bd41fb089c5"
+        },
+        "D05": {
+          "shape": [
+            12
+          ],
+          "finite": true,
+          "nonzero": 12,
+          "sha256": "e973387db7167ba8c58f76a31711f92c7b7bdc7d1aa46039f1c52fe4b0ad3735"
+        },
+        "D06": {
+          "shape": [
+            10
+          ],
+          "finite": true,
+          "nonzero": 10,
+          "sha256": "09bb56fd541237875193af7b664a62c2b3b6a34ea06918888bdb71329dc5db2a"
+        },
+        "D07": {
+          "shape": [
+            6144
+          ],
+          "finite": true,
+          "nonzero": 385,
+          "sha256": "7ca2bfa58e3cedb1b6122707910d43307667e53ba980bab6dc6b6533e081377e"
+        },
+        "E03": {
+          "shape": [
+            12
+          ],
+          "finite": true,
+          "nonzero": 12,
+          "sha256": "d6874a41fc3373ef124812e0ed93a3aa6fa29ec91944d66452ca15e3c6bfae10"
+        },
+        "E04": {
+          "shape": [
+            10
+          ],
+          "finite": true,
+          "nonzero": 10,
+          "sha256": "b3152053c27b2edd137e42f34e4ddc9e717ba9fb7f0e30a8f8f63929d00ec5d3"
+        }
+      },
+      "graph": {
+        "local_functions": 1890,
+        "external_functions": 418,
+        "blocks": 8715,
+        "cfg_edges": 10520,
+        "fcg_edges": 2879
+      },
+      "view_shapes": {
+        "V6_opcode_seq": [
+          1,
+          4096
+        ],
+        "V6_opcode_stat": [
+          1,
+          549
+        ],
+        "V6_func_embed": [
+          1,
+          6144
+        ],
+        "V7_graph": [
+          1,
+          22
+        ]
+      },
+      "view_meta": {
+        "V6_opcode_seq": {
+          "status": "ok",
+          "source": "binja:D01",
+          "shape": [
+            1,
+            4096
+          ],
+          "expected_dim": 4096
+        },
+        "V6_opcode_stat": {
+          "status": "ok",
+          "source": "binja:D02,D03,D04,D05,D06",
+          "shape": [
+            1,
+            549
+          ],
+          "expected_dim": 549
+        },
+        "V6_func_embed": {
+          "status": "ok",
+          "source": "binja:D07",
+          "shape": [
+            1,
+            6144
+          ],
+          "expected_dim": 6144
+        },
+        "V7_graph": {
+          "status": "ok",
+          "source": "binja:E03,E04",
+          "shape": [
+            1,
+            22
+          ],
+          "expected_dim": 22,
+          "note": "partial_binja_features_missing:E01,E02"
+        },
+        "_de_feature_extraction": {
+          "status": "skipped"
+        }
+      },
+      "model_scope": "D/E_models_and_MalGraph",
+      "model_results": [
+        {
+          "model": "OpcodeLSTM",
+          "view": "V6_opcode_seq",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.539483904838562,
+          "prediction": 1
+        },
+        {
+          "model": "OpcodeTransformer",
+          "view": "V6_opcode_seq",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.427674800157547,
+          "prediction": 0
+        },
+        {
+          "model": "OpcodeStatNet",
+          "view": "V6_opcode_stat",
+          "engine": "numpy",
+          "status": "ok",
+          "score": 0.6361929268634279,
+          "prediction": 1
+        },
+        {
+          "model": "AsmEmbedNet",
+          "view": "V6_func_embed",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.25845634937286377,
+          "prediction": 0
+        },
+        {
+          "model": "MalGraph",
+          "view": "V7_graph",
+          "engine": "special",
+          "status": "ok",
+          "score": 0.7822376489639282,
+          "prediction": 1,
+          "malgraph_meta": {
+            "local_functions": 1890,
+            "external_functions": 418,
+            "fcg_edges": 2879,
+            "checkpoint": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\models\\MalGraph_2022\\best_model.pt",
+            "vocab": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\models\\MalGraph_2022\\saved\\train_external_function_name_vocab.jsonl"
+          }
+        },
+        {
+          "model": "CFGGAT",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.5450658202171326,
+          "prediction": 1
+        },
+        {
+          "model": "CFGGCN",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.5097954869270325,
+          "prediction": 1
+        },
+        {
+          "model": "CFGDGCNN",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.5365046858787537,
+          "prediction": 1
+        },
+        {
+          "model": "CallGraphGNN",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.5763556361198425,
+          "prediction": 1
+        },
+        {
+          "model": "GraphStatNet",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.9214321970939636,
+          "prediction": 1
+        }
+      ],
+      "seconds": 6.969
+    },
+    {
+      "input": {
+        "path": "D:\\VM_Share\\CoDefenderC3_v9\\_pe_ascii\\s04_benign_64.bin",
+        "bytes": 134656,
+        "sha256": "037b4f9c0e3935ab155dfcbeb24395f3211d4ec9ed9901bb9598cd41fa98a9b0"
+      },
+      "passed": true,
+      "pe": {
+        "machine": "0x8664",
+        "bitness": 64,
+        "entrypoint_rva": 87532,
+        "clr_header": false
+      },
+      "analysis_errors": {},
+      "timing": {
+        "disassembly_features_seconds": 0.906,
+        "malgraph_features_seconds": 2.391
+      },
+      "analysis_seconds": 5.344,
+      "de": {
+        "D01": {
+          "shape": [
+            4096
+          ],
+          "finite": true,
+          "nonzero": 4096,
+          "sha256": "6d4ab884a6588ca5876e47c797b79d7d7a88ce57b47f814a1756f94eab08bb89"
+        },
+        "D02": {
+          "shape": [
+            256
+          ],
+          "finite": true,
+          "nonzero": 247,
+          "sha256": "304ffda0e7f9048cc2de40cafdc99edc620c570f210a7e58a3a6d30b5b053b59"
+        },
+        "D03": {
+          "shape": [
+            256
+          ],
+          "finite": true,
+          "nonzero": 256,
+          "sha256": "d60c724c60cb7fe1febe35fb3d220a8b41301cf8e26a864227792736f94e5563"
+        },
+        "D04": {
+          "shape": [
+            15
+          ],
+          "finite": true,
+          "nonzero": 12,
+          "sha256": "37bf7c131785bd8cd8d4c53e6d36962067a3ffbac8f0c2c208ec78efa302b596"
+        },
+        "D05": {
+          "shape": [
+            12
+          ],
+          "finite": true,
+          "nonzero": 12,
+          "sha256": "36dd54a0d8d407a33df27aea43997cc9043e5af68c72424d7d3b9e73ba5f3737"
+        },
+        "D06": {
+          "shape": [
+            10
+          ],
+          "finite": true,
+          "nonzero": 10,
+          "sha256": "4747b44235c8ca575c0744e3d434460c6dd7703ede92c638e6d892aead9bd9da"
+        },
+        "D07": {
+          "shape": [
+            6144
+          ],
+          "finite": true,
+          "nonzero": 653,
+          "sha256": "d66696b8f853346f59e22b427d8c30c302eea317e100626270b660ab61cd544b"
+        },
+        "E03": {
+          "shape": [
+            12
+          ],
+          "finite": true,
+          "nonzero": 12,
+          "sha256": "86d96e65cf195d077ab8861cb9ef4ae150a27f10c76f23c4ee543442005439af"
+        },
+        "E04": {
+          "shape": [
+            10
+          ],
+          "finite": true,
+          "nonzero": 10,
+          "sha256": "a95110df7321d664e707af8004802ac807a01cdc33b34dfed72782705e52bda7"
+        }
+      },
+      "graph": {
+        "local_functions": 582,
+        "external_functions": 110,
+        "blocks": 5025,
+        "cfg_edges": 6723,
+        "fcg_edges": 1184
+      },
+      "view_shapes": {
+        "V6_opcode_seq": [
+          1,
+          4096
+        ],
+        "V6_opcode_stat": [
+          1,
+          549
+        ],
+        "V6_func_embed": [
+          1,
+          6144
+        ],
+        "V7_graph": [
+          1,
+          22
+        ]
+      },
+      "view_meta": {
+        "V6_opcode_seq": {
+          "status": "ok",
+          "source": "binja:D01",
+          "shape": [
+            1,
+            4096
+          ],
+          "expected_dim": 4096
+        },
+        "V6_opcode_stat": {
+          "status": "ok",
+          "source": "binja:D02,D03,D04,D05,D06",
+          "shape": [
+            1,
+            549
+          ],
+          "expected_dim": 549
+        },
+        "V6_func_embed": {
+          "status": "ok",
+          "source": "binja:D07",
+          "shape": [
+            1,
+            6144
+          ],
+          "expected_dim": 6144
+        },
+        "V7_graph": {
+          "status": "ok",
+          "source": "binja:E03,E04",
+          "shape": [
+            1,
+            22
+          ],
+          "expected_dim": 22,
+          "note": "partial_binja_features_missing:E01,E02"
+        },
+        "_de_feature_extraction": {
+          "status": "skipped"
+        }
+      },
+      "model_scope": "D/E_models_and_MalGraph",
+      "model_results": [
+        {
+          "model": "OpcodeLSTM",
+          "view": "V6_opcode_seq",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.5245718359947205,
+          "prediction": 1
+        },
+        {
+          "model": "OpcodeTransformer",
+          "view": "V6_opcode_seq",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.430975079536438,
+          "prediction": 0
+        },
+        {
+          "model": "OpcodeStatNet",
+          "view": "V6_opcode_stat",
+          "engine": "numpy",
+          "status": "ok",
+          "score": 0.49903239605579686,
+          "prediction": 0
+        },
+        {
+          "model": "AsmEmbedNet",
+          "view": "V6_func_embed",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.799064040184021,
+          "prediction": 1
+        },
+        {
+          "model": "MalGraph",
+          "view": "V7_graph",
+          "engine": "special",
+          "status": "ok",
+          "score": 0.5861384868621826,
+          "prediction": 1,
+          "malgraph_meta": {
+            "local_functions": 582,
+            "external_functions": 110,
+            "fcg_edges": 1184,
+            "checkpoint": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\models\\MalGraph_2022\\best_model.pt",
+            "vocab": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\models\\MalGraph_2022\\saved\\train_external_function_name_vocab.jsonl"
+          }
+        },
+        {
+          "model": "CFGGAT",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.530112087726593,
+          "prediction": 1
+        },
+        {
+          "model": "CFGGCN",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.499663382768631,
+          "prediction": 0
+        },
+        {
+          "model": "CFGDGCNN",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.5635327696800232,
+          "prediction": 1
+        },
+        {
+          "model": "CallGraphGNN",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.5602776408195496,
+          "prediction": 1
+        },
+        {
+          "model": "GraphStatNet",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.7664414644241333,
+          "prediction": 1
+        }
+      ],
+      "seconds": 5.938
+    },
+    {
+      "input": {
+        "path": "D:\\VM_Share\\CoDefenderC3_v9\\_pe_ascii\\s05_benign_64.bin",
+        "bytes": 486512,
+        "sha256": "05c41852132c3de6313b9625c838f2e51dcfd9280af44e0478c41bfc0efd24e3"
+      },
+      "passed": true,
+      "pe": {
+        "machine": "0x8664",
+        "bitness": 64,
+        "entrypoint_rva": 0,
+        "clr_header": true
+      },
+      "analysis_errors": {},
+      "timing": {
+        "disassembly_features_seconds": 0.515,
+        "malgraph_features_seconds": 2.375
+      },
+      "analysis_seconds": 4.953,
+      "de": {
+        "D01": {
+          "shape": [
+            4096
+          ],
+          "finite": true,
+          "nonzero": 4096,
+          "sha256": "281058dea9277d74dbb5b51d9093b1d48aba755c44fa71dd1eff59d973b5b3e8"
+        },
+        "D02": {
+          "shape": [
+            256
+          ],
+          "finite": true,
+          "nonzero": 245,
+          "sha256": "14809e7290ed4449df8ac72ee3d1abde89963b4745ff65af74551d885e7bcffa"
+        },
+        "D03": {
+          "shape": [
+            256
+          ],
+          "finite": true,
+          "nonzero": 256,
+          "sha256": "bbf04d028fbe72f8474651329f33a5edca4271f9b7ab8f1678fee29869035099"
+        },
+        "D04": {
+          "shape": [
+            15
+          ],
+          "finite": true,
+          "nonzero": 6,
+          "sha256": "ee805e8310ced83836b8161779bb8042fc589c2875eef1fd18e6f305a9f41048"
+        },
+        "D05": {
+          "shape": [
+            12
+          ],
+          "finite": true,
+          "nonzero": 11,
+          "sha256": "5b7f83a465512e993f0ead32fae2e83958c5d7ef5b258eec1d0b33fdbee9f2d5"
+        },
+        "D06": {
+          "shape": [
+            10
+          ],
+          "finite": true,
+          "nonzero": 10,
+          "sha256": "71acdde61c8c6e8b8a583c153092dae822a40a1763990b364e269f87bf4d746c"
+        },
+        "D07": {
+          "shape": [
+            6144
+          ],
+          "finite": true,
+          "nonzero": 436,
+          "sha256": "f516e008b7abd9c315a0604e3004f8d0581aff54b5afd9cea37082840f62863e"
+        },
+        "E03": {
+          "shape": [
+            12
+          ],
+          "finite": true,
+          "nonzero": 12,
+          "sha256": "e15aa53623cf8e9b44c6e64179bb6d3dc3602922a39029c11ae3be1a6e851c3f"
+        },
+        "E04": {
+          "shape": [
+            10
+          ],
+          "finite": true,
+          "nonzero": 2,
+          "sha256": "4c4297bf48f397b3d325e70f3e8fce37ae10eb3630227871f0360249313af47c"
+        }
+      },
+      "graph": {
+        "local_functions": 197,
+        "external_functions": 217,
+        "blocks": 764,
+        "cfg_edges": 866,
+        "fcg_edges": 0
+      },
+      "view_shapes": {
+        "V6_opcode_seq": [
+          1,
+          4096
+        ],
+        "V6_opcode_stat": [
+          1,
+          549
+        ],
+        "V6_func_embed": [
+          1,
+          6144
+        ],
+        "V7_graph": [
+          1,
+          22
+        ]
+      },
+      "view_meta": {
+        "V6_opcode_seq": {
+          "status": "ok",
+          "source": "binja:D01",
+          "shape": [
+            1,
+            4096
+          ],
+          "expected_dim": 4096
+        },
+        "V6_opcode_stat": {
+          "status": "ok",
+          "source": "binja:D02,D03,D04,D05,D06",
+          "shape": [
+            1,
+            549
+          ],
+          "expected_dim": 549
+        },
+        "V6_func_embed": {
+          "status": "ok",
+          "source": "binja:D07",
+          "shape": [
+            1,
+            6144
+          ],
+          "expected_dim": 6144
+        },
+        "V7_graph": {
+          "status": "ok",
+          "source": "binja:E03,E04",
+          "shape": [
+            1,
+            22
+          ],
+          "expected_dim": 22,
+          "note": "partial_binja_features_missing:E01,E02"
+        },
+        "_de_feature_extraction": {
+          "status": "skipped"
+        }
+      },
+      "model_scope": "D/E_models_and_MalGraph",
+      "model_results": [
+        {
+          "model": "OpcodeLSTM",
+          "view": "V6_opcode_seq",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.6020284295082092,
+          "prediction": 1
+        },
+        {
+          "model": "OpcodeTransformer",
+          "view": "V6_opcode_seq",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.45021089911460876,
+          "prediction": 0
+        },
+        {
+          "model": "OpcodeStatNet",
+          "view": "V6_opcode_stat",
+          "engine": "numpy",
+          "status": "ok",
+          "score": 0.7153634432998047,
+          "prediction": 1
+        },
+        {
+          "model": "AsmEmbedNet",
+          "view": "V6_func_embed",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.021484429016709328,
+          "prediction": 0
+        },
+        {
+          "model": "MalGraph",
+          "view": "V7_graph",
+          "engine": "special",
+          "status": "ok",
+          "score": 0.4802306890487671,
+          "prediction": 0,
+          "malgraph_meta": {
+            "local_functions": 197,
+            "external_functions": 217,
+            "fcg_edges": 0,
+            "checkpoint": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\models\\MalGraph_2022\\best_model.pt",
+            "vocab": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\models\\MalGraph_2022\\saved\\train_external_function_name_vocab.jsonl"
+          }
+        },
+        {
+          "model": "CFGGAT",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.5183038115501404,
+          "prediction": 1
+        },
+        {
+          "model": "CFGGCN",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.49587759375572205,
+          "prediction": 0
+        },
+        {
+          "model": "CFGDGCNN",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.516245424747467,
+          "prediction": 1
+        },
+        {
+          "model": "CallGraphGNN",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.5193583369255066,
+          "prediction": 1
+        },
+        {
+          "model": "GraphStatNet",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.5331145524978638,
+          "prediction": 1
+        }
+      ],
+      "seconds": 5.5
+    },
+    {
+      "input": {
+        "path": "D:\\VM_Share\\CoDefenderC3_v9\\_pe_ascii\\s06_benign_64.bin",
+        "bytes": 88576,
+        "sha256": "07a3f464e479003a9c598cb8a8feab17cc55298d74de34315ae78c31256fb9c7"
+      },
+      "passed": true,
+      "pe": {
+        "machine": "0x8664",
+        "bitness": 64,
+        "entrypoint_rva": 24688,
+        "clr_header": false
+      },
+      "analysis_errors": {},
+      "timing": {
+        "disassembly_features_seconds": 0.453,
+        "malgraph_features_seconds": 2.453
+      },
+      "analysis_seconds": 4.89,
+      "de": {
+        "D01": {
+          "shape": [
+            4096
+          ],
+          "finite": true,
+          "nonzero": 4096,
+          "sha256": "96409668d94ea151a7519f44aea8ef7c4d6ceb0e67661489e94abc9fdbd364a9"
+        },
+        "D02": {
+          "shape": [
+            256
+          ],
+          "finite": true,
+          "nonzero": 213,
+          "sha256": "c6303f9a9c586de4c71d4ec4780c8fbcb8641f048e9ca32f07fdba291db5b9e4"
+        },
+        "D03": {
+          "shape": [
+            256
+          ],
+          "finite": true,
+          "nonzero": 253,
+          "sha256": "79efc6cda0acb2dd1e0a98cdb56cf6946eb5f332e6f0244a32e8df9ecc3a0f72"
+        },
+        "D04": {
+          "shape": [
+            15
+          ],
+          "finite": true,
+          "nonzero": 9,
+          "sha256": "171c43db44b8bf5f8519953f1d60eea0b5eed0f493f4ea6b4b0e74c91c328ec4"
+        },
+        "D05": {
+          "shape": [
+            12
+          ],
+          "finite": true,
+          "nonzero": 12,
+          "sha256": "20264ac7ab9d9283aa974ead06f869127b6a186d03b03835e37c2f32eead0e59"
+        },
+        "D06": {
+          "shape": [
+            10
+          ],
+          "finite": true,
+          "nonzero": 10,
+          "sha256": "de9d004aa7fc86dbb9ec28287fb78834637fbd688f9ee378e29e68bb8170de09"
+        },
+        "D07": {
+          "shape": [
+            6144
+          ],
+          "finite": true,
+          "nonzero": 555,
+          "sha256": "093e4af3feb28a8b2af8960273228cd62958179199398de4d3d71c2eeca917bf"
+        },
+        "E03": {
+          "shape": [
+            12
+          ],
+          "finite": true,
+          "nonzero": 12,
+          "sha256": "f89ee4b6f732581826b0bc7901843e7f302a8464b3233ba81a428bb75d5e0ee8"
+        },
+        "E04": {
+          "shape": [
+            10
+          ],
+          "finite": true,
+          "nonzero": 10,
+          "sha256": "8df6937ec264b629d49d82a5b04bef4df76f52f02b03028d104020726ff96fef"
+        }
+      },
+      "graph": {
+        "local_functions": 236,
+        "external_functions": 144,
+        "blocks": 1313,
+        "cfg_edges": 1582,
+        "fcg_edges": 308
+      },
+      "view_shapes": {
+        "V6_opcode_seq": [
+          1,
+          4096
+        ],
+        "V6_opcode_stat": [
+          1,
+          549
+        ],
+        "V6_func_embed": [
+          1,
+          6144
+        ],
+        "V7_graph": [
+          1,
+          22
+        ]
+      },
+      "view_meta": {
+        "V6_opcode_seq": {
+          "status": "ok",
+          "source": "binja:D01",
+          "shape": [
+            1,
+            4096
+          ],
+          "expected_dim": 4096
+        },
+        "V6_opcode_stat": {
+          "status": "ok",
+          "source": "binja:D02,D03,D04,D05,D06",
+          "shape": [
+            1,
+            549
+          ],
+          "expected_dim": 549
+        },
+        "V6_func_embed": {
+          "status": "ok",
+          "source": "binja:D07",
+          "shape": [
+            1,
+            6144
+          ],
+          "expected_dim": 6144
+        },
+        "V7_graph": {
+          "status": "ok",
+          "source": "binja:E03,E04",
+          "shape": [
+            1,
+            22
+          ],
+          "expected_dim": 22,
+          "note": "partial_binja_features_missing:E01,E02"
+        },
+        "_de_feature_extraction": {
+          "status": "skipped"
+        }
+      },
+      "model_scope": "D/E_models_and_MalGraph",
+      "model_results": [
+        {
+          "model": "OpcodeLSTM",
+          "view": "V6_opcode_seq",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.5189710259437561,
+          "prediction": 1
+        },
+        {
+          "model": "OpcodeTransformer",
+          "view": "V6_opcode_seq",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.4337642192840576,
+          "prediction": 0
+        },
+        {
+          "model": "OpcodeStatNet",
+          "view": "V6_opcode_stat",
+          "engine": "numpy",
+          "status": "ok",
+          "score": 0.6618346220541559,
+          "prediction": 1
+        },
+        {
+          "model": "AsmEmbedNet",
+          "view": "V6_func_embed",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.8443429470062256,
+          "prediction": 1
+        },
+        {
+          "model": "MalGraph",
+          "view": "V7_graph",
+          "engine": "special",
+          "status": "ok",
+          "score": 0.5803078413009644,
+          "prediction": 1,
+          "malgraph_meta": {
+            "local_functions": 236,
+            "external_functions": 144,
+            "fcg_edges": 308,
+            "checkpoint": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\models\\MalGraph_2022\\best_model.pt",
+            "vocab": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\models\\MalGraph_2022\\saved\\train_external_function_name_vocab.jsonl"
+          }
+        },
+        {
+          "model": "CFGGAT",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.53071129322052,
+          "prediction": 1
+        },
+        {
+          "model": "CFGGCN",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.4971923828125,
+          "prediction": 0
+        },
+        {
+          "model": "CFGDGCNN",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.5480257272720337,
+          "prediction": 1
+        },
+        {
+          "model": "CallGraphGNN",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.5442920923233032,
+          "prediction": 1
+        },
+        {
+          "model": "GraphStatNet",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.5675902366638184,
+          "prediction": 1
+        }
+      ],
+      "seconds": 5.438
+    },
+    {
+      "input": {
+        "path": "D:\\VM_Share\\CoDefenderC3_v9\\_pe_ascii\\s07_benign_64.bin",
+        "bytes": 79752,
+        "sha256": "09c44cc1cbc7e714767565aa6db85d6d8d2a714323588a01e6d4b66dc15f7471"
+      },
+      "passed": true,
+      "pe": {
+        "machine": "0x8664",
+        "bitness": 64,
+        "entrypoint_rva": 14140,
+        "clr_header": false
+      },
+      "analysis_errors": {},
+      "timing": {
+        "disassembly_features_seconds": 0.422,
+        "malgraph_features_seconds": 2.437
+      },
+      "analysis_seconds": 4.922,
+      "de": {
+        "D01": {
+          "shape": [
+            4096
+          ],
+          "finite": true,
+          "nonzero": 2985,
+          "sha256": "c81c7ff18ce1ebcee184785dd896676a4f26146124c69143e916d30e2857dfc1"
+        },
+        "D02": {
+          "shape": [
+            256
+          ],
+          "finite": true,
+          "nonzero": 190,
+          "sha256": "975958970978c6e5069e1a6cabd39d8591d8dfc821dba918d2e1cbab80536190"
+        },
+        "D03": {
+          "shape": [
+            256
+          ],
+          "finite": true,
+          "nonzero": 242,
+          "sha256": "87487be83bbb2ac30dd0dc6ea466da049eca3dafa7ca09667808d6e35ad7cc24"
+        },
+        "D04": {
+          "shape": [
+            15
+          ],
+          "finite": true,
+          "nonzero": 9,
+          "sha256": "e7e95e8e328dc0875e65d494d935bf7e8b760fcc3ed6c8e2a002d544b32fa7f6"
+        },
+        "D05": {
+          "shape": [
+            12
+          ],
+          "finite": true,
+          "nonzero": 11,
+          "sha256": "8e170088b8220f7ec86cee091b1e526f685e0f080e3185e48c5dbaff07be61c1"
+        },
+        "D06": {
+          "shape": [
+            10
+          ],
+          "finite": true,
+          "nonzero": 10,
+          "sha256": "13e475780de448a5886be4b8e610ff93c3a94c46dc4cded68c57f8ceb4d31db2"
+        },
+        "D07": {
+          "shape": [
+            6144
+          ],
+          "finite": true,
+          "nonzero": 342,
+          "sha256": "07d16f198985307899d81ccc789d12321bfdae706a6c6cca56be997f0cd6b827"
+        },
+        "E03": {
+          "shape": [
+            12
+          ],
+          "finite": true,
+          "nonzero": 12,
+          "sha256": "6ea65ae8072b2536b139ea424c08120a52e1a49e7a476ec90282c8ce851eb4aa"
+        },
+        "E04": {
+          "shape": [
+            10
+          ],
+          "finite": true,
+          "nonzero": 9,
+          "sha256": "5187edd59bd02f7af1ff8ca0ee488a1656ee2325430f32f0c8f70489c1a0748c"
+        }
+      },
+      "graph": {
+        "local_functions": 291,
+        "external_functions": 270,
+        "blocks": 695,
+        "cfg_edges": 604,
+        "fcg_edges": 149
+      },
+      "view_shapes": {
+        "V6_opcode_seq": [
+          1,
+          4096
+        ],
+        "V6_opcode_stat": [
+          1,
+          549
+        ],
+        "V6_func_embed": [
+          1,
+          6144
+        ],
+        "V7_graph": [
+          1,
+          22
+        ]
+      },
+      "view_meta": {
+        "V6_opcode_seq": {
+          "status": "ok",
+          "source": "binja:D01",
+          "shape": [
+            1,
+            4096
+          ],
+          "expected_dim": 4096
+        },
+        "V6_opcode_stat": {
+          "status": "ok",
+          "source": "binja:D02,D03,D04,D05,D06",
+          "shape": [
+            1,
+            549
+          ],
+          "expected_dim": 549
+        },
+        "V6_func_embed": {
+          "status": "ok",
+          "source": "binja:D07",
+          "shape": [
+            1,
+            6144
+          ],
+          "expected_dim": 6144
+        },
+        "V7_graph": {
+          "status": "ok",
+          "source": "binja:E03,E04",
+          "shape": [
+            1,
+            22
+          ],
+          "expected_dim": 22,
+          "note": "partial_binja_features_missing:E01,E02"
+        },
+        "_de_feature_extraction": {
+          "status": "skipped"
+        }
+      },
+      "model_scope": "D/E_models_and_MalGraph",
+      "model_results": [
+        {
+          "model": "OpcodeLSTM",
+          "view": "V6_opcode_seq",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.49318599700927734,
+          "prediction": 0
+        },
+        {
+          "model": "OpcodeTransformer",
+          "view": "V6_opcode_seq",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.43816661834716797,
+          "prediction": 0
+        },
+        {
+          "model": "OpcodeStatNet",
+          "view": "V6_opcode_stat",
+          "engine": "numpy",
+          "status": "ok",
+          "score": 0.635727526576702,
+          "prediction": 1
+        },
+        {
+          "model": "AsmEmbedNet",
+          "view": "V6_func_embed",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.803243100643158,
+          "prediction": 1
+        },
+        {
+          "model": "MalGraph",
+          "view": "V7_graph",
+          "engine": "special",
+          "status": "ok",
+          "score": 0.5470060706138611,
+          "prediction": 1,
+          "malgraph_meta": {
+            "local_functions": 291,
+            "external_functions": 270,
+            "fcg_edges": 149,
+            "checkpoint": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\models\\MalGraph_2022\\best_model.pt",
+            "vocab": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\models\\MalGraph_2022\\saved\\train_external_function_name_vocab.jsonl"
+          }
+        },
+        {
+          "model": "CFGGAT",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.5299016833305359,
+          "prediction": 1
+        },
+        {
+          "model": "CFGGCN",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.49679407477378845,
+          "prediction": 0
+        },
+        {
+          "model": "CFGDGCNN",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.5367419123649597,
+          "prediction": 1
+        },
+        {
+          "model": "CallGraphGNN",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.5372815728187561,
+          "prediction": 1
+        },
+        {
+          "model": "GraphStatNet",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.5571914911270142,
+          "prediction": 1
+        }
+      ],
+      "seconds": 5.468
+    },
+    {
+      "input": {
+        "path": "D:\\VM_Share\\CoDefenderC3_v9\\_pe_ascii\\s08_malicious_32.bin",
+        "bytes": 442880,
+        "sha256": "00016329167271ee1be3039c487515505a914bb3350538ff659bcafbe8aa1d14"
+      },
+      "passed": true,
+      "pe": {
+        "machine": "0x14c",
+        "bitness": 32,
+        "entrypoint_rva": 12080,
+        "clr_header": false
+      },
+      "analysis_errors": {},
+      "timing": {
+        "disassembly_features_seconds": 0.484,
+        "malgraph_features_seconds": 2.422
+      },
+      "analysis_seconds": 4.969,
+      "de": {
+        "D01": {
+          "shape": [
+            4096
+          ],
+          "finite": true,
+          "nonzero": 4096,
+          "sha256": "f4f2492081aa2fa8b28e780bd0c54471811b01f4d540bdd109cb223981ed738f"
+        },
+        "D02": {
+          "shape": [
+            256
+          ],
+          "finite": true,
+          "nonzero": 192,
+          "sha256": "9d812dd99ca0c5e5af32755d802e7cb415fdbd44d69bfb2cbb4d66d7b1a5c03c"
+        },
+        "D03": {
+          "shape": [
+            256
+          ],
+          "finite": true,
+          "nonzero": 248,
+          "sha256": "de29481de8fc0a0cc69b7947bc0e6d95a3670023f1934f9f93a8d64b92f3597d"
+        },
+        "D04": {
+          "shape": [
+            15
+          ],
+          "finite": true,
+          "nonzero": 8,
+          "sha256": "9f5e7416ec33697d6a53c45e8f601c453ffd5d81135875a89e932773f4ffeb50"
+        },
+        "D05": {
+          "shape": [
+            12
+          ],
+          "finite": true,
+          "nonzero": 11,
+          "sha256": "2aa234ec29d4ab732a8f76d47abff83baee7d6464bb0f394f510ef709eb7a997"
+        },
+        "D06": {
+          "shape": [
+            10
+          ],
+          "finite": true,
+          "nonzero": 10,
+          "sha256": "63de3548ac0ab08a8fa863c71066e571a29978454f2865fb864815d9d9cbb13e"
+        },
+        "D07": {
+          "shape": [
+            6144
+          ],
+          "finite": true,
+          "nonzero": 564,
+          "sha256": "a09163233e32496b65cac1b0ea89f9ce924980d0fdefdab8cad03c1737957e06"
+        },
+        "E03": {
+          "shape": [
+            12
+          ],
+          "finite": true,
+          "nonzero": 12,
+          "sha256": "a44a69cd82ab1faebd961f4e35f755cc5071ed67e34bf21be333f58e7000aa32"
+        },
+        "E04": {
+          "shape": [
+            10
+          ],
+          "finite": true,
+          "nonzero": 9,
+          "sha256": "722b923403fbb260ebbfe1858856d0dcf97fb0840c17a918d972f98019708084"
+        }
+      },
+      "graph": {
+        "local_functions": 82,
+        "external_functions": 111,
+        "blocks": 1032,
+        "cfg_edges": 1473,
+        "fcg_edges": 106
+      },
+      "view_shapes": {
+        "V6_opcode_seq": [
+          1,
+          4096
+        ],
+        "V6_opcode_stat": [
+          1,
+          549
+        ],
+        "V6_func_embed": [
+          1,
+          6144
+        ],
+        "V7_graph": [
+          1,
+          22
+        ]
+      },
+      "view_meta": {
+        "V6_opcode_seq": {
+          "status": "ok",
+          "source": "binja:D01",
+          "shape": [
+            1,
+            4096
+          ],
+          "expected_dim": 4096
+        },
+        "V6_opcode_stat": {
+          "status": "ok",
+          "source": "binja:D02,D03,D04,D05,D06",
+          "shape": [
+            1,
+            549
+          ],
+          "expected_dim": 549
+        },
+        "V6_func_embed": {
+          "status": "ok",
+          "source": "binja:D07",
+          "shape": [
+            1,
+            6144
+          ],
+          "expected_dim": 6144
+        },
+        "V7_graph": {
+          "status": "ok",
+          "source": "binja:E03,E04",
+          "shape": [
+            1,
+            22
+          ],
+          "expected_dim": 22,
+          "note": "partial_binja_features_missing:E01,E02"
+        },
+        "_de_feature_extraction": {
+          "status": "skipped"
+        }
+      },
+      "model_scope": "D/E_models_and_MalGraph",
+      "model_results": [
+        {
+          "model": "OpcodeLSTM",
+          "view": "V6_opcode_seq",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.5142431855201721,
+          "prediction": 1
+        },
+        {
+          "model": "OpcodeTransformer",
+          "view": "V6_opcode_seq",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.4232726991176605,
+          "prediction": 0
+        },
+        {
+          "model": "OpcodeStatNet",
+          "view": "V6_opcode_stat",
+          "engine": "numpy",
+          "status": "ok",
+          "score": 0.36125206464487414,
+          "prediction": 0
+        },
+        {
+          "model": "AsmEmbedNet",
+          "view": "V6_func_embed",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.8226340413093567,
+          "prediction": 1
+        },
+        {
+          "model": "MalGraph",
+          "view": "V7_graph",
+          "engine": "special",
+          "status": "ok",
+          "score": 0.5937740206718445,
+          "prediction": 1,
+          "malgraph_meta": {
+            "local_functions": 82,
+            "external_functions": 111,
+            "fcg_edges": 106,
+            "checkpoint": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\models\\MalGraph_2022\\best_model.pt",
+            "vocab": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\models\\MalGraph_2022\\saved\\train_external_function_name_vocab.jsonl"
+          }
+        },
+        {
+          "model": "CFGGAT",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.508601188659668,
+          "prediction": 1
+        },
+        {
+          "model": "CFGGCN",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.49694526195526123,
+          "prediction": 0
+        },
+        {
+          "model": "CFGDGCNN",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.5252567529678345,
+          "prediction": 1
+        },
+        {
+          "model": "CallGraphGNN",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.5261574387550354,
+          "prediction": 1
+        },
+        {
+          "model": "GraphStatNet",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.5419852137565613,
+          "prediction": 1
+        }
+      ],
+      "seconds": 5.5
+    },
+    {
+      "input": {
+        "path": "D:\\VM_Share\\CoDefenderC3_v9\\_pe_ascii\\s09_malicious_32.bin",
+        "bytes": 691272,
+        "sha256": "000a3c574c875d19538eb58a9aca407f3a7db5f7d561b4e0ee8987b2aeb8da69"
+      },
+      "passed": true,
+      "pe": {
+        "machine": "0x14c",
+        "bitness": 32,
+        "entrypoint_rva": 442796,
+        "clr_header": false
+      },
+      "analysis_errors": {},
+      "timing": {
+        "disassembly_features_seconds": 6.0,
+        "malgraph_features_seconds": 2.531
+      },
+      "analysis_seconds": 11.109,
+      "de": {
+        "D01": {
+          "shape": [
+            4096
+          ],
+          "finite": true,
+          "nonzero": 4096,
+          "sha256": "de78e43a4dcc44d39421d18e41d816f2afa8dfa7fb2e30fef518a9fbb7c1abc7"
+        },
+        "D02": {
+          "shape": [
+            256
+          ],
+          "finite": true,
+          "nonzero": 251,
+          "sha256": "d041a2da0b5fac46b6a48417a3d99223d3a1ea6a01b31c7ce6974c2fc1ee5e0d"
+        },
+        "D03": {
+          "shape": [
+            256
+          ],
+          "finite": true,
+          "nonzero": 256,
+          "sha256": "0cf05e914bc4e721daf619bab97022d3aac529c7b5055b9ce114f046add1f766"
+        },
+        "D04": {
+          "shape": [
+            15
+          ],
+          "finite": true,
+          "nonzero": 10,
+          "sha256": "2c3869530fc77613228d35405fc5c8242fcb5d71b9e07029a29a39a941f7875e"
+        },
+        "D05": {
+          "shape": [
+            12
+          ],
+          "finite": true,
+          "nonzero": 12,
+          "sha256": "4fb3df7847d57c8d0d2700e1832cf2828602fdaa5836b0e6e5e63d867f603170"
+        },
+        "D06": {
+          "shape": [
+            10
+          ],
+          "finite": true,
+          "nonzero": 10,
+          "sha256": "063014ed851449eb8fd2ace38cf1f8ff0feb0d753fb8ddc8ba1dbe8eecf19669"
+        },
+        "D07": {
+          "shape": [
+            6144
+          ],
+          "finite": true,
+          "nonzero": 56,
+          "sha256": "a782094814becc779edfc8190f1e637e787b3bc22a0e5c272e14acdda30d2a26"
+        },
+        "E03": {
+          "shape": [
+            12
+          ],
+          "finite": true,
+          "nonzero": 12,
+          "sha256": "4218e5eb98efb6e0e7d2d203936f6a983c775a0524bac0ffb50866f90b79e1a0"
+        },
+        "E04": {
+          "shape": [
+            10
+          ],
+          "finite": true,
+          "nonzero": 10,
+          "sha256": "a59a9feb364a85cb5445e23e803deb69f9f566fa70434db7ca60e98573d6cd88"
+        }
+      },
+      "graph": {
+        "local_functions": 4293,
+        "external_functions": 397,
+        "blocks": 18927,
+        "cfg_edges": 22642,
+        "fcg_edges": 11516
+      },
+      "view_shapes": {
+        "V6_opcode_seq": [
+          1,
+          4096
+        ],
+        "V6_opcode_stat": [
+          1,
+          549
+        ],
+        "V6_func_embed": [
+          1,
+          6144
+        ],
+        "V7_graph": [
+          1,
+          22
+        ]
+      },
+      "view_meta": {
+        "V6_opcode_seq": {
+          "status": "ok",
+          "source": "binja:D01",
+          "shape": [
+            1,
+            4096
+          ],
+          "expected_dim": 4096
+        },
+        "V6_opcode_stat": {
+          "status": "ok",
+          "source": "binja:D02,D03,D04,D05,D06",
+          "shape": [
+            1,
+            549
+          ],
+          "expected_dim": 549
+        },
+        "V6_func_embed": {
+          "status": "ok",
+          "source": "binja:D07",
+          "shape": [
+            1,
+            6144
+          ],
+          "expected_dim": 6144
+        },
+        "V7_graph": {
+          "status": "ok",
+          "source": "binja:E03,E04",
+          "shape": [
+            1,
+            22
+          ],
+          "expected_dim": 22,
+          "note": "partial_binja_features_missing:E01,E02"
+        },
+        "_de_feature_extraction": {
+          "status": "skipped"
+        }
+      },
+      "model_scope": "D/E_models_and_MalGraph",
+      "model_results": [
+        {
+          "model": "OpcodeLSTM",
+          "view": "V6_opcode_seq",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.5424647331237793,
+          "prediction": 1
+        },
+        {
+          "model": "OpcodeTransformer",
+          "view": "V6_opcode_seq",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.4275665879249573,
+          "prediction": 0
+        },
+        {
+          "model": "OpcodeStatNet",
+          "view": "V6_opcode_stat",
+          "engine": "numpy",
+          "status": "ok",
+          "score": 0.598949729449834,
+          "prediction": 1
+        },
+        {
+          "model": "AsmEmbedNet",
+          "view": "V6_func_embed",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.39815837144851685,
+          "prediction": 0
+        },
+        {
+          "model": "MalGraph",
+          "view": "V7_graph",
+          "engine": "special",
+          "status": "ok",
+          "score": 0.9516278505325317,
+          "prediction": 1,
+          "malgraph_meta": {
+            "local_functions": 4293,
+            "external_functions": 397,
+            "fcg_edges": 11516,
+            "checkpoint": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\models\\MalGraph_2022\\best_model.pt",
+            "vocab": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\models\\MalGraph_2022\\saved\\train_external_function_name_vocab.jsonl"
+          }
+        },
+        {
+          "model": "CFGGAT",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.4840296506881714,
+          "prediction": 0
+        },
+        {
+          "model": "CFGGCN",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.503678023815155,
+          "prediction": 1
+        },
+        {
+          "model": "CFGDGCNN",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.5228381752967834,
+          "prediction": 1
+        },
+        {
+          "model": "CallGraphGNN",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.5295446515083313,
+          "prediction": 1
+        },
+        {
+          "model": "GraphStatNet",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.9513577222824097,
+          "prediction": 1
+        }
+      ],
+      "seconds": 11.875
+    },
+    {
+      "input": {
+        "path": "D:\\VM_Share\\CoDefenderC3_v9\\_pe_ascii\\s10_malicious_32.bin",
+        "bytes": 192766,
+        "sha256": "000bbe5ccd43649e0c4c8fafc6ceaa89e16dd46716fa2d455dbc8dd59ab5efe1"
+      },
+      "passed": true,
+      "pe": {
+        "machine": "0x14c",
+        "bitness": 32,
+        "entrypoint_rva": 5040,
+        "clr_header": false
+      },
+      "analysis_errors": {},
+      "timing": {
+        "disassembly_features_seconds": 0.391,
+        "malgraph_features_seconds": 2.421
+      },
+      "analysis_seconds": 4.797,
+      "de": {
+        "D01": {
+          "shape": [
+            4096
+          ],
+          "finite": true,
+          "nonzero": 1198,
+          "sha256": "29171b69ba6220f7bd9444747d62e09bfc3d897004dafce299ca5d7b886046c8"
+        },
+        "D02": {
+          "shape": [
+            256
+          ],
+          "finite": true,
+          "nonzero": 67,
+          "sha256": "375f19ce5bae48a020a81fb28228e2625bcaafd103920ef91c8d8bbd043ea91e"
+        },
+        "D03": {
+          "shape": [
+            256
+          ],
+          "finite": true,
+          "nonzero": 117,
+          "sha256": "8b44b3ee81e12a8791647761a8efcf6eba7977df1611eedbf1b76ceabe8b568c"
+        },
+        "D04": {
+          "shape": [
+            15
+          ],
+          "finite": true,
+          "nonzero": 7,
+          "sha256": "8f0fcc656a392d6264dfa2a38bc59d4e84d236cbbcf331597da1fe7974bc1076"
+        },
+        "D05": {
+          "shape": [
+            12
+          ],
+          "finite": true,
+          "nonzero": 11,
+          "sha256": "6e7b58efb0609ea06b1104de5f10251b1a2168da39d65c21c3261640370f2214"
+        },
+        "D06": {
+          "shape": [
+            10
+          ],
+          "finite": true,
+          "nonzero": 10,
+          "sha256": "86fb6cd9f02371b2766e9dc3f257d26a8972f3f21a2d0c193c9eaa2f76eaebda"
+        },
+        "D07": {
+          "shape": [
+            6144
+          ],
+          "finite": true,
+          "nonzero": 48,
+          "sha256": "7ac4b7a141e9d37d9efe45c8a258e9373d742be1931ab17523a5e4944ec108d9"
+        },
+        "E03": {
+          "shape": [
+            12
+          ],
+          "finite": true,
+          "nonzero": 10,
+          "sha256": "4dfd79b898ca6f066893878d0006027c016012c06ee1e7dd02468a448b6dba9c"
+        },
+        "E04": {
+          "shape": [
+            10
+          ],
+          "finite": true,
+          "nonzero": 7,
+          "sha256": "1616c22361bb8d36e1193f8d99fa097d6496a96f532aeb0a329cb0b8ba0e0de0"
+        }
+      },
+      "graph": {
+        "local_functions": 76,
+        "external_functions": 57,
+        "blocks": 164,
+        "cfg_edges": 114,
+        "fcg_edges": 125
+      },
+      "view_shapes": {
+        "V6_opcode_seq": [
+          1,
+          4096
+        ],
+        "V6_opcode_stat": [
+          1,
+          549
+        ],
+        "V6_func_embed": [
+          1,
+          6144
+        ],
+        "V7_graph": [
+          1,
+          22
+        ]
+      },
+      "view_meta": {
+        "V6_opcode_seq": {
+          "status": "ok",
+          "source": "binja:D01",
+          "shape": [
+            1,
+            4096
+          ],
+          "expected_dim": 4096
+        },
+        "V6_opcode_stat": {
+          "status": "ok",
+          "source": "binja:D02,D03,D04,D05,D06",
+          "shape": [
+            1,
+            549
+          ],
+          "expected_dim": 549
+        },
+        "V6_func_embed": {
+          "status": "ok",
+          "source": "binja:D07",
+          "shape": [
+            1,
+            6144
+          ],
+          "expected_dim": 6144
+        },
+        "V7_graph": {
+          "status": "ok",
+          "source": "binja:E03,E04",
+          "shape": [
+            1,
+            22
+          ],
+          "expected_dim": 22,
+          "note": "partial_binja_features_missing:E01,E02"
+        },
+        "_de_feature_extraction": {
+          "status": "skipped"
+        }
+      },
+      "model_scope": "D/E_models_and_MalGraph",
+      "model_results": [
+        {
+          "model": "OpcodeLSTM",
+          "view": "V6_opcode_seq",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.5038703680038452,
+          "prediction": 1
+        },
+        {
+          "model": "OpcodeTransformer",
+          "view": "V6_opcode_seq",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.42751240730285645,
+          "prediction": 0
+        },
+        {
+          "model": "OpcodeStatNet",
+          "view": "V6_opcode_stat",
+          "engine": "numpy",
+          "status": "ok",
+          "score": 0.6826527689662679,
+          "prediction": 1
+        },
+        {
+          "model": "AsmEmbedNet",
+          "view": "V6_func_embed",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.39816632866859436,
+          "prediction": 0
+        },
+        {
+          "model": "MalGraph",
+          "view": "V7_graph",
+          "engine": "special",
+          "status": "ok",
+          "score": 0.5618720650672913,
+          "prediction": 1,
+          "malgraph_meta": {
+            "local_functions": 76,
+            "external_functions": 57,
+            "fcg_edges": 125,
+            "checkpoint": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\models\\MalGraph_2022\\best_model.pt",
+            "vocab": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\models\\MalGraph_2022\\saved\\train_external_function_name_vocab.jsonl"
+          }
+        },
+        {
+          "model": "CFGGAT",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.5277200937271118,
+          "prediction": 1
+        },
+        {
+          "model": "CFGGCN",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.49671024084091187,
+          "prediction": 0
+        },
+        {
+          "model": "CFGDGCNN",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.5345498323440552,
+          "prediction": 1
+        },
+        {
+          "model": "CallGraphGNN",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.5335530042648315,
+          "prediction": 1
+        },
+        {
+          "model": "GraphStatNet",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.5563375949859619,
+          "prediction": 1
+        }
+      ],
+      "seconds": 5.328
+    },
+    {
+      "input": {
+        "path": "D:\\VM_Share\\CoDefenderC3_v9\\_pe_ascii\\s11_malicious_32.bin",
+        "bytes": 20848,
+        "sha256": "000dce9cae78e30652519958436caf568ef003f2347d777943b045a3398635d1"
+      },
+      "passed": true,
+      "pe": {
+        "machine": "0x14c",
+        "bitness": 32,
+        "entrypoint_rva": 6668,
+        "clr_header": false
+      },
+      "analysis_errors": {},
+      "timing": {
+        "disassembly_features_seconds": 0.36,
+        "malgraph_features_seconds": 2.5
+      },
+      "analysis_seconds": 4.86,
+      "de": {
+        "D01": {
+          "shape": [
+            4096
+          ],
+          "finite": true,
+          "nonzero": 1209,
+          "sha256": "a568f9872db8221d6c3ebbe5a1142ec2968c2c8f1c406079747cf1fe110910be"
+        },
+        "D02": {
+          "shape": [
+            256
+          ],
+          "finite": true,
+          "nonzero": 133,
+          "sha256": "2a71a02009baa8a6366eaa726ffb86ef2862bf547db68ea58fa02be48a72647f"
+        },
+        "D03": {
+          "shape": [
+            256
+          ],
+          "finite": true,
+          "nonzero": 206,
+          "sha256": "630d6a71e6b38215b884ed4f5f429c49e48866838d188b7ea5171807ddce200b"
+        },
+        "D04": {
+          "shape": [
+            15
+          ],
+          "finite": true,
+          "nonzero": 6,
+          "sha256": "1f078bb4f6642f3895cd61be2d1b5c8e366560d5dfa72fbd8196e77971b73346"
+        },
+        "D05": {
+          "shape": [
+            12
+          ],
+          "finite": true,
+          "nonzero": 11,
+          "sha256": "bb861d85e4d4d8273008650b48060150f2fb9c63ced2e03f9f5762a75ae2a14d"
+        },
+        "D06": {
+          "shape": [
+            10
+          ],
+          "finite": true,
+          "nonzero": 10,
+          "sha256": "fdd852cb4f424e5cbcbf73cf4b4693336b6c196c430ac78303fc98691d47fd2f"
+        },
+        "D07": {
+          "shape": [
+            6144
+          ],
+          "finite": true,
+          "nonzero": 267,
+          "sha256": "878c69a7e0532f81ee29326cd71a91970dc51b88816afb6726c7cfbda29de8b6"
+        },
+        "E03": {
+          "shape": [
+            12
+          ],
+          "finite": true,
+          "nonzero": 12,
+          "sha256": "525ca0d7c0f612a00983f96b5effec31f92093c93d32875858fe419597f55d0d"
+        },
+        "E04": {
+          "shape": [
+            10
+          ],
+          "finite": true,
+          "nonzero": 9,
+          "sha256": "4c54a59ad219293e89afa4ea592a540c4ca2c269952bb67479a84d7dd664883a"
+        }
+      },
+      "graph": {
+        "local_functions": 40,
+        "external_functions": 64,
+        "blocks": 178,
+        "cfg_edges": 200,
+        "fcg_edges": 46
+      },
+      "view_shapes": {
+        "V6_opcode_seq": [
+          1,
+          4096
+        ],
+        "V6_opcode_stat": [
+          1,
+          549
+        ],
+        "V6_func_embed": [
+          1,
+          6144
+        ],
+        "V7_graph": [
+          1,
+          22
+        ]
+      },
+      "view_meta": {
+        "V6_opcode_seq": {
+          "status": "ok",
+          "source": "binja:D01",
+          "shape": [
+            1,
+            4096
+          ],
+          "expected_dim": 4096
+        },
+        "V6_opcode_stat": {
+          "status": "ok",
+          "source": "binja:D02,D03,D04,D05,D06",
+          "shape": [
+            1,
+            549
+          ],
+          "expected_dim": 549
+        },
+        "V6_func_embed": {
+          "status": "ok",
+          "source": "binja:D07",
+          "shape": [
+            1,
+            6144
+          ],
+          "expected_dim": 6144
+        },
+        "V7_graph": {
+          "status": "ok",
+          "source": "binja:E03,E04",
+          "shape": [
+            1,
+            22
+          ],
+          "expected_dim": 22,
+          "note": "partial_binja_features_missing:E01,E02"
+        },
+        "_de_feature_extraction": {
+          "status": "skipped"
+        }
+      },
+      "model_scope": "D/E_models_and_MalGraph",
+      "model_results": [
+        {
+          "model": "OpcodeLSTM",
+          "view": "V6_opcode_seq",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.5106483101844788,
+          "prediction": 1
+        },
+        {
+          "model": "OpcodeTransformer",
+          "view": "V6_opcode_seq",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.4333849549293518,
+          "prediction": 0
+        },
+        {
+          "model": "OpcodeStatNet",
+          "view": "V6_opcode_stat",
+          "engine": "numpy",
+          "status": "ok",
+          "score": 0.6824389511485424,
+          "prediction": 1
+        },
+        {
+          "model": "AsmEmbedNet",
+          "view": "V6_func_embed",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.7413817644119263,
+          "prediction": 1
+        },
+        {
+          "model": "MalGraph",
+          "view": "V7_graph",
+          "engine": "special",
+          "status": "ok",
+          "score": 0.5816093683242798,
+          "prediction": 1,
+          "malgraph_meta": {
+            "local_functions": 40,
+            "external_functions": 64,
+            "fcg_edges": 46,
+            "checkpoint": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\models\\MalGraph_2022\\best_model.pt",
+            "vocab": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\models\\MalGraph_2022\\saved\\train_external_function_name_vocab.jsonl"
+          }
+        },
+        {
+          "model": "CFGGAT",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.5226931571960449,
+          "prediction": 1
+        },
+        {
+          "model": "CFGGCN",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.4962788224220276,
+          "prediction": 0
+        },
+        {
+          "model": "CFGDGCNN",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.52625572681427,
+          "prediction": 1
+        },
+        {
+          "model": "CallGraphGNN",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.5262318849563599,
+          "prediction": 1
+        },
+        {
+          "model": "GraphStatNet",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.5464760065078735,
+          "prediction": 1
+        }
+      ],
+      "seconds": 5.39
+    },
+    {
+      "input": {
+        "path": "D:\\VM_Share\\CoDefenderC3_v9\\_pe_ascii\\s12_malicious_64.bin",
+        "bytes": 420352,
+        "sha256": "00a2daf2b8998a8cfb43acb4633e17913fe7db8de6f34d331cfb181342eb48d6"
+      },
+      "passed": true,
+      "pe": {
+        "machine": "0x8664",
+        "bitness": 64,
+        "entrypoint_rva": 9120,
+        "clr_header": false
+      },
+      "analysis_errors": {},
+      "timing": {
+        "disassembly_features_seconds": 0.469,
+        "malgraph_features_seconds": 2.453
+      },
+      "analysis_seconds": 4.907,
+      "de": {
+        "D01": {
+          "shape": [
+            4096
+          ],
+          "finite": true,
+          "nonzero": 1499,
+          "sha256": "fd3a0e6319abcf55509678945262d4c940af45fd998906c549dfd1c3d144a47b"
+        },
+        "D02": {
+          "shape": [
+            256
+          ],
+          "finite": true,
+          "nonzero": 144,
+          "sha256": "9c9e9d03be04e31d298361e165cc022d14d6e64ef37f7b65450963775bc45db7"
+        },
+        "D03": {
+          "shape": [
+            256
+          ],
+          "finite": true,
+          "nonzero": 216,
+          "sha256": "1bf93444b1982675fd87af7e1a207d4a74ed704f34b1ac90cf3aa212ae250e90"
+        },
+        "D04": {
+          "shape": [
+            15
+          ],
+          "finite": true,
+          "nonzero": 8,
+          "sha256": "651c412ea0e2cef1ee73402ebda8c92c64c7db7441dae0741dc9466dc75b1e29"
+        },
+        "D05": {
+          "shape": [
+            12
+          ],
+          "finite": true,
+          "nonzero": 11,
+          "sha256": "c3d6b7386fb52497a809db299daab6abcd177cb3f616fe6b86cc58a10758ee94"
+        },
+        "D06": {
+          "shape": [
+            10
+          ],
+          "finite": true,
+          "nonzero": 10,
+          "sha256": "4bef8a94206dacf2e72e5bbda8d820759365d46d8ef23abd8bb589eeebbeb7b4"
+        },
+        "D07": {
+          "shape": [
+            6144
+          ],
+          "finite": true,
+          "nonzero": 253,
+          "sha256": "94f9efcbd07ef172e58678efe658c487eaee6dc98089b38556128d20cb0e1876"
+        },
+        "E03": {
+          "shape": [
+            12
+          ],
+          "finite": true,
+          "nonzero": 12,
+          "sha256": "2030f469c9c7c9751c70a1637d2f28bf35199b46b2fad878f3a46d6b1f210abc"
+        },
+        "E04": {
+          "shape": [
+            10
+          ],
+          "finite": true,
+          "nonzero": 9,
+          "sha256": "985afd878d97f41b5080420f2feadf5d621c43c92d9d7ed867caaa2eb92b56c0"
+        }
+      },
+      "graph": {
+        "local_functions": 25,
+        "external_functions": 66,
+        "blocks": 253,
+        "cfg_edges": 345,
+        "fcg_edges": 16
+      },
+      "view_shapes": {
+        "V6_opcode_seq": [
+          1,
+          4096
+        ],
+        "V6_opcode_stat": [
+          1,
+          549
+        ],
+        "V6_func_embed": [
+          1,
+          6144
+        ],
+        "V7_graph": [
+          1,
+          22
+        ]
+      },
+      "view_meta": {
+        "V6_opcode_seq": {
+          "status": "ok",
+          "source": "binja:D01",
+          "shape": [
+            1,
+            4096
+          ],
+          "expected_dim": 4096
+        },
+        "V6_opcode_stat": {
+          "status": "ok",
+          "source": "binja:D02,D03,D04,D05,D06",
+          "shape": [
+            1,
+            549
+          ],
+          "expected_dim": 549
+        },
+        "V6_func_embed": {
+          "status": "ok",
+          "source": "binja:D07",
+          "shape": [
+            1,
+            6144
+          ],
+          "expected_dim": 6144
+        },
+        "V7_graph": {
+          "status": "ok",
+          "source": "binja:E03,E04",
+          "shape": [
+            1,
+            22
+          ],
+          "expected_dim": 22,
+          "note": "partial_binja_features_missing:E01,E02"
+        },
+        "_de_feature_extraction": {
+          "status": "skipped"
+        }
+      },
+      "model_scope": "D/E_models_and_MalGraph",
+      "model_results": [
+        {
+          "model": "OpcodeLSTM",
+          "view": "V6_opcode_seq",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.4987454414367676,
+          "prediction": 0
+        },
+        {
+          "model": "OpcodeTransformer",
+          "view": "V6_opcode_seq",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.45354002714157104,
+          "prediction": 0
+        },
+        {
+          "model": "OpcodeStatNet",
+          "view": "V6_opcode_stat",
+          "engine": "numpy",
+          "status": "ok",
+          "score": 0.4620182687165251,
+          "prediction": 0
+        },
+        {
+          "model": "AsmEmbedNet",
+          "view": "V6_func_embed",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.8465217351913452,
+          "prediction": 1
+        },
+        {
+          "model": "MalGraph",
+          "view": "V7_graph",
+          "engine": "special",
+          "status": "ok",
+          "score": 0.5347338318824768,
+          "prediction": 1,
+          "malgraph_meta": {
+            "local_functions": 25,
+            "external_functions": 66,
+            "fcg_edges": 16,
+            "checkpoint": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\models\\MalGraph_2022\\best_model.pt",
+            "vocab": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\models\\MalGraph_2022\\saved\\train_external_function_name_vocab.jsonl"
+          }
+        },
+        {
+          "model": "CFGGAT",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.51951003074646,
+          "prediction": 1
+        },
+        {
+          "model": "CFGGCN",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.4960660934448242,
+          "prediction": 0
+        },
+        {
+          "model": "CFGDGCNN",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.5211824774742126,
+          "prediction": 1
+        },
+        {
+          "model": "CallGraphGNN",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.5226631164550781,
+          "prediction": 1
+        },
+        {
+          "model": "GraphStatNet",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.539341151714325,
+          "prediction": 1
+        }
+      ],
+      "seconds": 5.454
+    },
+    {
+      "input": {
+        "path": "D:\\VM_Share\\CoDefenderC3_v9\\_pe_ascii\\s13_malicious_64.bin",
+        "bytes": 415744,
+        "sha256": "00a850c851c7bedafcc610a456891e7196cb782ac1b1327c3f413ae05b8c3156"
+      },
+      "passed": true,
+      "pe": {
+        "machine": "0x8664",
+        "bitness": 64,
+        "entrypoint_rva": 5280,
+        "clr_header": false
+      },
+      "analysis_errors": {},
+      "timing": {
+        "disassembly_features_seconds": 0.375,
+        "malgraph_features_seconds": 2.375
+      },
+      "analysis_seconds": 4.781,
+      "de": {
+        "D01": {
+          "shape": [
+            4096
+          ],
+          "finite": true,
+          "nonzero": 549,
+          "sha256": "08eefe70a99084a9706c5189be55aed3a80e1656285c3f2910217a9d8d4a103f"
+        },
+        "D02": {
+          "shape": [
+            256
+          ],
+          "finite": true,
+          "nonzero": 115,
+          "sha256": "4f1c577709685f5831c7e52784ba8900f9e6be85673f4ff2cc2046e6755b1d8b"
+        },
+        "D03": {
+          "shape": [
+            256
+          ],
+          "finite": true,
+          "nonzero": 184,
+          "sha256": "948f0ce50ca62e3b58ed0345bee75170eabf971d1eefb04c7b9c439a55c2513b"
+        },
+        "D04": {
+          "shape": [
+            15
+          ],
+          "finite": true,
+          "nonzero": 8,
+          "sha256": "5bb9291b855edf75e948b51699ad1f20871cfbac0f80e8febc9a6ce33b24f590"
+        },
+        "D05": {
+          "shape": [
+            12
+          ],
+          "finite": true,
+          "nonzero": 11,
+          "sha256": "15ed80c845a47053411040837f3da9dfee6f45ee8946759d5d2a9a82644393d9"
+        },
+        "D06": {
+          "shape": [
+            10
+          ],
+          "finite": true,
+          "nonzero": 10,
+          "sha256": "e7e5539166c4134af654d66a63d893fad0ebbb8905b4cc65de8550c9dc0e222f"
+        },
+        "D07": {
+          "shape": [
+            6144
+          ],
+          "finite": true,
+          "nonzero": 175,
+          "sha256": "3e6bdcec869d43d8675b160b9f7cf8c9ec1c9647802030be11b48473477cf6e5"
+        },
+        "E03": {
+          "shape": [
+            12
+          ],
+          "finite": true,
+          "nonzero": 12,
+          "sha256": "0181efcd812c71f373f138c7a2757aef8fbf3b6c898c8f7c69e8536bb37d0450"
+        },
+        "E04": {
+          "shape": [
+            10
+          ],
+          "finite": true,
+          "nonzero": 9,
+          "sha256": "e806f5d41b80fbefe6a545b6a7ecf8b5c083b9a53b790ee8d10f299996e8d7f9"
+        }
+      },
+      "graph": {
+        "local_functions": 20,
+        "external_functions": 29,
+        "blocks": 100,
+        "cfg_edges": 111,
+        "fcg_edges": 13
+      },
+      "view_shapes": {
+        "V6_opcode_seq": [
+          1,
+          4096
+        ],
+        "V6_opcode_stat": [
+          1,
+          549
+        ],
+        "V6_func_embed": [
+          1,
+          6144
+        ],
+        "V7_graph": [
+          1,
+          22
+        ]
+      },
+      "view_meta": {
+        "V6_opcode_seq": {
+          "status": "ok",
+          "source": "binja:D01",
+          "shape": [
+            1,
+            4096
+          ],
+          "expected_dim": 4096
+        },
+        "V6_opcode_stat": {
+          "status": "ok",
+          "source": "binja:D02,D03,D04,D05,D06",
+          "shape": [
+            1,
+            549
+          ],
+          "expected_dim": 549
+        },
+        "V6_func_embed": {
+          "status": "ok",
+          "source": "binja:D07",
+          "shape": [
+            1,
+            6144
+          ],
+          "expected_dim": 6144
+        },
+        "V7_graph": {
+          "status": "ok",
+          "source": "binja:E03,E04",
+          "shape": [
+            1,
+            22
+          ],
+          "expected_dim": 22,
+          "note": "partial_binja_features_missing:E01,E02"
+        },
+        "_de_feature_extraction": {
+          "status": "skipped"
+        }
+      },
+      "model_scope": "D/E_models_and_MalGraph",
+      "model_results": [
+        {
+          "model": "OpcodeLSTM",
+          "view": "V6_opcode_seq",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.5053909420967102,
+          "prediction": 1
+        },
+        {
+          "model": "OpcodeTransformer",
+          "view": "V6_opcode_seq",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.4523334801197052,
+          "prediction": 0
+        },
+        {
+          "model": "OpcodeStatNet",
+          "view": "V6_opcode_stat",
+          "engine": "numpy",
+          "status": "ok",
+          "score": 0.6036880634229598,
+          "prediction": 1
+        },
+        {
+          "model": "AsmEmbedNet",
+          "view": "V6_func_embed",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.8378145098686218,
+          "prediction": 1
+        },
+        {
+          "model": "MalGraph",
+          "view": "V7_graph",
+          "engine": "special",
+          "status": "ok",
+          "score": 0.5327023863792419,
+          "prediction": 1,
+          "malgraph_meta": {
+            "local_functions": 20,
+            "external_functions": 29,
+            "fcg_edges": 13,
+            "checkpoint": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\models\\MalGraph_2022\\best_model.pt",
+            "vocab": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\models\\MalGraph_2022\\saved\\train_external_function_name_vocab.jsonl"
+          }
+        },
+        {
+          "model": "CFGGAT",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.5214325785636902,
+          "prediction": 1
+        },
+        {
+          "model": "CFGGCN",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.49616914987564087,
+          "prediction": 0
+        },
+        {
+          "model": "CFGDGCNN",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.5222306251525879,
+          "prediction": 1
+        },
+        {
+          "model": "CallGraphGNN",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.5232760906219482,
+          "prediction": 1
+        },
+        {
+          "model": "GraphStatNet",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.542005717754364,
+          "prediction": 1
+        }
+      ],
+      "seconds": 5.296
+    },
+    {
+      "input": {
+        "path": "D:\\VM_Share\\CoDefenderC3_v9\\_pe_ascii\\s14_malicious_64.bin",
+        "bytes": 439296,
+        "sha256": "00b565bb76ccfd445e317471442c1c909e48eb944158bab6e727ff445988a7fc"
+      },
+      "passed": true,
+      "pe": {
+        "machine": "0x8664",
+        "bitness": 64,
+        "entrypoint_rva": 12820,
+        "clr_header": false
+      },
+      "analysis_errors": {},
+      "timing": {
+        "disassembly_features_seconds": 0.5,
+        "malgraph_features_seconds": 2.437
+      },
+      "analysis_seconds": 4.969,
+      "de": {
+        "D01": {
+          "shape": [
+            4096
+          ],
+          "finite": true,
+          "nonzero": 3131,
+          "sha256": "4bbf604d7612f489e7317a9e3c711ef580cc35a4fa19cd51fbff5c17d22d7482"
+        },
+        "D02": {
+          "shape": [
+            256
+          ],
+          "finite": true,
+          "nonzero": 189,
+          "sha256": "886e57fc86795742728b2df2a81aef48820a37aeae91e882431aa7ea7f0e7d13"
+        },
+        "D03": {
+          "shape": [
+            256
+          ],
+          "finite": true,
+          "nonzero": 243,
+          "sha256": "10fac56f3bf9d838095ff7fb57821ce2b9a6de37c11b8e38640ac8f9b1fd8fff"
+        },
+        "D04": {
+          "shape": [
+            15
+          ],
+          "finite": true,
+          "nonzero": 9,
+          "sha256": "c47e3c475b550b91412e3e8ce4f8741553bb0517262ab4b472febaff929abd93"
+        },
+        "D05": {
+          "shape": [
+            12
+          ],
+          "finite": true,
+          "nonzero": 11,
+          "sha256": "075b834ffaf47d7bf9eada2eff80934579e0de70dd6ca2850649568c5b7e146a"
+        },
+        "D06": {
+          "shape": [
+            10
+          ],
+          "finite": true,
+          "nonzero": 10,
+          "sha256": "e136e16c6d34e9eba0aab8b0e5e8ab70b6e1a46dcd1e4dbced802132b447773f"
+        },
+        "D07": {
+          "shape": [
+            6144
+          ],
+          "finite": true,
+          "nonzero": 460,
+          "sha256": "d24690fa14891bda64004d72a5c4a2aabe06264a434939adb62ee79f5ec04974"
+        },
+        "E03": {
+          "shape": [
+            12
+          ],
+          "finite": true,
+          "nonzero": 12,
+          "sha256": "764e0c6edaf4fd930dae36e89fe996d54adaddd788341cfb056af8cce326af23"
+        },
+        "E04": {
+          "shape": [
+            10
+          ],
+          "finite": true,
+          "nonzero": 9,
+          "sha256": "314ad5fd009af2d07403122c9488b5f0c3dac5d5798b99e4aa2243e3db2df49d"
+        }
+      },
+      "graph": {
+        "local_functions": 138,
+        "external_functions": 93,
+        "blocks": 549,
+        "cfg_edges": 632,
+        "fcg_edges": 227
+      },
+      "view_shapes": {
+        "V6_opcode_seq": [
+          1,
+          4096
+        ],
+        "V6_opcode_stat": [
+          1,
+          549
+        ],
+        "V6_func_embed": [
+          1,
+          6144
+        ],
+        "V7_graph": [
+          1,
+          22
+        ]
+      },
+      "view_meta": {
+        "V6_opcode_seq": {
+          "status": "ok",
+          "source": "binja:D01",
+          "shape": [
+            1,
+            4096
+          ],
+          "expected_dim": 4096
+        },
+        "V6_opcode_stat": {
+          "status": "ok",
+          "source": "binja:D02,D03,D04,D05,D06",
+          "shape": [
+            1,
+            549
+          ],
+          "expected_dim": 549
+        },
+        "V6_func_embed": {
+          "status": "ok",
+          "source": "binja:D07",
+          "shape": [
+            1,
+            6144
+          ],
+          "expected_dim": 6144
+        },
+        "V7_graph": {
+          "status": "ok",
+          "source": "binja:E03,E04",
+          "shape": [
+            1,
+            22
+          ],
+          "expected_dim": 22,
+          "note": "partial_binja_features_missing:E01,E02"
+        },
+        "_de_feature_extraction": {
+          "status": "skipped"
+        }
+      },
+      "model_scope": "D/E_models_and_MalGraph",
+      "model_results": [
+        {
+          "model": "OpcodeLSTM",
+          "view": "V6_opcode_seq",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.480948805809021,
+          "prediction": 0
+        },
+        {
+          "model": "OpcodeTransformer",
+          "view": "V6_opcode_seq",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.43949952721595764,
+          "prediction": 0
+        },
+        {
+          "model": "OpcodeStatNet",
+          "view": "V6_opcode_stat",
+          "engine": "numpy",
+          "status": "ok",
+          "score": 0.6706908830107229,
+          "prediction": 1
+        },
+        {
+          "model": "AsmEmbedNet",
+          "view": "V6_func_embed",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.8162640929222107,
+          "prediction": 1
+        },
+        {
+          "model": "MalGraph",
+          "view": "V7_graph",
+          "engine": "special",
+          "status": "ok",
+          "score": 0.5538817048072815,
+          "prediction": 1,
+          "malgraph_meta": {
+            "local_functions": 138,
+            "external_functions": 93,
+            "fcg_edges": 227,
+            "checkpoint": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\models\\MalGraph_2022\\best_model.pt",
+            "vocab": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\models\\MalGraph_2022\\saved\\train_external_function_name_vocab.jsonl"
+          }
+        },
+        {
+          "model": "CFGGAT",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.5284704566001892,
+          "prediction": 1
+        },
+        {
+          "model": "CFGGCN",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.4969152808189392,
+          "prediction": 0
+        },
+        {
+          "model": "CFGDGCNN",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.5424348711967468,
+          "prediction": 1
+        },
+        {
+          "model": "CallGraphGNN",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.5399397015571594,
+          "prediction": 1
+        },
+        {
+          "model": "GraphStatNet",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.563266932964325,
+          "prediction": 1
+        }
+      ],
+      "seconds": 5.5
+    },
+    {
+      "input": {
+        "path": "D:\\VM_Share\\CoDefenderC3_v9\\_pe_ascii\\s15_malicious_64.bin",
+        "bytes": 2568916,
+        "sha256": "00ecca337f99f9cfa4c2443fa8529e0f2c19d76986394bc12390afab45256cd8"
+      },
+      "passed": true,
+      "pe": {
+        "machine": "0x8664",
+        "bitness": 64,
+        "entrypoint_rva": 663848,
+        "clr_header": false
+      },
+      "analysis_errors": {},
+      "timing": {
+        "disassembly_features_seconds": 3.406,
+        "malgraph_features_seconds": 2.5
+      },
+      "analysis_seconds": 8.563,
+      "de": {
+        "D01": {
+          "shape": [
+            4096
+          ],
+          "finite": true,
+          "nonzero": 4096,
+          "sha256": "b0385261002ff751e03dcbac0b6fd7754cdc3f641d33fa587e5ef8fd9885fffc"
+        },
+        "D02": {
+          "shape": [
+            256
+          ],
+          "finite": true,
+          "nonzero": 255,
+          "sha256": "4ff15dee80312c93bd022078bb3b10e4e2699d5edc5d37401b400808b16bbeec"
+        },
+        "D03": {
+          "shape": [
+            256
+          ],
+          "finite": true,
+          "nonzero": 256,
+          "sha256": "0d6135f8742ea76117ff1e649b5fbbb0536a71b8cf616405ba0b0ad02a135e69"
+        },
+        "D04": {
+          "shape": [
+            15
+          ],
+          "finite": true,
+          "nonzero": 10,
+          "sha256": "6ef85f8af5a471a592a38bcf79080944dc09e5ce2ce98a14b195b7081d1aa789"
+        },
+        "D05": {
+          "shape": [
+            12
+          ],
+          "finite": true,
+          "nonzero": 12,
+          "sha256": "f1e89a90b88e3f4b0932db12cfee2ab4d33c12804b94049ed43484e8d0014951"
+        },
+        "D06": {
+          "shape": [
+            10
+          ],
+          "finite": true,
+          "nonzero": 10,
+          "sha256": "16b0823377504eebc9f570d9db2950f99bd005d32aefa5eefec8390a39ff74ff"
+        },
+        "D07": {
+          "shape": [
+            6144
+          ],
+          "finite": true,
+          "nonzero": 445,
+          "sha256": "45b7f270ec7ba59789b9f7c9fb0a52bcf35a92885906b6550697b54ee09e400a"
+        },
+        "E03": {
+          "shape": [
+            12
+          ],
+          "finite": true,
+          "nonzero": 12,
+          "sha256": "85ac21ae07d7d183578f8d7b3d12542b22b36a5b31820b509fa80d08c6698726"
+        },
+        "E04": {
+          "shape": [
+            10
+          ],
+          "finite": true,
+          "nonzero": 10,
+          "sha256": "9645ab8c5ef919e3b2b983b9e9b155c7c86d8cb4729717c04c645c8d7552291c"
+        }
+      },
+      "graph": {
+        "local_functions": 1847,
+        "external_functions": 430,
+        "blocks": 19367,
+        "cfg_edges": 27072,
+        "fcg_edges": 6783
+      },
+      "view_shapes": {
+        "V6_opcode_seq": [
+          1,
+          4096
+        ],
+        "V6_opcode_stat": [
+          1,
+          549
+        ],
+        "V6_func_embed": [
+          1,
+          6144
+        ],
+        "V7_graph": [
+          1,
+          22
+        ]
+      },
+      "view_meta": {
+        "V6_opcode_seq": {
+          "status": "ok",
+          "source": "binja:D01",
+          "shape": [
+            1,
+            4096
+          ],
+          "expected_dim": 4096
+        },
+        "V6_opcode_stat": {
+          "status": "ok",
+          "source": "binja:D02,D03,D04,D05,D06",
+          "shape": [
+            1,
+            549
+          ],
+          "expected_dim": 549
+        },
+        "V6_func_embed": {
+          "status": "ok",
+          "source": "binja:D07",
+          "shape": [
+            1,
+            6144
+          ],
+          "expected_dim": 6144
+        },
+        "V7_graph": {
+          "status": "ok",
+          "source": "binja:E03,E04",
+          "shape": [
+            1,
+            22
+          ],
+          "expected_dim": 22,
+          "note": "partial_binja_features_missing:E01,E02"
+        },
+        "_de_feature_extraction": {
+          "status": "skipped"
+        }
+      },
+      "model_scope": "D/E_models_and_MalGraph",
+      "model_results": [
+        {
+          "model": "OpcodeLSTM",
+          "view": "V6_opcode_seq",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.5016707181930542,
+          "prediction": 1
+        },
+        {
+          "model": "OpcodeTransformer",
+          "view": "V6_opcode_seq",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.4353998899459839,
+          "prediction": 0
+        },
+        {
+          "model": "OpcodeStatNet",
+          "view": "V6_opcode_stat",
+          "engine": "numpy",
+          "status": "ok",
+          "score": 0.42468739592818633,
+          "prediction": 0
+        },
+        {
+          "model": "AsmEmbedNet",
+          "view": "V6_func_embed",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.8482345342636108,
+          "prediction": 1
+        },
+        {
+          "model": "MalGraph",
+          "view": "V7_graph",
+          "engine": "special",
+          "status": "ok",
+          "score": 0.7760816812515259,
+          "prediction": 1,
+          "malgraph_meta": {
+            "local_functions": 1847,
+            "external_functions": 430,
+            "fcg_edges": 6783,
+            "checkpoint": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\models\\MalGraph_2022\\best_model.pt",
+            "vocab": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\models\\MalGraph_2022\\saved\\train_external_function_name_vocab.jsonl"
+          }
+        },
+        {
+          "model": "CFGGAT",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.4105285108089447,
+          "prediction": 0
+        },
+        {
+          "model": "CFGGCN",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.4919722378253937,
+          "prediction": 0
+        },
+        {
+          "model": "CFGDGCNN",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.49294695258140564,
+          "prediction": 0
+        },
+        {
+          "model": "CallGraphGNN",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.5099653005599976,
+          "prediction": 1
+        },
+        {
+          "model": "GraphStatNet",
+          "view": "V7_graph",
+          "engine": "pytorch",
+          "status": "ok",
+          "score": 0.9072051644325256,
+          "prediction": 1
+        }
+      ],
+      "seconds": 9.234
+    }
+  ],
+  "passed": false,
+  "backend": "smda",
+  "non_malgraph_ir": "0",
+  "model_load": {
+    "registered": [
+      "MalConv",
+      "MalConv2",
+      "ByteTransformer",
+      "SaxeBerlinDNN",
+      "EmberDNN",
+      "NatarajKNN",
+      "DrebinSVM",
+      "DL4MD",
+      "PEMinerRF",
+      "DrebinImport",
+      "ALOHANet",
+      "EmberGBDT_Import",
+      "RaffFeatureNet",
+      "DrebinString",
+      "OpcodeLSTM",
+      "OpcodeTransformer",
+      "OpcodeStatNet",
+      "AsmEmbedNet",
+      "MalGraph",
+      "CFGGAT",
+      "CFGGCN",
+      "CFGDGCNN",
+      "CallGraphGNN",
+      "GraphStatNet",
+      "GrayscaleCNN",
+      "InceptionV3",
+      "IMCFN",
+      "ColorCNN",
+      "MarkovCNN",
+      "EntropyMapCNN",
+      "HashEmbedNet",
+      "MetadataNet",
+      "ResourceNet"
+    ],
+    "registered_count": 33,
+    "ordinary_loaded_count": 32,
+    "missing_ordinary_models": [],
+    "malgraph_missing_keys": [],
+    "malgraph_unexpected_keys": [],
+    "device": "cpu"
+  },
+  "expected_view_dims": {
+    "V1_byte": 32768,
+    "V2_byte_stat": 776,
+    "V3_pe_struct": 264,
+    "V4_import": 339,
+    "V5_string": 553,
+    "V6_opcode_seq": 4096,
+    "V6_opcode_stat": 549,
+    "V6_func_embed": 6144,
+    "V7_graph": 22,
+    "V8_gray": 65536,
+    "V8_color": 196608,
+    "V8_markov": 65536,
+    "V8_entropy": 65536,
+    "V9_hash": 512,
+    "V10_metadata": 60
+  },
+  "summary": {
+    "attempted": 16,
+    "passed": 15,
+    "failed": 1,
+    "full_model_samples": 2
+  }
+}

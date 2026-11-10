@@ -27,8 +27,10 @@ REM        comment lines get executed as commands and the script half-runs.
 REM        Keep every message here in English / ASCII.
 REM ===================================================================
 
-if not defined CODEFENDER_PYEXE set "CODEFENDER_PYEXE=D:\work\tools\miniconda3\python.exe"
-if exist "%CODEFENDER_PYEXE%" goto cf_py_ok
+if not defined CODEFENDER_PYEXE if exist "%~dp0.venv\Scripts\python.exe" set "CODEFENDER_PYEXE=%~dp0.venv\Scripts\python.exe"
+if not defined CODEFENDER_PYEXE set "CODEFENDER_PYEXE=python"
+"%CODEFENDER_PYEXE%" --version >nul 2>&1
+if not errorlevel 1 goto cf_py_ok
 echo [dev] ERROR: python interpreter not found: %CODEFENDER_PYEXE%
 echo [dev] set "CODEFENDER_PYEXE=D:\path\to\python.exe" then rerun this script
 exit /b 1
@@ -38,6 +40,7 @@ if not defined CODEFENDER_PORT set "CODEFENDER_PORT=18002"
 cd /d "%~dp0"
 
 set "PYTHONIOENCODING=utf-8"
+if not defined CODEFENDER_DISASM_BACKEND set "CODEFENDER_DISASM_BACKEND=smda"
 set "CODEFENDER_ENV=dev"
 set "CODEFENDER_HASH_DB_ENABLED=0"
 set "CODEFENDER_FUZZY_DB_ENABLED=0"

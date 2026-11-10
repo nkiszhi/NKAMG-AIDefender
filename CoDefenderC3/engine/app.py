@@ -11,7 +11,7 @@ Main endpoint:
     POST /predict-single
     form-data:
       - file: uploaded PE sample
-      - include_de: whether to extract D/E (disassembly/graph) features via BinaryNinja
+      - include_de: whether to extract D/E features via the selected SMDA/BN backend
 """
 from __future__ import annotations
 
@@ -40,6 +40,11 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 from fastapi import Body, FastAPI, File, HTTPException, Query, Request, UploadFile
 from starlette.responses import JSONResponse
+
+from engine.startup import configure_disassembly_backend
+
+# Covers direct uvicorn production, development and Web-compatible entrypoints.
+DISASM_BACKEND = configure_disassembly_backend()
 
 import config
 from feature_extraction.extract_feature import BinjaExtractor
@@ -1850,6 +1855,7 @@ def health() -> Dict[str, Any]:
             # （覆盖文件被忽略）。engine_mode 一眼回答"预检到底生效没有"。
             "env": config.ENV_PROFILE,
             "engine_mode": hdb["mode"],
+            "disasm_backend": DISASM_BACKEND,
             "runtime_cfg_file": config.RUNTIME_CFG_FILE,
             "runtime_cfg_file_enabled": config.RUNTIME_CFG_FILE_ENABLED,
             "runtime_cfg_disabled_reason": config.RUNTIME_CFG_DISABLED_REASON,

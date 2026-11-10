@@ -1,0 +1,20 @@
+{
+  "tables": {
+    "Module": 1,
+    "TypeDef": 1,
+    "Assembly": 1,
+    "ManifestResource": 1
+  },
+  "clr_flags": "9",
+  "native_entrypoint": 12254,
+  "smda_status": "error",
+  "smda_message": "Traceback (most recent call last):\n  File \"C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\.venv\\Lib\\site-packages\\smda\\Disassembler.py\", line 177, in disassembleFile\n    smda_report = self._disassemble(binary_info, timeout=self.config.TIMEOUT)\n                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\.venv\\Lib\\site-packages\\smda\\Disassembler.py\", line 264, in _disassemble\n    self.disassembly = self.disassembler.analyzeBuffer(binary_info, self._callbackAnalysisTimeout)\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\.venv\\Lib\\site-packages\\smda\\cil\\CilDisassembler.py\", line 256, in analyzeBuffer\n    for row in pe.net.mdtables.MethodDef:\nTypeError: 'NoneType' object is not iterable\n",
+  "timestamp": "2026-11-10T13:07:05.675Z",
+  "input": {
+    "path": "D:\\VM_Share\\CoDefenderC3_v9\\_pe_ascii\\s01_benign_32.bin",
+    "bytes": 6144,
+    "sha256": "001830912328a236128244726a75b32f7d668afbb6c4130f7f0a9d80433d697e"
+  },
+  "method_def_present": false,
+  "interpretation": "Resource-only CLR assembly: metadata tables contain ManifestResource and no MethodDef; SMDA 4.3.10 CIL path raises TypeError. Kept as failed, not a successful D/E/MalGraph sample."
+}

@@ -28,6 +28,8 @@ def listeners(environ=None):
 
 
 async def serve():
+    from engine.startup import configure_disassembly_backend
+    configure_disassembly_backend()
     import uvicorn
 
     class SharedServer(uvicorn.Server):

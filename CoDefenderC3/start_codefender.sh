@@ -1,28 +1,20 @@
 #!/bin/bash
-# ── BinaryNinja 环境 ──────────────────────────────────────────
-export PATH="/opt/binaryninja:$PATH"
-export LD_LIBRARY_PATH="/opt/binaryninja:$LD_LIBRARY_PATH"
-export PYTHONPATH="/opt/binaryninja/python:$PYTHONPATH"
+# Default to SMDA; explicit CODEFENDER_DISASM_BACKEND=bn retains licensed BN.
+set -e
+CODEFENDER_DISASM_BACKEND="$(python3 -m engine.startup)"
+export CODEFENDER_DISASM_BACKEND
 
-# ── License 激活 ─────────────────────────────────────────────
-# python3 -c "
-# import binaryninja as bn, json, os
-# lic = os.path.expanduser('~/.binaryninja/license.dat')
-# if os.path.exists(lic):
-#     with open(lic) as f:
-#         bn.core_set_license(json.load(f)[0])
-#     print('[startup] BinaryNinja license activated')
-# " 2>&1
-python3 -c "
+if [ "$CODEFENDER_DISASM_BACKEND" = "bn" ]; then
+    export PATH="/opt/binaryninja:$PATH"
+    export LD_LIBRARY_PATH="/opt/binaryninja:${LD_LIBRARY_PATH:-}"
+    export PYTHONPATH="/opt/binaryninja/python:${PYTHONPATH:-}"
+    python3 -c '
 import binaryninja as bn, os
-lic = os.path.expanduser('~/.binaryninja/license.dat')
+lic = os.path.expanduser("~/.binaryninja/license.dat")
 if os.path.exists(lic):
-    with open(lic) as f:
-        raw = f.read()            # 读成字符串，不 json.load
-    bn.core_set_license(raw)      # 传字符串，匹配底层 BNSetLicense
-    print('[startup] BinaryNinja license activated')
-" 2>&1
-
-
-# ── 启动 uvicorn ─────────────────────────────────────────────
+    with open(lic) as handle:
+        bn.core_set_license(handle.read())
+    print("[startup] BinaryNinja license activated")
+'
+fi
 exec python3 -m engine.serve

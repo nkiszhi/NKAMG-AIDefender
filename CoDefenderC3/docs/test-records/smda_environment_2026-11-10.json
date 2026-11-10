@@ -1,0 +1,49 @@
+{
+  "timestamp": "2026-11-10T13:19:37.077Z",
+  "python": "3.11.17 | packaged by conda-forge | (main, Oct 13 2026, 16:36:10) [MSC v.1944 64 bit (AMD64)]",
+  "executable": "C:\\Users\\lenovo\\.codex\\worktrees\\main-test-lm-integration\\CoDefenderC3_v9\\CoDefenderC3\\.venv\\Scripts\\python.exe",
+  "base_prefix": "D:\\conda\\envs\\ml",
+  "venv_uses_system_site_packages": true,
+  "base_environment_modified": false,
+  "local_packages": [
+    "dncil==1.0.2",
+    "dnfile==0.18.0",
+    "smda==4.3.10"
+  ],
+  "validated_runtime_versions": {
+    "smda": "4.3.10",
+    "dnfile": "0.18.0",
+    "dncil": "1.0.2",
+    "capstone": "5.0.9",
+    "lief": "1.0.0",
+    "pefile": "2024.8.26",
+    "numpy": "2.4.6",
+    "scipy": "1.17.1",
+    "scikit-learn": "1.9.1",
+    "torch": "2.11.0+cu130",
+    "torchvision": "0.26.0+cu130",
+    "torch-geometric": "2.8.1",
+    "fastapi": "0.162.0",
+    "starlette": "1.10.0",
+    "httpx": "0.28.1",
+    "uvicorn": "0.54.0",
+    "python-multipart": "0.0.32",
+    "safetensors": "0.8.0",
+    "ppdeep": "20260221",
+    "yara-python": "4.5.4"
+  },
+  "pip_check": {
+    "returncode": 0,
+    "stdout": "No broken requirements found.\r\n"
+  },
+  "shell_syntax": {
+    "files": [
+      "start_codefender.sh",
+      "start_codefender.smda.sh",
+      "dev_model_only.sh"
+    ],
+    "tool": "Git Bash bash -n (each file independently)",
+    "passed": true
+  },
+  "constraints_file": "constraints-smda-validated.txt"
+}

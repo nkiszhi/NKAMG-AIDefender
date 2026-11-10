@@ -13,7 +13,10 @@ set -euo pipefail
 cd "$(dirname "$(readlink -f "$0")")"
 
 PORT="${CODEFENDER_PORT:-18002}"
-PY="${CODEFENDER_PYTHON:-python3}"
+PY="${CODEFENDER_PYTHON:-}"
+if [ -z "$PY" ]; then
+    if [ -x .venv/bin/python ]; then PY=".venv/bin/python"; else PY="python3"; fi
+fi
 
 # 端口占用预检：旧进程占着端口 → 新实例起不来、请求打到旧进程，
 # 正是「配置改完没生效」最经典的假象。直接拦下。
@@ -27,6 +30,7 @@ if command -v ss >/dev/null 2>&1; then
 fi
 
 export PYTHONIOENCODING=utf-8
+export CODEFENDER_DISASM_BACKEND="${CODEFENDER_DISASM_BACKEND:-smda}"
 export CODEFENDER_ENV=dev
 export CODEFENDER_HASH_DB_ENABLED=0
 export CODEFENDER_FUZZY_DB_ENABLED=0
