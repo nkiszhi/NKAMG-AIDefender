@@ -17,7 +17,8 @@ class DatabasePreflightTests(unittest.TestCase):
              patch.object(main, 'scan_file') as scan:
             result = asyncio.run(main.sample_by_sha256('a' * 64))
         self.assertTrue(result['database_hit'])
-        store.record_hash_query.assert_called_once_with('hit')
+        store.begin_hash_query.assert_called_once_with('sha256', 'a' * 64)
+        store.finish_hash_query.assert_called_once_with(store.begin_hash_query.return_value, 'hit', 'a' * 64)
         store.get.assert_not_called()
         store.create.assert_not_called()
         store.claim_next.assert_not_called()

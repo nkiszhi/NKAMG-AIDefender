@@ -13,9 +13,9 @@
       </div>
       <div class="ds-charts">
         <article class="ds-panel">
-          <div class="ds-panel-title"><h3>检测结果分布</h3><span>按上传请求计次</span></div>
+          <div class="ds-panel-title"><h3>检测结果分布</h3><span>已归类 {{ number(snapshot.classified_total) }} / {{ number(snapshot.received_total) }} 次</span></div>
           <div class="ds-distribution">
-            <div class="ds-ring" :style="ringStyle" role="img" :aria-label="distributionLabel"><div><strong>{{ number(snapshot.received_total) }}</strong><span>累计检测</span></div></div>
+            <div class="ds-ring" :style="ringStyle" role="img" :aria-label="distributionLabel"><div><strong>{{ number(snapshot.classified_total) }}</strong><span>已归类结果</span></div></div>
             <div class="ds-legend">
               <div v-for="row in outcomes" :key="row.key"><i :style="{ background: row.color }"></i><span>{{ row.label }}</span><b>{{ number(row.count) }}</b><small>{{ percent(row.count) }}</small></div>
             </div>
@@ -23,10 +23,11 @@
         </article>
         <article class="ds-panel">
           <div class="ds-panel-title"><h3>检测处理概况</h3><span>持久化记录</span></div>
+          <div class="ds-route"><span>文件上传检测</span><b>{{ number(snapshot.upload_total) }}</b></div>
           <div class="ds-route"><span>样本库命中</span><b>{{ number(snapshot.database_total) }}</b></div>
           <div class="ds-route"><span>模型检测完成</span><b>{{ number(snapshot.model_total) }}</b></div>
-          <div class="ds-route"><span>独立检测样本 <small>SHA256 去重</small></span><b>{{ number(snapshot.unique_completed_samples) }}</b></div>
-          <div class="ds-query"><span>指纹查询 · SHA256 / TLSH / SSDeep</span><strong>{{ number(snapshot.query_total) }} <small>次</small></strong><p>命中 {{ number(snapshot.query_hit_total) }} · 未命中 {{ number(snapshot.query_miss_total) }} · 失败 {{ number(snapshot.query_failed_total) }}</p></div>
+          <div class="ds-route"><span>独立样本 <small>SHA256 去重</small></span><b>{{ number(snapshot.unique_completed_samples) }}</b></div>
+          <div class="ds-query"><span>指纹查询 · SHA256 / TLSH / SSDeep</span><strong>{{ number(snapshot.query_total) }} <small>次</small></strong><p>命中 {{ number(snapshot.query_hit_total) }} · 未命中 {{ number(snapshot.query_miss_total) }} · 失败 {{ number(snapshot.query_failed_total) }}<template v-if="snapshot.query_pending_total"> · 查询中 {{ number(snapshot.query_pending_total) }}</template></p></div>
         </article>
       </div>
       <div class="ds-footer"><span>统计起点 {{ date(snapshot.started_at) }} · 更新于 {{ date(snapshot.updated_at, true) }}（北京时间）</span></div>
@@ -53,24 +54,24 @@ const date = (value, withTime = false) => {
   }).format(parsed)
 }
 const cards = [
-  { key: 'received_total', label: '累计检测', note: '已接收的文件检测请求', color: 'blue' },
-  { key: 'malicious_total', label: '判定恶意', note: '样本库命中或模型恶意判定', color: 'red' },
-  { key: 'not_detected_total', label: '未检出恶意', note: '未检出恶意或未通过 PE 校验', color: 'green' },
-  { key: 'other_total', label: '其他 / 处理中', note: '无明确判定、失败、取消及处理中', color: 'amber' }
+  { key: 'received_total', label: '累计检测', note: '文件检测与指纹查询次数', color: 'blue' },
+  { key: 'malicious_total', label: '判定恶意', note: 'SHA256 命中或模型恶意判定', color: 'red' },
+  { key: 'not_detected_total', label: '未检出恶意', note: '未匹配指纹或未检出恶意', color: 'green' },
+  { key: 'suspicious_total', label: '判定可疑', note: 'TLSH / SSDeep 命中', color: 'amber' }
 ]
 const outcomes = computed(() => [
   { key: 'malicious_total', label: '判定恶意', color: '#ff7185' },
   { key: 'not_detected_total', label: '未检出恶意', color: '#43d6b0' },
-  { key: 'other_total', label: '其他 / 处理中', color: '#8294b7' }
+  { key: 'suspicious_total', label: '判定可疑', color: '#eabd72' }
 ].map(row => ({ ...row, count: Number(snapshot.value[row.key] || 0) })))
-const percent = count => snapshot.value.received_total > 0 ? `${(count / snapshot.value.received_total * 100).toFixed(1)}%` : '—'
+const percent = count => snapshot.value.classified_total > 0 ? `${(count / snapshot.value.classified_total * 100).toFixed(1)}%` : '—'
 const distributionLabel = computed(() => outcomes.value.map(row => `${row.label} ${number(row.count)} 次`).join('，'))
 const ringStyle = computed(() => {
   let offset = 0
-  if (!snapshot.value.received_total) return { background: '#2c3855' }
+  if (!snapshot.value.classified_total) return { background: '#2c3855' }
   const stops = outcomes.value.map(row => {
     const start = offset
-    offset += row.count / snapshot.value.received_total * 100
+    offset += row.count / snapshot.value.classified_total * 100
     return `${row.color} ${start}% ${offset}%`
   })
   return { background: `conic-gradient(${stops.join(',')})` }

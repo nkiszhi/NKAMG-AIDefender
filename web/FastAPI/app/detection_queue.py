@@ -149,10 +149,18 @@ class DetectionTaskStore:
         with self._lock, self._connect() as connection:
             return detection_metrics.summary(connection)
 
-    def record_hash_query(self, outcome):
+    def begin_hash_query(self, hash_type, value):
         with self._lock, self._connect() as connection:
-            connection.execute('INSERT INTO hash_query_metrics(queried_at,outcome) VALUES (?,?)',
-                               (detection_metrics.now_iso(), outcome))
+            return detection_metrics.begin_hash_query(connection, hash_type, value)
+
+    def finish_hash_query(self, query_id, outcome, sample_sha256=None):
+        with self._lock, self._connect() as connection:
+            detection_metrics.finish_hash_query(connection, query_id, outcome, sample_sha256)
+
+    def record_hash_query(self, outcome, hash_type=None, value=None, sample_sha256=None):
+        with self._lock, self._connect() as connection:
+            query_id = detection_metrics.begin_hash_query(connection, hash_type, value)
+            detection_metrics.finish_hash_query(connection, query_id, outcome, sample_sha256)
 
     def cleanup(self):
         cutoff = (datetime.now() - timedelta(seconds=self.ttl_seconds)).isoformat()

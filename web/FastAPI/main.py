@@ -278,12 +278,14 @@ async def sample_by_sha256(sha256: str) -> dict:
     """Look up a malicious sample by its content hash for the web search bar."""
     if not re.fullmatch(r"[0-9a-fA-F]{64}", sha256 or ""):
         raise HTTPException(status_code=422, detail="请输入有效的 SHA256")
+    query_id = await asyncio.to_thread(task_store.begin_hash_query, 'sha256', sha256.lower())
     try:
         record = await asyncio.to_thread(sample_repository.find_malicious, sha256)
     except RuntimeError as error:
-        await asyncio.to_thread(task_store.record_hash_query, 'failed')
+        await asyncio.to_thread(task_store.finish_hash_query, query_id, 'failed')
         raise HTTPException(status_code=503, detail="样本库暂不可用") from error
-    await asyncio.to_thread(task_store.record_hash_query, 'hit' if record else 'miss')
+    await asyncio.to_thread(task_store.finish_hash_query, query_id, 'hit' if record else 'miss',
+                            record.get('sha256') if record else None)
     if not record:
         raise HTTPException(status_code=404, detail="样本库中未找到该 SHA256")
     public_record = SampleRepository.public_fields(record)
@@ -313,12 +315,14 @@ async def search_sample_hash(value: str) -> dict:
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     normalized = value.lower() if kind == 'sha256' else value.upper() if kind == 'tlsh' else value
+    query_id = await asyncio.to_thread(task_store.begin_hash_query, kind, normalized)
     try:
         record = await asyncio.to_thread(sample_repository.find_by_hash, normalized)
     except RuntimeError as error:
-        await asyncio.to_thread(task_store.record_hash_query, 'failed')
+        await asyncio.to_thread(task_store.finish_hash_query, query_id, 'failed')
         raise HTTPException(status_code=503, detail='样本库暂不可用') from error
-    await asyncio.to_thread(task_store.record_hash_query, 'hit' if record else 'miss')
+    await asyncio.to_thread(task_store.finish_hash_query, query_id, 'hit' if record else 'miss',
+                            record.get('sha256') if record else None)
     label = 'Malicious' if record and kind == 'sha256' else 'Suspicious' if record else 'Benign'
     public_record = SampleRepository.public_fields(record)
     identity = public_record.get('identity', {})

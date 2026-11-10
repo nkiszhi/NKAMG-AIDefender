@@ -59,7 +59,14 @@ class HashSearchTests(unittest.TestCase):
             self.assertEqual(stats['query_hit_total'], 3)
             self.assertEqual(stats['query_miss_total'], 1)
             self.assertEqual(stats['query_failed_total'], 1)
-            self.assertEqual(stats['received_total'], 0)
+            self.assertEqual(stats['received_total'], 5)
+            self.assertEqual(stats['upload_total'], 0)
+            self.assertEqual(stats['malicious_total'], 1)
+            self.assertEqual(stats['suspicious_total'], 2)
+            self.assertEqual(stats['not_detected_total'], 1)
+            self.assertEqual(stats['classified_total'], 4)
+            self.assertEqual(stats['database_total'], 3)
+            self.assertEqual(stats['unique_completed_samples'], 1)
 
     def test_fingerprint_sql_binds_values_and_checks_all_valid_shards(self):
         import sys
