@@ -2,6 +2,10 @@
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from engine.contract_pipeline import scan_directory, scan_upload
 from engine.projection import project_directory, project_single
+from engine.dev.projection import (
+    project_directory as project_development_directory,
+    project_single as project_development_single,
+)
 
 
 def create_app(core, *, development=False):
@@ -34,7 +38,7 @@ def create_app(core, *, development=False):
             if len(content) > core.MAX_UPLOAD_BYTES:
                 raise HTTPException(413, detail="file too large")
             result = await core._run_guarded(scan_upload, core, content, file.filename, include_de, formatter)
-            return result if development else project_single(result)
+            return project_development_single(result) if development else project_single(result)
         except ValueError as exc:
             raise HTTPException(400, detail=str(exc)) from exc
         finally:
@@ -45,6 +49,6 @@ def create_app(core, *, development=False):
                                 recursive: bool = Query(default=True),
                                 include_de: bool = Query(default=False)):
         result = await core._run_guarded(scan_directory, core, directory, recursive, include_de, formatter)
-        return result if development else project_directory(result)
+        return project_development_directory(result) if development else project_directory(result)
 
     return app

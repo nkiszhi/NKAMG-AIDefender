@@ -129,14 +129,7 @@ models/MalGraph_2022/1_exec_model.py
 models/MalGraph_2022/build_malgraph_cache_fast.py
 models/MalGraph_2022/dataset.py
 models/MalGraph_2022/train_external_function_name_vocab.py
-#  · 备份 / 旧版本文件（extract_feature111.py 是 extract_feature.py 的副本；
-#    ensemble copy.py 是 ensemble.py 的副本 —— import models 只走 .ensemble）
-feature_extraction/extract_feature111.py
-models/ensemble copy.py
-#  · 一次性维护脚本（patch / 修导入 / 离线建库），运行期不 import
-engine/_patch_*.py
-engine/_fix_import.py
-engine/_verify.txt
+#  · 仅供离线管理的工具，运行期不 import
 engine/status.py
 scaner/build_md5_db.py
 

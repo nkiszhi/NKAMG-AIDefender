@@ -60,15 +60,30 @@ async def main():
                         response = await client.post(f"http://127.0.0.1:{port}/predict-single?include_de=false", files={"file": ("sample.exe", pe_bytes())})
                         assert response.status_code == 200, response.text
                         assert ("Score" in response.json()) == full
+                        if port == development:
+                            scan = response.json()["ScanResult"]
+                            assert "PerModelPreds" not in scan and "PerModelDetails" not in scan
+                            assert "AggregatedModels" not in scan["ModelStats"]
+                            assert scan["ModelStats"]["OkModels"] == ens.K
+                        elif port == web:
+                            assert "PerModelPreds" in response.json()["ScanResult"]
                         response = await client.post(f"http://127.0.0.1:{port}/predict-directory", params={"directory": directory})
                         assert response.status_code == 200, response.text
                         assert ("Score" in response.json()["Results"][0]) == full
+                        scan = response.json()["Results"][0]["ScanResult"]
+                        if port == development:
+                            assert "PerModelPreds" not in scan and "PerModelDetails" not in scan
+                            assert "AggregatedModels" not in scan["ModelStats"]
+                            assert scan["ModelStats"]["OkModels"] == ens.K
+                        elif port == web:
+                            assert "PerModelPreds" in scan and "PerModelDetails" in scan
+                            assert "AggregatedModels" in scan["ModelStats"]
                 response = await client.post(f"http://127.0.0.1:{web}/predict-stream?include_de=false", files={"file": ("sample.exe", pe_bytes())})
                 events = [json.loads(line) for line in response.text.splitlines()]
                 assert events[-1]["event"] == "result", events
                 assert "PerModelDetails" in events[-1]["data"]["ScanResult"]
                 assert (await client.post(f"http://127.0.0.1:{production}/predict-stream")).status_code == 404
-                print("PASS real HTTP: 3 listeners, shared warmup/runtime, 6 predictions, Web NDJSON, no production stream leak")
+                print("PASS real HTTP: 3 listeners, shared warmup/runtime, 6 predictions, Web NDJSON, compact development fields, no production stream leak")
         finally:
             task.cancel()
             try:

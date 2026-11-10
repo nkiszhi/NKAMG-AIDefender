@@ -1,4 +1,4 @@
-"""test_lm development API; detailed results, shared main inference core."""
+"""test_lm development API; compact diagnostics, shared main inference core."""
 import engine.app as core
 from engine.contract_app import create_app
 

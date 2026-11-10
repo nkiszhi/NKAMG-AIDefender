@@ -16,8 +16,6 @@ dist/
 web/config.ini
 web/config.ini.before-dual-*.bak
 .pytest_cache/
-web/config.ini.before-dual-*.bak
-.pytest_cache/
 
 # CoDefenderC3 derived artifacts / large files
 CoDefenderC3/.feature_cache/
@@ -47,3 +45,6 @@ test2_eval/
 
 # 其他分支的本地 worktree 检出（分析用，不入库）
 test_lm/
+
+# Local sample scans and raw API responses (keep on disk, not in Git)
+CoDefenderC3/scan-results/

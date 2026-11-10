@@ -112,6 +112,12 @@ class Contracts(unittest.IsolatedAsyncioTestCase):
             if full:
                 self.assertEqual(a["Score"], b["Score"])
                 self.assertEqual(a["ScanResult"]["ModelStats"]["AggregationMethod"], "equal_weight_mean")
+                for result in [a, b]:
+                    self.assertNotIn("PerModelPreds", result["ScanResult"])
+                    self.assertNotIn("PerModelDetails", result["ScanResult"])
+                    self.assertNotIn("AggregatedModels", result["ScanResult"]["ModelStats"])
+                    self.assertEqual(set(result["ScanResult"]["PerModelScores"]), set(self.ens._model_names))
+                    self.assertEqual(result["ScanResult"]["ModelStats"]["OkModels"], 2)
             else:
                 self.assertEqual(set(a), {"MD5", "SHA256", "IsMalicious", "ScanResult"})
                 self.assertEqual(set(directory.json()["Summary"]), {"TotalFiles", "ScannedFiles", "MaliciousCount", "BenignCount", "ErrorCount"})
@@ -146,6 +152,35 @@ class Contracts(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual((await self.single(app)).json()["ScanResult"]["VirusName"], "Malicious")
                 self.assertEqual((await self.directory(app)).json()["Results"][0]["ScanResult"]["VirusName"], "Malicious")
         self.assertEqual(hit["ScanResult"]["VirusName"], "old-family")
+
+    async def test_development_partial_models_keep_counts_and_exclusion_reasons(self):
+        self.ens._model_types["IMCFN"] = "skip"
+        for response in [await self.single(development.app), await self.directory(development.app)]:
+            self.assertEqual(response.status_code, 200, response.text)
+            body = response.json()
+            result = body["Results"][0] if "Results" in body else body
+            scan = result["ScanResult"]
+            self.assertNotIn("PerModelPreds", scan)
+            self.assertNotIn("PerModelDetails", scan)
+            self.assertEqual(set(scan["PerModelScores"]), {"MalConv"})
+            self.assertEqual(scan["ModelStats"]["OkModels"], 1)
+            self.assertEqual(scan["ModelStats"]["SkippedModels"], 1)
+            self.assertEqual(scan["ModelStats"]["ExcludedModels"], {"IMCFN": "model_pipeline_skipped"})
+            self.assertNotIn("AggregatedModels", scan["ModelStats"])
+
+    async def test_development_hash_short_circuit_hides_model_fields(self):
+        hit = core._build_hash_hit_result("m", "s", "c", "input.exe", 256, {"sha256": "s"}, "sha256_db")
+        with patch.object(core, "_hash_precheck", return_value=hit), patch.object(core, "_hash_precheck_file", return_value=hit):
+            for response in [await self.single(development.app), await self.directory(development.app)]:
+                self.assertEqual(response.status_code, 200, response.text)
+                body = response.json()
+                result = body["Results"][0] if "Results" in body else body
+                self.assertNotIn("PerModelPreds", result["ScanResult"])
+                self.assertNotIn("PerModelDetails", result["ScanResult"])
+                self.assertNotIn("ModelStats", result["ScanResult"])
+                self.assertEqual(result["Source"], "sha256_db")
+                self.assertEqual(result["ScanResult"]["HashMatch"], {"sha256": "s"})
+        self.assertIn("PerModelPreds", hit["ScanResult"])
 
     async def test_exact_half_is_benign_everywhere(self):
         for model in self.ens._models.values():

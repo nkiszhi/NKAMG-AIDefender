@@ -73,7 +73,7 @@ python -m engine.serve
 - 判恶阈值严格为 score > 0.5。score=0.5 为 Benign；默认分档 Low=(0.5,0.62)、Medium=[0.62,0.78)、High≥0.78；哈希库命中名为 Malicious。
 - SDD 仅在有效列覆盖完整注册顺序时调用，防止部分矩阵错配基线列。
 - Web 保留 main 的公共 engine.result_formatter 和完整结果格式器；test_lm 的格式器放到独立 production_result_formatter，避免污染 main 原导入契约。
-- 生产仅在 HTTP 边界投影；开发保留 ModelStats、PerModelDetails、排除原因。单条超时/全失败不裁成“良性成功”。
+- 生产仅在 HTTP 边界投影；开发保留 PerModelScores、ModelStats 和排除原因。2026-11-10 后续按要求隐藏 PerModelPreds、AggregatedModels、PerModelDetails（仅开发响应边界，详见 DEV_RESPONSE_FIELDS.md）。单条超时/全失败不裁成“良性成功”。
 - 目录结构识别有效 PE（含无扩展名文件），支持 recursive 和 MAX_BATCH_FILES；失败/超时不计入成功良性数。
 - main/开发目录 ErrorCount 和 TimeoutCount 分开；生产因不暴露 TimeoutCount，将其并入 ErrorCount，保证计数闭合。
 - 目录时间为特征耗时 + batch forward 均摊 + 格式化，明确标注 TimingMethod，不冒充逐样本独占模型耗时。

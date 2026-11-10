@@ -1,5 +1,7 @@
 # CoDefenderC3 Docker 部署与接口测试指南
 
+> 开发接口字段更新（2026-11-10）：`engine.dev.app:app` 的单文件/目录响应不再输出 `PerModelPreds`、`ModelStats.AggregatedModels`、`PerModelDetails`。生产及 main Web 协议不变；本文 8000 Web 兼容入口示例仍可包含这些字段。当前开发字段说明见 [DEV_RESPONSE_FIELDS.md](DEV_RESPONSE_FIELDS.md)。
+
 ---
 
 ## 1. 导入镜像

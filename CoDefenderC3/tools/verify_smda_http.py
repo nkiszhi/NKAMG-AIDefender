@@ -57,6 +57,23 @@ def stop_server_tree(process):
     process.wait(timeout=10)
 
 
+def verify_development_diagnostics(result, expected_models=33):
+    """Validate successful forwards without relying on hidden detail records."""
+    scan = result.get('ScanResult', {})
+    stats = scan.get('ModelStats', {})
+    if 'PerModelPreds' in scan or 'PerModelDetails' in scan or 'AggregatedModels' in stats:
+        raise AssertionError('redundant development diagnostics leaked')
+    scores = scan.get('PerModelScores', {})
+    if (len(scores) != expected_models or stats.get('TotalModels') != expected_models
+            or stats.get('OkModels') != expected_models or stats.get('SkippedModels') != 0
+            or stats.get('ErrorModels') != 0 or stats.get('ExcludedModels') != {}
+            or any(not math.isfinite(score) for score in scores.values())):
+        raise AssertionError('not all expected development model forwards succeeded')
+    if 'MalGraph' not in scores:
+        raise AssertionError('successful MalGraph score missing')
+    return len(scores)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--sample', required=True, type=Path)
@@ -137,7 +154,10 @@ def main():
                             if endpoint == 'predict-directory' and body['Summary'].get('ErrorCount') != 0:
                                 raise AssertionError('directory returned scan errors')
                             details = result.get('ScanResult', {}).get('PerModelDetails')
-                            if details is not None:
+                            if name == 'development':
+                                item['verified_model_count'] = verify_development_diagnostics(result)
+                                item['model_evidence'] = 'PerModelScores+ModelStats; graph internals verified on Web only'
+                            elif details is not None:
                                 if len(details) != 33 or any(x.get('status') != 'ok' or not math.isfinite(x.get('score', float('nan'))) for x in details):
                                     raise AssertionError('not all 33 model forwards succeeded')
                                 mg = next(x for x in details if x['model'] == 'MalGraph')

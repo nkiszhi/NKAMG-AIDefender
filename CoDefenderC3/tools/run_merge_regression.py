@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--report", default="docs/test-records/main_test_lm_merge_2026-11-10.json")
+    parser.add_argument("--working-tree-only", action="store_true", help="Use file-content freeze checks for a copied deployment whose Git HEAD is unchanged.")
     args = parser.parse_args()
     env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1", PYTHONIOENCODING="utf-8",
                CODEFENDER_NON_MALGRAPH_IR="0", CODEFENDER_HASH_DB_ENABLED="0",
@@ -27,7 +28,7 @@ def main():
         ("merge_unit_and_http_contracts", ["-m", "unittest", "discover", "-s", "tests", "-p", "test_merge_*.py", "-v"]),
         ("unmodified_main_web_tests_in_mirror", ["tools/run_web_regression.py"]),
         ("shared_listener_real_http_synthetic_models", ["tools/run_shared_listener_smoke.py"]),
-        ("freeze_and_main_function_provenance", ["tools/verify_merge_freeze.py"]),
+        ("freeze_and_main_function_provenance", ["tools/verify_merge_freeze.py", *(["--working-tree-only"] if args.working_tree_only else [])]),
     ]
     versions = {}
     for name in ["numpy", "torch", "fastapi", "starlette", "httpx", "uvicorn", "smda"]:
@@ -35,7 +36,7 @@ def main():
             versions[name] = importlib.metadata.version(name)
         except importlib.metadata.PackageNotFoundError:
             versions[name] = "not installed as a distribution"
-    report = {"timestamp": datetime.now(timezone.utc).isoformat(), "python": sys.version,
+    report = {"freeze_scope": "working_files" if args.working_tree_only else "commits_index_and_working_files", "timestamp": datetime.now(timezone.utc).isoformat(), "python": sys.version,
               "versions": versions, "sources": json.loads((ROOT / "docs/merge_main_test_lm_sources.json").read_text(encoding="utf-8")),
               "scope": "synthetic models/IR and original Web tests; not real-weights/BN/SMDA/CUDA/Docker certification",
               "stages": []}
