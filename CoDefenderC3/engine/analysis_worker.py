@@ -61,15 +61,22 @@ def main():
     try:
         extractor = BinjaExtractor()
         extractor.bn = bn
-        for name, operation in [('disassembly', extractor._extract_disassembly),
-                                ('graphs', extractor._extract_graphs)]:
-            started = time.monotonic()
+        if os.environ.get("CODEFENDER_NON_MALGRAPH_IR", "0").lower() in {"1", "true", "yes"}:
             try:
-                result['features'].update(operation(bv))
+                from feature_extraction.ir_cache import CandidateCache
+                result["features"] = CandidateCache().features(sample_path)
             except Exception as error:
-                result['errors'][name] = str(error)
-            finally:
-                result['timing'][name + '_features_seconds'] = round(time.monotonic() - started, 3)
+                result["errors"]["disassembly"] = str(error)
+        else:
+            for name, operation in [('disassembly', extractor._extract_disassembly),
+                                    ('graphs', extractor._extract_graphs)]:
+                started = time.monotonic()
+                try:
+                    result['features'].update(operation(bv))
+                except Exception as error:
+                    result['errors'][name] = str(error)
+                finally:
+                    result['timing'][name + '_features_seconds'] = round(time.monotonic() - started, 3)
         started = time.monotonic()
         try:
             from models.MalGraph_2022.utils import extract_cfg_and_fcg
@@ -97,7 +104,13 @@ def _run_smda(sample_path, output_path, timeout):
     started = time.monotonic()
     extractor = SmdaExtractor(timeout=max(30, timeout))
     try:
-        result['features'] = extractor.extract_de(sample_path)
+        # Legacy runtime overlays do not ship candidate modules. Keep default
+        # main analysis independent of those optional imports.
+        if os.environ.get("CODEFENDER_NON_MALGRAPH_IR", "0").lower() in {"1", "true", "yes"}:
+            from feature_extraction.ir_cache import CandidateCache
+            result['features'] = CandidateCache().features(sample_path)
+        else:
+            result['features'] = extractor.extract_de(sample_path)
     except Exception as error:
         result['errors']['disassembly'] = str(error)
     finally:

@@ -1,8 +1,11 @@
 """
 FastAPI service for single-sample inference.
 
-Run:
-    uvicorn engine.app:app --host 0.0.0.0 --port 8000
+Run shared deployment (keeps main Web on container port 8000):
+    python -m engine.serve
+
+Standalone production contract (do NOT point unchanged Web at this):
+    uvicorn engine.app:app --host 127.0.0.1 --port 18001
 
 Main endpoint:
     POST /predict-single
@@ -44,7 +47,7 @@ from feature_extraction.unified import FeatureType, extract_feature
 from models.ensemble import MultiModelEnsemble, _input_dtype
 from engine.inference import compute_identifiers, _is_valid_pe
 from engine.view_masking import apply_view_mask
-from engine.result_formatter import format_scan_result
+from engine.web_result_formatter import format_scan_result
 
 # nkrepo 哈希库（SHA256 + MD5 预检）：scaner 目录入 sys.path 后顶层导入。
 # 注意目录名用 scaner（非 scanner），避免与 scanner.py 模块同名遮蔽。
@@ -2531,7 +2534,13 @@ def _scan_single_pe(
     else:
         per_model = per_model_override
     # ── Build (1, K) matrices from flat per_model list ──
-    ok_results = [r for r in per_model if r.get("status") == "ok"]
+    by_name = {r["model"]: r for r in per_model}
+    ok_results = [by_name[name] for name in ens._model_names
+                  if name in by_name and by_name[name].get("status") == "ok"]
+    if not ok_results:
+        raise RuntimeError("no_valid_model_predictions")
+    if not np.isfinite([r["score"] for r in ok_results]).all():
+        raise ValueError("non_finite_model_scores")
     K = len(ok_results)
     model_names = [r["model"] for r in ok_results]
     scores_arr = np.array(
@@ -2561,6 +2570,8 @@ def _scan_single_pe(
 
     # ── SDD drift evidence ──
     try:
+        if model_names != list(ens._model_names):
+            raise ValueError("partial_model_matrix")
         sdd = _get_sdd_engine()
         drift_ev = sdd.score_samples(scores_arr)
         drift_evidence = drift_ev.get("drift_evidence", np.zeros(3))
@@ -3180,10 +3191,16 @@ async def _run_guarded(operation, *args):
         raise HTTPException(504, detail=str(error)) from error
 
 
+_WARMUP_TASK = None
+
+
 @app.on_event('startup')
 async def _warm_runtime_models():
-    # /readyz never loads models. Warm up once so Docker probes can remain cheap.
-    await _SCAN_RUNTIME.run(_load_ensemble)
+    # /readyz never loads models. All listeners await one shared warmup task.
+    global _WARMUP_TASK
+    if _WARMUP_TASK is None:
+        _WARMUP_TASK = asyncio.create_task(_SCAN_RUNTIME.run(_load_ensemble))
+    await asyncio.shield(_WARMUP_TASK)
 
 
 @app.post('/predict-single')
@@ -3257,9 +3274,10 @@ async def predict_stream(file: UploadFile = File(...), include_de: bool = Query(
 
 
 def _directory_in_thread(directory, recursive, include_de):
-    # The legacy batch coroutine contains synchronous preparation/postprocessing.
-    # Its own loop stays in a worker thread, away from uvicorn's HTTP event loop.
-    return asyncio.run(_predict_directory_unprotected(directory, recursive, include_de))
+    # Shared real-row pipeline runs inside main's guarded worker, never on the
+    # HTTP event loop. The formatter and hash naming retain main's Web contract.
+    from engine.contract_pipeline import scan_directory
+    return scan_directory(sys.modules[__name__], directory, recursive, include_de, format_scan_result, names=False)
 
 
 @app.post('/predict-directory')
@@ -3269,3 +3287,11 @@ async def predict_directory(
     include_de: bool = Query(default=False),
 ) -> Dict[str, Any]:
     return await _run_guarded(_directory_in_thread, directory, recursive, include_de)
+
+
+# Preserve main's full Web protocol on its original listener. Production
+# exposes the test_lm projection on a different listener, never on Web's port.
+web_app = app
+web_app.state.inference_core = sys.modules[__name__]
+from engine.contract_app import create_app
+app = create_app(sys.modules[__name__], development=False)

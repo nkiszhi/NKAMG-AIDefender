@@ -249,6 +249,12 @@ class PELoader:
         self.month_idx = {}
         # 缓存目录: 从 data_dir 派生, 避免多数据集冲突
         self.cache_dir = os.path.join(self.data_dir, ".cache")
+        from feature_extraction.ir_cache import enabled, namespace, digest, FEATURE_SCHEMA
+        self._ir_candidate = enabled()
+        self._ir_namespace = namespace() if self._ir_candidate else None
+        if self._ir_candidate:
+            self.cache_dir = os.path.join(self.cache_dir, "non-malgraph-ir-v1",
+                                          digest(dict(self._ir_namespace, feature_schema=FEATURE_SCHEMA)))
         self._sample_cache = os.path.join(self.cache_dir, "per_sample")
         self._bndb_cache = os.path.join(self.cache_dir, "bndb")
         self._month_cache = os.path.join(self.cache_dir, "per_month")
@@ -289,6 +295,10 @@ class PELoader:
     # ── BinaryNinja 提取: 两阶段架构 ──
 
     def _sample_cache_path(self, path):
+        if self._ir_candidate:
+            from feature_extraction.ir_cache import identity, digest, FEATURE_SCHEMA
+            key = digest(identity(path, self._ir_namespace, feature_schema=FEATURE_SCHEMA))
+            return os.path.join(self._sample_cache, key + ".npz")
         return os.path.join(self._sample_cache, hashlib.md5(path.encode()).hexdigest() + ".npz")
 
     def _bndb_cache_path(self, path):
@@ -299,6 +309,13 @@ class PELoader:
         return os.path.exists(self._bndb_cache_path(path))
 
     def _has_sample_cache(self, path):
+        if self._ir_candidate:
+            from feature_extraction.ir_cache import identity, read_arrays, FEATURE_SCHEMA
+            try:
+                read_arrays(self._sample_cache_path(path), identity(path, self._ir_namespace, feature_schema=FEATURE_SCHEMA))
+                return True
+            except Exception:
+                return False
         return os.path.exists(self._sample_cache_path(path))
 
     def extract_features(self, paths=None):
@@ -316,6 +333,9 @@ class PELoader:
         if paths is None:
             paths = [s["path"] for s in self.samples]
         os.makedirs(self._sample_cache, exist_ok=True)
+        if self._ir_candidate:
+            from train.ir_candidate import extract_candidates
+            return extract_candidates(self, paths)
 
         # ── 快速路径: 纯 Python 提取 (A/B/C/F/G/H) ──
         need_fast = [p for p in paths if not self._has_sample_cache(p)]
@@ -906,6 +926,10 @@ class PELoader:
         return os.path.join(self._month_cache, f"m{month}_y.npy")
 
     def _has_month_cache(self, month):
+        # Candidate monthly matrices are rebuilt; only validated per-sample
+        # caches persist until dataset-level fingerprints are approved.
+        if self._ir_candidate:
+            return False
         yp = self._month_y_path(month)
         try:
             # y.npy 存在且 > numpy header (128B) + 至少 1 个 int32
@@ -1018,7 +1042,7 @@ class PELoader:
         # BN 不可用时这些 feature_id 永远不会出现在 .npz 里。若仍按"缺视角就丢样本"
         # 的严格模式, 会把每一个样本都排除掉 (train_months 全空 → 无法训练)。
         # 这里改为把取不到的视角直接剔除 (对应模型不参与集成), 样本保留。
-        if not getattr(config, "VIEWS_REQUIRE_ALL", False):
+        if not self._ir_candidate and not getattr(config, "VIEWS_REQUIRE_ALL", False):
             active_views = self._drop_unobtainable_views(active_views, paths)
 
         # 收集所有需要的 feature IDs (避免加载不需要的大数组)
@@ -1032,7 +1056,7 @@ class PELoader:
         # ── 读取已知坏样本日志 (持久化, 删 per_month 不影响) ──
         skip_log_path = os.path.join(self.cache_dir, "sample_skip.log")
         known_bad = set()
-        if os.path.exists(skip_log_path):
+        if not self._ir_candidate and os.path.exists(skip_log_path):
             with open(skip_log_path, "r", encoding="utf-8") as f:
                 for line in f:
                     line = line.strip()

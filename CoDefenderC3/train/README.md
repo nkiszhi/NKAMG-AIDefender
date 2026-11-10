@@ -1,5 +1,14 @@
 # CoDefenderC3 / train —— 训练侧代码
 
+## 2026-11-10：可选非 MalGraph IR 候选
+
+默认 `CODEFENDER_NON_MALGRAPH_IR=0`，继续使用 main 训练/缓存路径，MalGraph 训练方式不变。显式设为 `1` 才启用候选 D/E 路径；旧 `CODEFENDER_DE_CACHE=ir` 不能开启本候选。
+
+候选使用内容 SHA256、后端/版本、分析配置、IR/特征 schema 的独立缓存身份；逐样本 worker 超时退出并记入可重试日志，损坏条目不作成功命中。候选只复用校验后的逐样本缓存，**不复用持久化月矩阵**；不自动丢弃缺失视图。main 的 MalGraph 制品、图提取与缓存不迁入 IR。
+
+真实 BN/SMDA 差分、训练精度/性能及权重兼容性尚未验收。先在隔离数据与缓存上评估，不要将候选特征直接交给现网旧权重。详见 [IR 契约](../docs/IR_CONTRACT.md) 与 [实施记录](../docs/MERGE_IMPLEMENTATION_2026-11-10.md)。
+
+
 > 本目录收集 **CoDefenderC3 的训练与数据集构建链路**。
 > 2026-09-16 由仓库根平铺状态整理至此；说明文档同期移入 `../docs/`。
 

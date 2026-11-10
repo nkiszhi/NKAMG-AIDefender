@@ -18,7 +18,7 @@ REM  CODEFENDER_ENV=prod + HASH_DB_ENABLED=1 + REQUIRE_HASH_DB=1, so a
 REM  container always runs the full engine and refuses to start when the
 REM  signature DB is missing.
 REM
-REM  Verify with:  curl http://127.0.0.1:8000/health
+REM  Verify with:  curl http://127.0.0.1:18002/health
 REM                expect  "env":"dev"  and  "engine_mode":"model_only"
 REM
 REM  NOTE: this file is intentionally ASCII-ONLY. Non-ASCII text in a .cmd
@@ -34,7 +34,7 @@ echo [dev] set "CODEFENDER_PYEXE=D:\path\to\python.exe" then rerun this script
 exit /b 1
 
 :cf_py_ok
-if not defined CODEFENDER_PORT set "CODEFENDER_PORT=8000"
+if not defined CODEFENDER_PORT set "CODEFENDER_PORT=18002"
 cd /d "%~dp0"
 
 set "PYTHONIOENCODING=utf-8"
@@ -55,7 +55,7 @@ echo [dev] A stale process on that port makes every request hit the OLD instance
 echo [dev] which looks exactly like "the config change did not take effect".
 netstat -ano | findstr ":%CODEFENDER_PORT%"
 echo [dev] fix: taskkill /F /PID ^(pid in the last column^)
-echo [dev]  or : set "CODEFENDER_PORT=8001" and rerun this script
+echo [dev]  or : set "CODEFENDER_PORT=18003" and rerun this script
 exit /b 1
 
 :cf_port_ok
@@ -67,6 +67,6 @@ echo [dev] listening on :%CODEFENDER_PORT%    Ctrl+C to stop
 echo [dev] ====================================================
 echo.
 
-"%CODEFENDER_PYEXE%" -u -m uvicorn engine.app:app --host 0.0.0.0 --port %CODEFENDER_PORT%
+"%CODEFENDER_PYEXE%" -u -m uvicorn engine.dev.app:app --host 127.0.0.1 --port %CODEFENDER_PORT%
 
 endlocal

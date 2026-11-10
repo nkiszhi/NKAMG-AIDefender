@@ -1,5 +1,17 @@
 # CoDefenderC3
 
+## 2026-11-10：main / test_lm 定向集成
+
+本次以 main `908c53f` 为基底：仓库顶层 `web/`、MalGraph 全链和 V1_byte/V8_color 维度修复保留 main；生产与开发两个预测接口定向吸收 test_lm。
+
+- 联合启动：`python -m engine.serve`，单进程共享模型和 ScanRuntime。
+- Web 兼容入口：容器内 `8000`，保持既有宿主机端口映射；原生部署将 `CODEFENDER_WEB_COMPAT_PORT` 设为 Web 原来调用的引擎端口。**不要改 Web 配置，也不要让 Web 接生产精简入口。**
+- 生产接口：默认 `127.0.0.1:18001`；开发明细：默认关闭，设置 `CODEFENDER_ENABLE_DEV_API=1` 后仅监听 `127.0.0.1:18002`。
+- 非 MalGraph IR 候选默认关闭；未完成真实权重/双后端/GPU/Docker 上线验收。
+
+详见 [合并实施与验收记录](docs/MERGE_IMPLEMENTATION_2026-11-10.md)。下文原 `8000` API 示例对应 **Web 兼容契约**，不是生产裁剪契约。
+
+
 多视图 PE 恶意软件检测系统（33 子模型集成 / 15 特征视角 / BinaryNinja + PyTorch）。
 
 > **说明文档已归档到 [`docs/`](docs/)，训练代码已归档到 [`train/`](train/)（2026-09-16 整理）。**
@@ -16,7 +28,7 @@
 pip install "torch>=2.0" torchvision --index-url https://download.pytorch.org/whl/cpu
 pip install torch_geometric
 pip install -r requirements.txt
-uvicorn engine.app:app --host 0.0.0.0 --port 8000
+uvicorn engine.web_compat:app --host 0.0.0.0 --port 8000
 # 健康检查
 curl http://127.0.0.1:8000/health
 
@@ -26,7 +38,7 @@ curl http://127.0.0.1:8000/health
 # 等价的手动写法（仅作用于当前命令行窗口的进程）
 CODEFENDER_ENV=dev CODEFENDER_HASH_DB_ENABLED=0 CODEFENDER_FUZZY_DB_ENABLED=0 \
   CODEFENDER_REQUIRE_HASH_DB=0 \
-  uvicorn engine.app:app --host 0.0.0.0 --port 8000
+  uvicorn engine.web_compat:app --host 0.0.0.0 --port 8000
 ```
 
 > 过滤引擎 = `sha256 → md5 → fuzzy(ssdeep/imphash/authentihash) → tlsh` 四级哈希签名库预检，

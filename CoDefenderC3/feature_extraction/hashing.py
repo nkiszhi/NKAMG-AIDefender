@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import zlib
 
-__all__ = ["stable_bucket"]
+__all__ = ["stable_bucket", "stable_hash", "stable_seed"]
 
 
 def stable_bucket(text: str, modulo: int) -> int:
@@ -39,3 +39,18 @@ def stable_bucket(text: str, modulo: int) -> int:
     if modulo <= 0:
         raise ValueError("modulo must be positive, got %r" % (modulo,))
     return zlib.crc32(text.encode("utf-8", "ignore")) % modulo
+
+
+def stable_hash(value) -> int:
+    """test_lm-compatible CRC32; the original main stable_bucket is unchanged."""
+    if isinstance(value, str):
+        data = value.encode("utf-8", "ignore")
+    elif isinstance(value, (bytes, bytearray, memoryview)):
+        data = bytes(value)
+    else:
+        data = str(value).encode("utf-8", "ignore")
+    return zlib.crc32(data) & 0xFFFFFFFF
+
+
+def stable_seed(value) -> int:
+    return stable_hash(value) & 0x7FFFFFFF

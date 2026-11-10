@@ -32,6 +32,7 @@
 import os
 import math
 import hashlib
+from feature_extraction._stable_hash import stable_hash, stable_seed
 import numpy as np
 import torch
 from enum import Enum, auto
@@ -304,7 +305,7 @@ def _extract_opcode_seq(pe_path, seq_len):
                     # 操作码 hash → [1, 511] 索引空间
                     if len(tokens) > 0:
                         op_text = tokens[0].text.strip().lower()
-                        op_hash = hash(op_text) % 511 + 1
+                        op_hash = stable_hash(op_text) % 511 + 1
                         opcodes[idx] = op_hash
                         idx += 1
                         if idx >= seq_len:
@@ -355,7 +356,7 @@ def _extract_func_embeddings(pe_path, n_funcs=48, embed_dim=128):
                     if len(tokens) > 0:
                         # 用操作码文本的 hash 分配到 embed_dim 维度
                         op_text = tokens[0].text.strip().lower()
-                        dim_idx = hash(op_text) % embed_dim
+                        dim_idx = stable_hash(op_text) % embed_dim
                         func_vec[dim_idx] += 1.0
                         n_instrs += 1
 
@@ -367,7 +368,7 @@ def _extract_func_embeddings(pe_path, n_funcs=48, embed_dim=128):
 
     except ImportError:
         # BinaryNinja 不可用: 用随机但确定性的值填充
-        rng = np.random.RandomState(hash(pe_path) % 2**31)
+        rng = np.random.RandomState(stable_seed(pe_path))
         result = rng.randn(n_funcs * embed_dim).astype(np.float32) * 0.01
     except Exception as e:
         print(f"[函数嵌入提取失败] {pe_path}: {e}")

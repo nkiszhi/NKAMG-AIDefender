@@ -1,0 +1,10 @@
+# CPU torch is installed separately by CI; no model weights or BN license needed.
+numpy>=1.21
+fastapi>=0.110
+uvicorn>=0.29
+python-multipart>=0.0.9
+pefile>=2023.2.7
+scipy>=1.7
+httpx>=0.28
+requests>=2.32
+pymysql>=1.1

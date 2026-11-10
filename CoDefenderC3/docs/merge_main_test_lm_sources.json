@@ -1,0 +1,60 @@
+{
+  "main_base": "908c53f472fc0f2c3b798f76c1129f27a3112436",
+  "test_tip": "126a4ef88f12e5727aa1211ca4604d67aceb47cb",
+  "main_increment_review": [
+    "aae3cd2",
+    "9b16e90",
+    "908c53f"
+  ],
+  "protected_objects": {
+    "web": "49ee7604eaad04ebf7a110d426c1c0620d9ef5c8",
+    "CoDefenderC3/models/MalGraph_2022": "7f80450e41ba9c08babeb218712d2c9eb9e1c474",
+    "CoDefenderC3/feature_extraction/smda_extract.py": "0b39872da985479dac21376af6622a608670ec00"
+  },
+  "protected_app_functions": [
+    "_load_malgraph_params",
+    "_resolve_malgraph_ckpt_path",
+    "_resolve_malgraph_vocab_path",
+    "_extract_state_dict",
+    "_infer_malgraph_params_from_state",
+    "_load_malgraph_runtime",
+    "_predict_malgraph_single",
+    "_resolve_model_device",
+    "_move_ensemble_to_device",
+    "_load_ensemble",
+    "_infer_expected_view_dims",
+    "_expected_dim_for_model",
+    "_extract_views_for_single_sample",
+    "_predict_per_model",
+    "_scan_uploaded_sync"
+  ],
+  "policy_source": "test_lm engine/dev/app.py: _infer_model_scores, _predict_per_model_batch, _format_model_result",
+  "exceptions": [
+    "main MalGraph and view-first dimensions override test_lm",
+    "shared bounded runtime and temp ownership replace unprotected threads",
+    "production and development isolated from main Web listener",
+    "no_valid_model_predictions/non_finite failures are explicit; SDD requires complete ordered columns",
+    "score == 0.5 is Benign; configurable benign threshold must equal decision boundary",
+    "production ErrorCount includes timeouts only in projection; main/dev keep separate ErrorCount and TimeoutCount",
+    "directory uses real rows/chunks and registered models, including main MalGraph special path",
+    "main fast C01 count/max preserved; no test_lm log1p change",
+    "candidate IR disabled by default; profile=features only; schema v2 fixes lost outgoing/extra fields",
+    "candidate cache uses content/version/config/schema identities, locks, atomic validated writes, isolated namespaces",
+    "main public engine.result_formatter stays binary-compatible; test_lm production formatter relocated to production_result_formatter.py",
+    "candidate training reuses validated per-sample caches only; monthly matrices rebuilt and missing views never silently dropped",
+    "production/development ports use 18001/18002 to avoid existing Web worker host ports 8001/8002"
+  ],
+  "unverified": [
+    "full ensemble/checkpoint inference",
+    "actual SMDA and licensed BN backend differential tests",
+    "CUDA execution",
+    "Docker image build and full Web end-to-end against deployed weights",
+    "precision/recall/AUC and performance release thresholds"
+  ],
+  "listener_defaults": {
+    "web_compat": "0.0.0.0:8000 (container-side; preserve existing host mapping)",
+    "production": "127.0.0.1:18001",
+    "development": "127.0.0.1:18002 (disabled by default)",
+    "native_web_compat": "Set CODEFENDER_WEB_COMPAT_PORT to the existing Web engine port; do not edit web/config.ini"
+  }
+}

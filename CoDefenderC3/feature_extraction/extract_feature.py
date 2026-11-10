@@ -145,9 +145,9 @@ except ImportError:  # 仅把 feature_extraction/ 放进 sys.path 的场景（�
 
 # 确定性哈希（替代进程随机的内置 hash()）：训练/推理、SMDA/BN 两条路径口径统一
 try:
-    from feature_extraction.hashing import stable_bucket
+    from feature_extraction.hashing import stable_bucket, stable_hash, stable_seed
 except ImportError:  # 同上：仅 feature_extraction/ 在 sys.path 时
-    from hashing import stable_bucket
+    from hashing import stable_bucket, stable_hash, stable_seed
 
 
 # ═══════════════════════════════════════
@@ -529,6 +529,10 @@ class BinjaExtractor:
         后端由 CODEFENDER_DISASM_BACKEND 决定：smda（默认，无需商业授权、不挂死）
         或 bn（BinaryNinja，需要 license）。
         """
+        from feature_extraction.ir_cache import enabled
+        if enabled():
+            from feature_extraction.ir_cache import CandidateCache
+            return CandidateCache().features(pe_path)
         if _disasm_backend() == "smda":
             from feature_extraction.smda_extract import SmdaExtractor
             return SmdaExtractor(timeout=_env_int("CODEFENDER_SMDA_TIMEOUT", 120)).extract_de(pe_path)

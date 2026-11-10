@@ -132,7 +132,7 @@ ENV OPENBLAS_NUM_THREADS=1 \
     CODEFENDER_MALGRAPH_DEVICE=cuda \
     CODEFENDER_MASK_VIEWS=""
 
-EXPOSE 8000
+EXPOSE 8000 18001
 CMD ["/usr/local/bin/supervisord", "-c", "/etc/supervisord.conf"]
 
 # =============================================================================

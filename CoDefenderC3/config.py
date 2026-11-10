@@ -569,3 +569,10 @@ RUNTIME_CFG_SKIPPED = bool(RUNTIME_CFG_EXISTS and not RUNTIME_CFG_FILE_ENABLED)
 _loaded, RUNTIME_CFG_ERROR = load_runtime_cfg_file()
 if _loaded:
     RUNTIME_CFG_APPLIED = sorted(_loaded)
+
+# test_lm naming tiers; aggregation stays equal-weight mean, strictly > 0.5.
+ML_TIER_BENIGN_MAX = float(os.environ.get("CODEFENDER_ML_TIER_BENIGN_MAX", "0.500"))
+ML_TIER_LOW_MAX = float(os.environ.get("CODEFENDER_ML_TIER_LOW_MAX", "0.620"))
+ML_TIER_MEDIUM_MAX = float(os.environ.get("CODEFENDER_ML_TIER_MEDIUM_MAX", "0.780"))
+if not (ML_TIER_BENIGN_MAX == 0.5 < ML_TIER_LOW_MAX < ML_TIER_MEDIUM_MAX <= 1.0):
+    raise ValueError("ML naming tiers require benign=0.5 < low < medium <= 1")

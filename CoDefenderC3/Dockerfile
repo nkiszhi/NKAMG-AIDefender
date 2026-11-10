@@ -291,7 +291,7 @@ print('   config 解析 OK: HASH_DB_DIR=%s  MODEL_PATH=%s  ENV=%s' % (config.HAS
     python3 /app/docker/check_model_imports.py
 
 # ── 端口 ────────────────────────────────────────────────────────────
-EXPOSE 8000
+EXPOSE 8000 18001
 
 # ── 健康检查 ────────────────────────────────────────────────────────
 # Keep the Docker probe cheap. /health may inspect model/signature state and can

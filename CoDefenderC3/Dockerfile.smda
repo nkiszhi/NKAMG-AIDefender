@@ -106,5 +106,5 @@ ENV OPENBLAS_NUM_THREADS=1 \
     CODEFENDER_FUZZY_DB_ENABLED=0 \
     CODEFENDER_REQUIRE_HASH_DB=0
 
-EXPOSE 8000
+EXPOSE 8000 18001
 CMD ["/usr/local/bin/supervisord", "-c", "/etc/supervisord.conf"]

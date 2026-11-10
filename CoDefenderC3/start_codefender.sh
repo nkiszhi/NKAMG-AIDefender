@@ -25,4 +25,4 @@ if os.path.exists(lic):
 
 
 # ── 启动 uvicorn ─────────────────────────────────────────────
-exec python3 -m uvicorn engine.app:app --host 0.0.0.0 --port 8000
+exec python3 -m engine.serve
