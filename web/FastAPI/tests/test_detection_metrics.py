@@ -40,7 +40,7 @@ class DetectionMetricsTests(unittest.TestCase):
         self.assertEqual(stats['model_total'], 3)
         self.assertEqual(sum(row['count'] for row in stats['monthly']), 4)
 
-    def test_failure_cancel_and_unsupported_never_count_as_benign(self):
+    def test_failure_cancel_and_unsupported_distribution(self):
         self.store.record_direct_result('bad', {'detection_mode': 'rejected'})
         self.store.create('fail', 'x', self.path, 8)
         self.store.set_status('fail', 'failed')
@@ -54,6 +54,40 @@ class DetectionMetricsTests(unittest.TestCase):
             self.assertEqual(stats[key], 1)
         self.assertEqual(stats['completed_total'], 0)
         self.assertEqual(stats['benign_total'], 0)
+        self.assertEqual(stats['not_detected_total'], 1)
+        self.assertEqual(stats['other_total'], 3)
+        self.assertEqual(stats['received_total'], stats['malicious_total'] + stats['not_detected_total'] + stats['other_total'])
+
+    def test_live_epoch_resets_once_and_preserves_history(self):
+        self.store.record_direct_result('old', self.result('Malicious'))
+        self.store.record_hash_query('hit')
+        with self.store._connect() as connection:
+            connection.execute("DELETE FROM metrics_metadata WHERE key='live_stats_started_at'")
+            connection.execute("UPDATE detection_metrics SET created_at='2000-01-01T00:00:00+08:00'")
+            connection.execute("UPDATE hash_query_metrics SET queried_at='2000-01-01T00:00:00+08:00'")
+        store = DetectionTaskStore(self.path, 60)
+        empty = store.detection_summary()
+        for key, value in empty.items():
+            if key.endswith('_total') or key == 'unique_completed_samples':
+                self.assertEqual(value, 0, key)
+        with store._connect() as connection:
+            self.assertEqual(connection.execute('SELECT COUNT(*) FROM detection_metrics').fetchone()[0], 1)
+            self.assertEqual(connection.execute('SELECT COUNT(*) FROM hash_query_metrics').fetchone()[0], 1)
+        for task_id, result in [('bad', {'detection_mode': 'rejected'}),
+                                ('safe', self.result('Benign')), ('evil', self.result('Malicious'))]:
+            store.record_direct_result(task_id, result)
+            store.record_direct_result(task_id, result)
+        for outcome in ('hit', 'miss', 'failed'):
+            store.record_hash_query(outcome)
+        stats = DetectionTaskStore(self.path, 60).detection_summary()
+        self.assertEqual(stats['started_at'], empty['started_at'])
+        self.assertEqual(stats['received_total'], 3)
+        self.assertEqual(stats['malicious_total'], 1)
+        self.assertEqual(stats['not_detected_total'], 2)
+        self.assertEqual(stats['other_total'], 0)
+        self.assertEqual(stats['query_total'], 3)
+        self.assertEqual(stats['query_total'], sum(stats[key] for key in ('query_hit_total', 'query_miss_total', 'query_failed_total')))
+        self.assertEqual(stats['received_total'], stats['malicious_total'] + stats['not_detected_total'] + stats['other_total'])
 
     def test_rejected_queue_does_not_increment_and_polling_does_not_increment(self):
         self.store.create('one', 'x', self.path, 1)

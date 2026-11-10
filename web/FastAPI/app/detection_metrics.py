@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 
 
 def now_iso():
-    return datetime.now(timezone(timedelta(hours=8))).isoformat(timespec='seconds')
+    return datetime.now(timezone(timedelta(hours=8))).isoformat(timespec='microseconds')
 
 
 def initialize(connection):
@@ -14,6 +14,8 @@ def initialize(connection):
     connection.execute('CREATE INDEX IF NOT EXISTS metrics_finished ON detection_metrics(status,finished_at)')
     connection.execute('CREATE TABLE IF NOT EXISTS metrics_metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
     connection.execute("INSERT OR IGNORE INTO metrics_metadata VALUES ('started_at', ?)", (now_iso(),))
+    # A one-time new reporting epoch excludes earlier trial records without deleting them.
+    connection.execute("INSERT OR IGNORE INTO metrics_metadata VALUES ('live_stats_started_at', ?)", (now_iso(),))
     connection.execute('''CREATE TABLE IF NOT EXISTS hash_query_metrics (
         id INTEGER PRIMARY KEY, queried_at TEXT NOT NULL, outcome TEXT NOT NULL)''')
 
@@ -53,24 +55,31 @@ def finish(connection, task_id, result=None, status='completed'):
 
 def summary(connection):
     connection.execute('BEGIN')
-    started_at = connection.execute("SELECT value FROM metrics_metadata WHERE key='started_at'").fetchone()[0]
-    counts = {row['status']: row['n'] for row in connection.execute(
-        'SELECT status,COUNT(*) AS n FROM detection_metrics GROUP BY status')}
-    verdicts = {row['verdict']: row['n'] for row in connection.execute(
-        "SELECT verdict,COUNT(*) AS n FROM detection_metrics WHERE status='completed' GROUP BY verdict")}
-    modes = {row['mode']: row['n'] for row in connection.execute(
-        "SELECT mode,COUNT(*) AS n FROM detection_metrics WHERE status='completed' GROUP BY mode")}
-    unique = connection.execute("""SELECT COUNT(DISTINCT sha256) FROM detection_metrics
+    started_at = connection.execute("SELECT value FROM metrics_metadata WHERE key='live_stats_started_at'").fetchone()[0]
+    def live_query(sql):
+        return connection.execute(
+            'WITH live_metrics AS (SELECT * FROM detection_metrics WHERE created_at >= ?) ' + sql,
+            (started_at,))
+
+    counts = {row['status']: row['n'] for row in live_query(
+        """SELECT status,COUNT(*) AS n FROM live_metrics GROUP BY status""")}
+    verdicts = {row['verdict']: row['n'] for row in live_query(
+        """SELECT verdict,COUNT(*) AS n FROM live_metrics WHERE status='completed' GROUP BY verdict""")}
+    modes = {row['mode']: row['n'] for row in live_query(
+        """SELECT mode,COUNT(*) AS n FROM live_metrics WHERE status='completed' GROUP BY mode""")}
+    unique = live_query("""SELECT COUNT(DISTINCT sha256) FROM live_metrics
         WHERE status='completed' AND sha256 IS NOT NULL AND sha256<>'' """).fetchone()[0]
-    partial = connection.execute("SELECT COUNT(*) FROM detection_metrics WHERE status='completed' AND partial_models=1").fetchone()[0]
-    monthly = [dict(row) for row in connection.execute("""SELECT substr(finished_at,1,7) AS name,COUNT(*) AS count
-        FROM detection_metrics WHERE status='completed' GROUP BY name ORDER BY name DESC LIMIT 6""")][::-1]
+    partial = live_query("""SELECT COUNT(*) FROM live_metrics WHERE status='completed' AND partial_models=1""").fetchone()[0]
+    monthly = [dict(row) for row in live_query("""SELECT substr(finished_at,1,7) AS name,COUNT(*) AS count
+        FROM live_metrics WHERE status='completed' GROUP BY name ORDER BY name DESC LIMIT 6""")][::-1]
     queries = {row['outcome']: row['n'] for row in connection.execute(
-        'SELECT outcome,COUNT(*) AS n FROM hash_query_metrics GROUP BY outcome')}
+        "SELECT outcome,COUNT(*) AS n FROM hash_query_metrics WHERE queried_at >= (SELECT value FROM metrics_metadata WHERE key='live_stats_started_at') GROUP BY outcome")}
     return {
         'available': True, 'started_at': started_at, 'updated_at': now_iso(),
         'received_total': sum(counts.values()), 'completed_total': counts.get('completed', 0),
         'malicious_total': verdicts.get('malicious', 0), 'benign_total': verdicts.get('benign', 0),
+        'not_detected_total': verdicts.get('benign', 0) + counts.get('unsupported', 0),
+        'other_total': sum(counts.values()) - verdicts.get('malicious', 0) - verdicts.get('benign', 0) - counts.get('unsupported', 0),
         'inconclusive_total': verdicts.get('inconclusive', 0),
         'database_total': modes.get('sample_database', 0), 'model_total': modes.get('models', 0),
         'failed_total': counts.get('failed', 0), 'cancelled_total': counts.get('cancelled', 0),

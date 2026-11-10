@@ -1,7 +1,7 @@
 <template>
   <section class="detection-stats">
     <div class="ds-heading">
-      <div><div class="eyebrow">DETECTION OVERVIEW</div><h2>每一次检测，都有迹可循</h2><p>汇总平台文件检测与样本检索记录</p></div>
+      <div class="eyebrow">DETECTION OVERVIEW</div>
       <button class="ds-refresh" :disabled="busy" @click="refresh">{{ busy ? '更新中…' : '刷新统计' }}</button>
     </div>
     <div v-if="error" class="ds-error" role="status">{{ error }}</div>
@@ -29,7 +29,6 @@
           <div class="ds-query"><span>SHA256 查询</span><strong>{{ number(snapshot.query_total) }} <small>次</small></strong><p>命中 {{ number(snapshot.query_hit_total) }} · 未命中 {{ number(snapshot.query_miss_total) }} · 失败 {{ number(snapshot.query_failed_total) }}</p></div>
         </article>
       </div>
-      <p class="ds-note">已完成 {{ number(snapshot.completed_total) }} 次；未明确判定 {{ number(snapshot.inconclusive_total) }} 次，失败 {{ number(snapshot.failed_total) }} 次，取消 {{ number(snapshot.cancelled_total) }} 次，处理中 {{ number(snapshot.pending_total) }} 次。结构不一致指未通过 PE 结构校验；查询未命中不代表安全。模型结果不等同于人工复核结论。</p>
       <div class="ds-footer"><span>统计起点 {{ date(snapshot.started_at) }} · 更新于 {{ date(snapshot.updated_at, true) }}（北京时间）</span></div>
     </template>
     <div v-else-if="!error" class="ds-error">{{ busy ? '正在读取检测记录…' : '尚无检测统计' }}</div>
@@ -38,10 +37,9 @@
 
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { applyDetectionBaseline } from './detectionBaseline'
 
 const props = defineProps({ api: { type: Object, required: true }, baseUrl: { type: String, required: true } })
-const snapshot = ref(applyDetectionBaseline())
+const snapshot = ref({ available: false })
 const busy = ref(false)
 const error = ref('')
 let timer
@@ -57,17 +55,14 @@ const date = (value, withTime = false) => {
 const cards = [
   { key: 'received_total', label: '累计检测', note: '已接收的文件检测请求', color: 'blue' },
   { key: 'malicious_total', label: '判定恶意', note: '样本库命中或模型恶意判定', color: 'red' },
-  { key: 'benign_total', label: '未检出恶意', note: '模型返回未检出恶意', color: 'green' },
-  { key: 'unsupported_total', label: '结构不一致', note: '未通过 PE 结构校验', color: 'amber' }
+  { key: 'not_detected_total', label: '未检出恶意', note: '未检出恶意或未通过 PE 校验', color: 'green' },
+  { key: 'other_total', label: '其他 / 处理中', note: '无明确判定、失败、取消及处理中', color: 'amber' }
 ]
 const outcomes = computed(() => [
   { key: 'malicious_total', label: '判定恶意', color: '#ff7185' },
-  { key: 'benign_total', label: '未检出恶意', color: '#43d6b0' },
-  { key: 'unsupported_total', label: '结构不一致', color: '#eabd72' },
-  { key: 'other', label: '其他 / 处理中', color: '#8294b7' }
-].map(row => ({ ...row, count: row.key === 'other'
-  ? Math.max(0, snapshot.value.received_total - snapshot.value.malicious_total - snapshot.value.benign_total - snapshot.value.unsupported_total)
-  : Number(snapshot.value[row.key] || 0) })))
+  { key: 'not_detected_total', label: '未检出恶意', color: '#43d6b0' },
+  { key: 'other_total', label: '其他 / 处理中', color: '#8294b7' }
+].map(row => ({ ...row, count: Number(snapshot.value[row.key] || 0) })))
 const percent = count => snapshot.value.received_total > 0 ? `${(count / snapshot.value.received_total * 100).toFixed(1)}%` : '—'
 const distributionLabel = computed(() => outcomes.value.map(row => `${row.label} ${number(row.count)} 次`).join('，'))
 const ringStyle = computed(() => {
@@ -86,7 +81,7 @@ async function refresh() {
   try {
     const { data } = await props.api.get(`${props.baseUrl}/detection-stats`, { timeout: 10000 })
     if (data.available !== true) throw new Error('unavailable')
-    snapshot.value = applyDetectionBaseline(data)
+    snapshot.value = data
     error.value = ''
   } catch {
     error.value = '暂时无法刷新，当前保留已显示的统计。'
@@ -100,8 +95,6 @@ defineExpose({ refresh })
 <style scoped>
 .detection-stats { padding: 10px 0 20px; }
 .ds-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin: 8px 0 24px; }
-.ds-heading h2 { margin: 8px 0; font-size: 23px; font-weight: 650; color: #edf2ff; }
-.ds-heading p { margin: 0; color: var(--muted); font-size: 12px; }
 .ds-refresh { border: 1px solid #41557f; border-radius: 7px; background: #202d48; color: #b8cbf4; padding: 7px 13px; cursor: pointer; font-size: 12px; }
 .ds-refresh:disabled { opacity: .6; cursor: wait; }
 .ds-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 15px; margin-bottom: 20px; }
@@ -124,7 +117,6 @@ defineExpose({ refresh })
 .ds-legend i { width: 7px; height: 7px; border-radius: 50%; }.ds-legend span { color: #b5c4df; font-size: 12px; }.ds-legend b { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }.ds-legend small { grid-column: 3; margin-top: -8px; color: #8396b8; text-align: right; font-size: 10px; }
 .ds-route { display: flex; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid #293953; font-size: 12px; color: #a8bad9; }.ds-route b { color: #dbe7ff; font-size: 15px; font-variant-numeric: tabular-nums; }.ds-route small { color: #7489ac; font-size: 10px; margin-left: 6px; }
 .ds-query { margin-top: 17px; padding: 11px 15px; border-radius: 7px; background: #202e48; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; color: #b4c7eb; font-size: 12px; }.ds-query strong { font-size: 20px; }.ds-query small { font-size: 11px; font-weight: 400; }.ds-query p { flex-basis: 100%; margin: 5px 0 0; color: #8ca1c4; font-size: 11px; }
-.ds-note { margin: 17px 0 12px; font-size: 11px; line-height: 1.9; color: #91a3c2; }
 .ds-footer { display: flex; align-items: center; justify-content: space-between; gap: 14px; border-top: 1px solid #2b3b58; padding-top: 13px; color: #8296b9; font-size: 11px; }.ds-footer button { flex-shrink: 0; }
 .ds-error { margin: 10px 0; color: #eac88c; font-size: 12px; }
 @media (max-width: 1000px) { .ds-charts { grid-template-columns: 1fr; }.ds-distribution { justify-content: center; }.ds-legend { max-width: 290px; }.ds-kpi { padding: 17px; } }
