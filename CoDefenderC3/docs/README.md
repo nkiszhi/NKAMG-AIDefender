@@ -1,17 +1,5 @@
 # CoDefenderC3
 
-## 2026-11-10：main / test_lm 定向集成
-
-本次以 main `908c53f` 为基底：仓库顶层 `web/`、MalGraph 全链和 V1_byte/V8_color 维度修复保留 main；生产与开发两个预测接口定向吸收 test_lm。
-
-- 联合启动：`python -m engine.serve`，单进程共享模型和 ScanRuntime。
-- Web 兼容入口：容器内 `8000`，保持既有宿主机端口映射；原生部署将 `CODEFENDER_WEB_COMPAT_PORT` 设为 Web 原来调用的引擎端口。**不要改 Web 配置，也不要让 Web 接生产精简入口。**
-- 生产接口：默认 `127.0.0.1:18001`；开发明细：默认关闭，设置 `CODEFENDER_ENABLE_DEV_API=1` 后仅监听 `127.0.0.1:18002`。
-- 非 MalGraph IR 候选默认关闭；未完成真实权重/双后端/GPU/Docker 上线验收。
-
-详见 [合并实施与验收记录](MERGE_IMPLEMENTATION_2026-11-10.md)。下文原 `8000` API 示例对应 **Web 兼容契约**，不是生产裁剪契约。
-
-
 **Multi-Model Collaborative Malware Concept Drift Defense via Spectral Drift Decomposition and LLM-Assisted Analysis**
 
 多模型集成恶意软件检测系统，基于 PyTorch 的多视角异构模型集成架构，覆盖 PE 文件 **8 大分析维度**，集成 **33 个已发表子模型** + **SDD 谱漂移检测引擎** + **LLM 辅助分析层**。
@@ -118,18 +106,18 @@ export CODEFENDER_MODEL_PATH=/path/to/ensemble.pkl
 
 ```bash
 # 方式一：在项目根目录执行
-uvicorn engine.web_compat:app --host 0.0.0.0 --port 8000
+uvicorn engine.app:app --host 0.0.0.0 --port 8000
 
 # 方式二：Python 模块方式
-python -m uvicorn engine.web_compat:app --host 0.0.0.0 --port 8000
+python -m uvicorn engine.app:app --host 0.0.0.0 --port 8000
 
 # 方式三：带热重载（开发调试推荐）
-uvicorn engine.web_compat:app --host 0.0.0.0 --port 8000 --reload
+uvicorn engine.app:app --host 0.0.0.0 --port 8000 --reload
 
 # 方式四：关闭过滤引擎，全部检测走模型（详见下节「方式四说明」）
 CODEFENDER_ENV=dev CODEFENDER_HASH_DB_ENABLED=0 CODEFENDER_FUZZY_DB_ENABLED=0 \
   CODEFENDER_REQUIRE_HASH_DB=0 \
-  python -m uvicorn engine.web_compat:app --host 0.0.0.0 --port 8000
+  python -m uvicorn engine.app:app --host 0.0.0.0 --port 8000
 
 # 方式四（推荐）：直接用脚本，免记忆环境变量、额外带端口占用预检
 #   Windows:  dev_model_only.cmd
@@ -155,21 +143,21 @@ CODEFENDER_ENV=dev CODEFENDER_HASH_DB_ENABLED=0 CODEFENDER_FUZZY_DB_ENABLED=0 \
 ```bat
 set CODEFENDER_HASH_DB_ENABLED=0
 set CODEFENDER_FUZZY_DB_ENABLED=0
-python -m uvicorn engine.web_compat:app --host 0.0.0.0 --port 8000
+python -m uvicorn engine.app:app --host 0.0.0.0 --port 8000
 ```
 
 单行链式写法可用 `set "VAR=0" &&`（**`0` 后严禁有空格**：`set X=0 && ` 会把值设成 `"0 "`，
 `config.py` 判 `!= "0"` 反而当成开启）：
 
 ```bat
-set "CODEFENDER_HASH_DB_ENABLED=0" && set "CODEFENDER_FUZZY_DB_ENABLED=0" && python -m uvicorn engine.web_compat:app --host 0.0.0.0 --port 8000
+set "CODEFENDER_HASH_DB_ENABLED=0" && set "CODEFENDER_FUZZY_DB_ENABLED=0" && python -m uvicorn engine.app:app --host 0.0.0.0 --port 8000
 ```
 
 **Windows（PowerShell）**：
 
 ```powershell
 $env:CODEFENDER_HASH_DB_ENABLED="0"; $env:CODEFENDER_FUZZY_DB_ENABLED="0"
-python -m uvicorn engine.web_compat:app --host 0.0.0.0 --port 8000
+python -m uvicorn engine.app:app --host 0.0.0.0 --port 8000
 ```
 
 **生效确认**：启动日志 + `/health` 双通道（`app.py` 已为 `codefender.*` 命名空间挂 StreamHandler，
@@ -351,7 +339,7 @@ dev_model_only.cmd
 
 # 或手动（等价），仅作用于当前窗口的进程
 CODEFENDER_ENV=dev CODEFENDER_HASH_DB_ENABLED=0 CODEFENDER_FUZZY_DB_ENABLED=0 \
-  PYTHONIOENCODING=utf-8 python -m uvicorn engine.dev.app:app --host 127.0.0.1 --port 18002
+  PYTHONIOENCODING=utf-8 python -m uvicorn engine.app:app --host 0.0.0.0 --port 8000
 ```
 
 脚本做的事：设 `CODEFENDER_ENV=dev` + 关三库 + 关硬要求，另加一道**端口占用预检**
@@ -359,7 +347,7 @@ CODEFENDER_ENV=dev CODEFENDER_HASH_DB_ENABLED=0 CODEFENDER_FUZZY_DB_ENABLED=0 \
 脚本只影响该进程环境、不写任何文件 → **没有任何途径进入镜像**。
 
 > 脚本用 `CODEFENDER_PYEXE`（默认 `D:\work\tools\miniconda3\python.exe`）指定解释器，
-> `CODEFENDER_PORT`（默认 18002）指定独立开发入口端口；不要与联合启动器重复启动同一模型实例。
+> `CODEFENDER_PORT`（默认 8000）指定端口。
 > ⚠️ `dev_model_only.cmd` **刻意只用 ASCII**：`.cmd` 里出现非 ASCII 字符时，一旦
 > 切换控制台代码页，CMD 解析器会错位 —— 注释行被当成命令执行、脚本只跑一半。
 > 中文说明放在文档里，脚本内保持英文。
@@ -1115,7 +1103,7 @@ curl -X POST http://localhost:8000/admin/config -d '{"reload_file": true}'
 
 ```bash
 # 1. 启动服务
-uvicorn engine.web_compat:app --host 0.0.0.0 --port 8000
+uvicorn engine.app:app --host 0.0.0.0 --port 8000
 
 # 2. 健康检查
 curl -s http://localhost:8000/health | python -m json.tool
