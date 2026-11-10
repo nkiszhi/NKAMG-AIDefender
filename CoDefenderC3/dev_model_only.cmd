@@ -46,6 +46,7 @@ REM (config.py carries the same guard for non-script launches, e.g. IDE / CI.)
 if not defined USERNAME set "USERNAME=developer"
 if not defined TORCHINDUCTOR_CACHE_DIR set "TORCHINDUCTOR_CACHE_DIR=%TEMP%\torchinductor_cache"
 set "CODEFENDER_ENV=dev"
+if not defined CODEFENDER_DISASM_BACKEND set "CODEFENDER_DISASM_BACKEND=smda"
 set "CODEFENDER_HASH_DB_ENABLED=0"
 set "CODEFENDER_FUZZY_DB_ENABLED=0"
 set "CODEFENDER_REQUIRE_HASH_DB=0"
@@ -69,6 +70,7 @@ exit /b 1
 echo.
 echo [dev] ===== CoDefenderC3 : MODEL-ONLY MODE (local dev) =====
 echo [dev] CODEFENDER_ENV=dev   HASH_DB_ENABLED=0   FUZZY_DB_ENABLED=0
+echo [dev] DISASM_BACKEND=%CODEFENDER_DISASM_BACKEND%
 echo [dev] every sample goes through the 33-model ensemble, no hash precheck
 echo [dev] listening on :%CODEFENDER_PORT%    Ctrl+C to stop
 echo [dev] ====================================================

@@ -46,11 +46,11 @@ def current_backend() -> str:
     """当前反汇编后端（"bn" / "smda"）。
 
     读环境变量 CODEFENDER_DISASM_BACKEND；读不到就按 feature_extraction
-    的默认（bn）。这里刻意不 import feature_extraction.backend ——
+    的默认（smda）。这里刻意不 import feature_extraction.backend ——
     Vocabulary 会被推理侧直接 import，不能拖进 numpy 之类的重依赖。
     """
-    raw = (os.environ.get("CODEFENDER_DISASM_BACKEND") or "bn").strip().lower()
-    return raw if raw in ("bn", "smda") else "bn"
+    raw = (os.environ.get("CODEFENDER_DISASM_BACKEND") or "smda").strip().lower()
+    return raw if raw in ("bn", "smda") else "smda"
 
 
 def current_fingerprint() -> dict:

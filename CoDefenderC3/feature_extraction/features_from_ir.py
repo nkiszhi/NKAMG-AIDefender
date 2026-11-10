@@ -55,6 +55,48 @@ def _call_depth_ir(fmap, start, visited, depth, max_depth):
     return max_d
 
 
+def _positive_size(value, name):
+    """尺寸必须为正整数（不接受浮点截断或 bool）。"""
+    import operator
+    try:
+        if isinstance(value, bool):
+            raise TypeError
+        value = operator.index(value)
+    except TypeError as error:
+        raise ValueError("%s 必须为正整数" % name) from error
+    if value <= 0:
+        raise ValueError("%s 必须为正整数" % name)
+    return value
+
+
+def opcode_sequence(ir, seq_len=MAX_OPCODES):
+    """D01 的参数化版本：IR 顺序、crc32 % 511 + 1、尾部零填充。"""
+    import numpy as np
+    from itertools import islice
+    seq_len = _positive_size(seq_len, "seq_len")
+    result = np.zeros(seq_len, dtype=np.int64)
+    for i, op in enumerate(islice(ir.mnemonic_stream(), seq_len)):
+        result[i] = stable_hash(op) % 511 + 1
+    return result
+
+
+def function_embeddings(ir, n_funcs=MAX_FUNCTIONS, embed_dim=128):
+    """D07 的参数化版本：每函数助记符哈希直方图，L2 归一化。"""
+    import numpy as np
+    n_funcs = _positive_size(n_funcs, "n_funcs")
+    embed_dim = _positive_size(embed_dim, "embed_dim")
+    result = np.zeros(n_funcs * embed_dim, dtype=np.float32)
+    for fi, func in enumerate(ir.functions[:n_funcs]):
+        counts = Counter(op for block in func.blocks for op in block.instructions)
+        emb = np.zeros(embed_dim, dtype=np.float32)
+        for op, count in counts.items():
+            emb[stable_hash(op) % embed_dim] += count
+        if emb.sum() > 0:
+            emb /= np.linalg.norm(emb) + 1e-8
+        result[fi * embed_dim:(fi + 1) * embed_dim] = emb
+    return result
+
+
 def disassembly_features(ir) -> dict:
     """D01-D07：由 ProgramIR 计算（等价于 _extract_disassembly(bv)）。"""
     import numpy as np
@@ -88,10 +130,7 @@ def disassembly_features(ir) -> dict:
 
     n_funcs = len(func_data)
 
-    d01 = np.zeros(MAX_OPCODES, dtype=np.int64)
-    for i, op in enumerate(all_opcodes[:MAX_OPCODES]):
-        d01[i] = stable_hash(op) % 511 + 1
-    feats["D01"] = d01
+    feats["D01"] = opcode_sequence(ir)
 
     d02 = np.zeros(NGRAM_DIM, dtype=np.float32)
     for i in range(len(all_opcodes) - 1):
@@ -145,15 +184,7 @@ def disassembly_features(ir) -> dict:
         d06[9] = sum(all_bb_sizes) / max(n_bbs_total, 1)
     feats["D06"] = d06
 
-    d07 = np.zeros(MAX_FUNCTIONS * 128, dtype=np.float32)
-    for fi in range(min(n_funcs, MAX_FUNCTIONS)):
-        emb = np.zeros(128, dtype=np.float32)
-        for op, cnt in func_data[fi]["ops"].items():
-            emb[stable_hash(op) % 128] += cnt
-        if emb.sum() > 0:
-            emb /= np.linalg.norm(emb) + 1e-8
-        d07[fi * 128:(fi + 1) * 128] = emb
-    feats["D07"] = d07
+    feats["D07"] = function_embeddings(ir)
 
     return feats
 

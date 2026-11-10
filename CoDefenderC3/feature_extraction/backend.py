@@ -17,7 +17,7 @@ profile        用途                        BN 分析模式
 
 后端选择
 --------
-环境变量 CODEFENDER_DISASM_BACKEND：bn（默认）/ smda。
+环境变量 CODEFENDER_DISASM_BACKEND：smda（默认）/ bn。
 
 选择 SMDA 时**不会 import binaryninja** —— 这是"把 BN 依赖彻底切掉"的关键。
 
@@ -29,8 +29,8 @@ import os
 
 
 def _env_backend() -> str:
-    raw = (os.environ.get("CODEFENDER_DISASM_BACKEND") or "bn").strip().lower()
-    return raw if raw in ("bn", "smda") else "bn"
+    raw = (os.environ.get("CODEFENDER_DISASM_BACKEND") or "smda").strip().lower()
+    return raw if raw in ("bn", "smda") else "smda"
 
 
 def current_backend() -> str:

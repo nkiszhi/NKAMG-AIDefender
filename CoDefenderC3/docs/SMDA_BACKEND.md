@@ -1,87 +1,116 @@
 # SMDA 反汇编后端（替代 BinaryNinja）
 
-- 目的：用 SMDA（https://github.com/danielplohmann/smda）替代 BinaryNinja 承担 D/E 特征与
-  MalGraph CFG 提取，解决三个问题：**不需要商业授权**、**不会在畸形样本上挂死**、**快 5~10 倍**。
-- 状态：2026-10-19 实现并实测通过（容器路径 `python -m engine.analysis_worker`）。
+SMDA 与可选 BN 后端都先生成 ProgramIR，再由同一特征层计算 D/E 和 MalGraph 图输入。
+SMDA 不依赖 BinaryNinja 商业许可；两种后端的函数发现与反汇编结果仍可能不同，
+**相同维度/算法不代表跨后端特征值相同，也不自动保证旧模型权重兼容**。
 
----
+2026-11-09 修复三个集成缺口：默认值、普通安装依赖加载、旧统一特征入口；
+同时修复 Windows 训练批处理将 CRLF 成功状态误判为未报告并删除 IR 的问题。
+验证范围和结果见第 6 节；未用本次本机测试代替实际 Docker 镜像验收。
 
 ## 1. 开关
 
 | 环境变量 | 默认 | 说明 |
 |---|---|---|
-| `CODEFENDER_DISASM_BACKEND` | `smda` | `smda` / `bn`（BinaryNinja 旧路径保留） |
-| `CODEFENDER_SMDA_TIMEOUT` | `120` | 单样本 SMDA 分析墙钟预算（秒） |
-| `CODEFENDER_SMDA_API_NAME_STYLE` | `short` | `short` 去掉导入名的 `dll!` 前缀（复用现有 MalGraph 词表）；`raw` 保留原名 |
-| `CODEFENDER_ANALYSIS_TIMEOUT_MAX` | `3600` | BN 分析超时上限（原代码硬编码 600，已放开） |
+| `CODEFENDER_DISASM_BACKEND` | `smda` | `smda` / `bn`；未设置、空值或无效值均回到 SMDA |
+| `CODEFENDER_SMDA_PKGS` | 未设置 | 可选依赖目录；显式指定时优先，目录无效直接报错 |
+| `CODEFENDER_ANALYSIS_TIMEOUT` | `180` | 隔离分析 worker 的预算（秒），启动配置可覆盖 |
+| `CODEFENDER_ANALYSIS_TIMEOUT_MAX` | `3600` | 隔离分析允许的预算上限（秒） |
 
-## 2. 改动清单
+后端调度与 MalGraph 产物指纹检查的默认值保持一致。开发启动脚本 `dev_model_only.cmd/sh`
+默认设置 SMDA，尊重已有后端环境变量；BN 专用脚本 `dev_bn.cmd` 显式设置 BN。
+修改后端或依赖目录后需重启进程，不在运行中替换已导入的原生扩展。
 
-| 文件 | 改动 |
+## 2. SMDA 依赖加载
+
+加载顺序：
+
+1. 设置了 `CODEFENDER_SMDA_PKGS`：检查并优先使用该目录，不静默改用其他来源。
+2. 未设置：先直接导入当前解释器可用的 `lief`、`capstone`、`smda.Disassembler`。
+   **普通 pip 安装不再要求项目旁边有 `_tools`**。
+3. 普通导入失败：尝试项目上一级的 `_tools/py<major><minor>_pkgs`，如 Python 3.11
+   只发现 `py311_pkgs`，不尝试其他 ABI 目录。vendor 缺少 lief/capstone 时可用解释器安装的版本。
+
+会实际导入依赖并报告失败模块（包括原生扩展 ABI 错误），而非仅检查目录是否存在。
+失败的 vendor 路径不会残留在 sys.path；失败中新加载的 SMDA 子模块会清理，避免污染回退。
+
+## 3. 特征入口与口径
+
+| 入口 | 当前路径 / 输出 |
 |---|---|
-| `feature_extraction/backend_smda.py` | SMDA 后端 → ProgramIR（函数 / 基本块 / CFG / 调用点 / 导入表） |
-| `feature_extraction/features_from_ir.py` | D01–D07 / E03 / E04 由 ProgramIR 算（BN 与 SMDA 共用同一套算法） |
-| `feature_extraction/backend.py` | 后端调度：`CODEFENDER_DISASM_BACKEND=bn\|smda` + 两个分析档位（features / graph） |
-| `feature_extraction/insn_categories.py` | x86 指令类别表（15 类），**唯一来源**，BN 与 SMDA 共用 |
-| `feature_extraction/extract_feature.py` | `extract_de_only` 改走 ProgramIR；类别表改为共用 `insn_categories` |
-| `models/MalGraph_2022/utils.py` | `extract_cfg_and_fcg` 走 ProgramIR；**不再 import binaryninja** |
-| `engine/analysis_worker.py` | **不分后端**：一次 ProgramIR 分析同时产出 D/E 与 MalGraph |
-| `engine/staged_scan.py` | `analysis_timeout()` 上限由硬编码 600 改为 `CODEFENDER_ANALYSIS_TIMEOUT_MAX`（默认 3600） |
-| `requirements.txt` | 增加 `smda>=4.3.10` |
+| `extract_de_only` | PE → 后端 → ProgramIR → D01–D07 / E03 / E04 |
+| `engine.analysis_worker` | SMDA 一次带调用点分析同时供给 D/E 和 MalGraph；BN 保留 basic/full 两档 |
+| 训练 `generate_irs_batch` / `extract_de_from_ir_batch` | PE → .ir.json.gz → .npz；后者不再需要反汇编后端 |
+| `unified.OPCODE_SEQ` | 参数化 D01；默认 4096，IR 顺序，crc32 % 511 + 1，零填充，int64 |
+| `unified.FUNC_EMBEDDINGS` | 参数化 D07；默认 48 × 128，每函数助记符哈希直方图，**L2** 归一化，float32 |
+| `unified.GRAPH_STAT` | **E03（12）+ E04（10）**，与主图统计视图一致，float32 |
+| `unified.PYG_GRAPH` | 仍明确抛 NotImplementedError，请使用 MalGraph 专用 Dataset/图入口 |
 
-## 3. 实测（ida_env smda 5.0.1 / torch-cpu smda 4.3.10，两版 API 兼容）
+旧 unified 入口不再直接导入 BinaryNinja。反汇编失败直接抛错，**禁止字节近似操作码、
+随机函数嵌入、EMBER 近似图统计**，也不再由 UnifiedDataset 将这些 IR 失败变成带标签的零向量。
+成功分析为空 IR 时的统计零值/填充零值仍是合法结果，与分析异常不同。
 
-| 样本 | SMDA 耗时 | BN 耗时（对照） | SMDA 产出 |
-|---|---:|---:|---|
-| notepad.exe (360 KB) | 1.2–3.7 s | 30–130 s | 522 函数 / 6,515 块 / 37,750 指令 |
-| cmd.exe (340 KB) | 18–22 s | 30–130 s | 831 函数 |
-| kernel32.dll (862 KB) | 5.8–19 s | 30–130 s | 2,638 函数 |
+**迁移兼容性：** 主 D01/D07/E03/E04 算法不变；旧 unified 的函数嵌入从 L1 改为 D07 的 L2，
+旧 GRAPH_STAT 的布局改为 E03/E04（旧实现错误地把 CFG 后继当调用边）。
+使用旧 unified 特征训练的模型必须重建特征并重训/重新验证，不能只看维度相同就复用权重。
+BN 与 SMDA 的 MalGraph 产物也必须满足 `artifact_guard` 的 backend/feature_schema 指纹检查；
+不能承诺旧 BN 词表经名称处理后就能直接复用。
 
-特征维度与 BN 版**逐位对齐**：D01 4096 / D02–D03 256 / D04 15 / D05 12 / D06 10 / D07 6144 /
-E03 12 / E04 10；MalGraph 输入的 `block_features` 全部 11 维、`function_edges`、`acfg_list`、
-`function_names`（本地名规范化为 `sub_<addr>`）结构一致。
+## 4. 缓存隔离
 
-## 4. 与 BN 版的有意差异（需要配套重训）
+三种统一 IR 特征的缓存键现在包含：文件 SHA256、特征类型、后端、ProgramIR schema、
+特征 schema（`unified-ir/1`）和输出参数（seq_len / n_funcs / embed_dim）。
+旧 `<sha>_<feature>.npy` 不会被当作新 IR 特征缓存读取；历史占位缓存无需手动删除才能生效。
+原始字节、EMBER 和图像特征的缓存策略未改变。
 
-1. **哈希改为稳定 crc32**：BN 版 D01/D02/D03/D07 用进程随机的 `hash()`，每次进程结果都不同；
-   SMDA 版改用 `zlib.crc32`（稳定、可复现）。→ **依赖这些特征的模型（Opcode\*、AsmEmbedNet）必须重训**。
-2. **导入名格式**：SMDA 为 `dll.dll!Func`，BN 多为 `Func`；默认去掉前缀以**复用现有 MalGraph 词表**，
-   需要原名时设 `CODEFENDER_SMDA_API_NAME_STYLE=raw`。
-3. **MalGraph 词表**：若历史上是用 BN 建的词表，前缀规范化后一般可直接复用；否则需重建并重训 MalGraph。
+这次隔离只覆盖 unified 的三种 IR 特征；已有训练 NPZ/IR 等产物不能因为改了默认值就认为兼容。
+切换后端/特征口径时仍需按原有训练流程重建对应产物。
 
-## 5. 镜像部署
+## 5. 部署与自检
 
-```dockerfile
-# 在 CoDefenderC3/Dockerfile 的 pip 段加入
-RUN pip install --no-cache-dir smda>=4.3.10
-```
-
-启动时指定后端（默认值已是 smda，显式写更清楚）：
+在**运行服务的同一个解释器**中安装依赖（通常由 requirements.txt 完成）：
 
 ```bash
-docker run -d --name codefender -p 8000:8000 \
-  -e CODEFENDER_DISASM_BACKEND=smda \
-  -e CODEFENDER_ANALYSIS_TIMEOUT=240 \
-  -e CODEFENDER_REQUEST_TIMEOUT=600 \
-  -e CODEFENDER_HARD_TIMEOUT=660 \
-  -e CODEFENDER_MAX_CONCURRENT=8 \
-  codefender-c3:v8.1
+python -m pip install 'smda>=4.3.10' lief capstone pefile
+python -c "from feature_extraction.backend import current_backend; from feature_extraction.backend_smda import _smda_import; print(current_backend(), _smda_import())"
 ```
 
-> 不需要再安装/授权 BinaryNinja；镜像里保留 BN 代码只是留了回退路径（`CODEFENDER_DISASM_BACKEND=bn`）。
+Docker 的 pip 安装布局无需复制项目外的 `_tools`。镜像配置仍显式设置
+`CODEFENDER_DISASM_BACKEND=smda`；代码变更后需要重新构建并重启容器。
+可选 BN 模式仍需安装 BinaryNinja、配置有效许可并使用匹配的训练产物。
 
-## 6. 验收
+隔离 worker 自检：
 
 ```bash
-# 容器内单样本自检
-docker exec codefender python -m engine.analysis_worker /path/sample.exe /tmp/out.pkl
-python3 - <<'EOF'
-import pickle
-r = pickle.load(open('/tmp/out.pkl','rb'))
-print(sorted(r['features']), r['errors'], r['timing'])
-print(r['malgraph'] and (r['malgraph']['function_number'], len(r['malgraph']['acfg_list'])))
-EOF
+python -m engine.analysis_worker /path/sample.exe /tmp/out.pkl
+python -c "import pickle; r=pickle.load(open('/tmp/out.pkl','rb')); print(sorted(r['features']),r['errors'],r['timing']); print(r['malgraph'] and r['malgraph']['function_number'])"
 ```
+
+## 6. 本次验收（2026-11-09）
+
+本机解释器 Python 3.11，SMDA 5.0.2；只做静态分析，不执行 PE 样本。
+
+```bash
+python -X utf8 -m unittest discover -s tests -p test_smda_integration.py -v
+python -X utf8 tests/test_ir_contract.py
+python -X utf8 tests/test_stable_hash.py
+python -X utf8 -m unittest discover -s tests -p test_dev_prediction_aggregation.py -v
+
+# 清除后端和依赖目录覆盖后，验证真正的默认值：
+python -X utf8 tests/verify_smda_backend.py /path/sample32.bin /path/sample64.bin --output-dir /path/results
+python -X utf8 tests/verify_dev_prediction_aggregation.py /path/sample32.bin /path/sample64.bin --include-de --output /path/endpoints.json
+```
+
+验证脚本覆盖三种 unified 特征与主层逐值一致、缓存命中、无 BN 导入、普通可导入但无
+vendor 邻接目录的布局、分析 worker、训练 PE→IR→NPZ 及开发单双接口一致性。
+回归测试 **83/83** 通过（SMDA 集成 33、IR 契约 17、稳定哈希 11、开发聚合 22）。
+两个真实 PE 的三种 unified 特征与主层逐值一致，训练 IR/NPZ 均成功，分析 worker errors 为空；
+主 D/E 全部特征与修改前实现逐值不变。默认 SMDA 下双接口分数约为 0.454764 / 0.575435，
+每个样本均为 30 个成功模型，MalGraph 参与；仍有 MalConv、InceptionV3、IMCFN 三个已有输入尺寸错误，
+它们不属于 SMDA 提取失败，也没有被以 0.5 占位加入聚合。
+
+本次结果保存在工作区 `test_results/smda_gap_fix_20261109`。
+**未实际构建或启动 Docker 镜像**；安装布局测试是本机的等价模拟，不是容器运行记录。
 
 ## 7. hash() 随机性与 hash 优化
 

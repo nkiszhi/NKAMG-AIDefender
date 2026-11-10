@@ -100,7 +100,9 @@ def generate_irs_batch(pe_ir_pairs, n_workers=4, batch_size=20,
             except Exception: pass
 
         reported = set()
-        for line in stdout.strip().split("\n"):
+        # Windows worker 输出 CRLF；split("\n") 会把 \r 留在路径尾部，
+        # 导致成功文件不属于 pe_set，被误报崩溃甚至删除。
+        for line in stdout.splitlines():
             parts = line.split("\t", 2)
             if len(parts) >= 2 and parts[1] in pe_set:
                 reported.add(parts[1])

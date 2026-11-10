@@ -4,7 +4,7 @@ engine/result_formatter — 扫描结果格式化
 单样本检测结果的标准输出结构。
 """
 import numpy as np
-from engine.virus_namer import generate_virus_name
+from engine.naming import name_for_ml
 
 
 def _to_native(obj):
@@ -68,14 +68,8 @@ def format_scan_result(evidence: dict, identifiers: dict, pack_info: dict, model
     drift_values = drift_evidence[0] if drift_evidence.ndim == 2 else drift_evidence
     drift_evidence_dict = _evidence_to_level_dict(drift_values, level_names)
 
-    virus_name = ""
-    if status > 0:
-        virus_name = generate_virus_name(
-            drift_type=drift_type,
-            per_model_scores=pms,
-            model_names=model_names,
-            sha256=identifiers.get("SHA256", ""),
-        )
+    # 两个开发接口复用生产命名；评分、判定和漂移状态保持原样。
+    virus_name = name_for_ml(score)
 
     # ---- 组装 ScanResult ----
     scan_result = {

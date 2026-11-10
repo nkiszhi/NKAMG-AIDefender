@@ -28,6 +28,7 @@ fi
 
 export PYTHONIOENCODING=utf-8
 export CODEFENDER_ENV=dev
+export CODEFENDER_DISASM_BACKEND="${CODEFENDER_DISASM_BACKEND:-smda}"
 export CODEFENDER_HASH_DB_ENABLED=0
 export CODEFENDER_FUZZY_DB_ENABLED=0
 export CODEFENDER_REQUIRE_HASH_DB=0
@@ -36,6 +37,7 @@ cat <<EOF
 
 [dev] ===== 纯模型模式（本机开发）=====
 [dev] CODEFENDER_ENV=dev  HASH_DB_ENABLED=0  FUZZY_DB_ENABLED=0
+[dev] DISASM_BACKEND=${CODEFENDER_DISASM_BACKEND}
 [dev] 所有样本走 33 模型集成，哈希预检不参与判定
 [dev] 端口 :${PORT}   直接 Ctrl+C 结束
 [dev] ==================================

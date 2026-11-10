@@ -1,5 +1,7 @@
 """
-[DEV 快照] FastAPI service for single-sample inference.
+[DEV] FastAPI service for single-sample and directory inference.
+
+Both prediction endpoints share real-model inference and equal-weight aggregation.
 
 Run:
     uvicorn engine.dev.app:app --host 0.0.0.0 --port 8000
@@ -44,6 +46,7 @@ from feature_extraction.unified import FeatureType, extract_feature
 from models.ensemble import MultiModelEnsemble, _input_dtype
 from engine.inference import compute_identifiers, _is_valid_pe
 from engine.dev.result_formatter import format_scan_result
+from engine.naming import name_for_hash_hit
 
 # nkrepo 哈希库（SHA256 + MD5 预检）：scaner 目录入 sys.path 后顶层导入。
 # 注意目录名用 scaner（非 scanner），避免与 scanner.py 模块同名遮蔽。
@@ -846,6 +849,163 @@ def _extract_views_for_batch(
     return results
 
 
+def _infer_model_scores(
+    ens: MultiModelEnsemble,
+    model_name: str,
+    rows: np.ndarray,
+) -> np.ndarray:
+    """Shared single/batch forward pass; return one float32 score per real row."""
+    model = ens._models[model_name]
+    mtype = ens._model_types.get(model_name, "unknown")
+    if mtype == "numpy":
+        proba = model.predict_proba(np.asarray(rows, dtype=np.float32))
+        scores = np.asarray(proba)[:, 1]
+    elif mtype == "pytorch":
+        if torch is None:
+            raise RuntimeError("torch is not available")
+        x_dtype = torch.long if _input_dtype(model_name) == "long" else torch.float32
+        x_t = torch.tensor(rows, dtype=x_dtype)
+        try:
+            device = next(model.parameters()).device
+        except StopIteration:
+            device = torch.device("cpu")
+        model.eval()
+        dim = rows.shape[1]
+        batch_size = (16 if dim > 100000 else 32 if dim > 10000 else
+                      64 if dim > 2000 else 256 if dim > 500 else 512)
+        chunks = []
+        with torch.no_grad():
+            for start in range(0, len(rows), batch_size):
+                out = model(x_t[start:start + batch_size].to(device))
+                if isinstance(out, tuple):
+                    out = out[0]
+                score = (out.squeeze(-1) if out.shape[-1] == 1 else
+                         torch.softmax(out, dim=1)[:, 1])
+                chunks.append(score.detach().cpu().numpy().reshape(-1))
+        scores = np.concatenate(chunks)
+    else:
+        raise RuntimeError(f"unsupported engine: {mtype}")
+    scores = np.asarray(scores, dtype=np.float32).reshape(-1)
+    if len(scores) != len(rows):
+        raise ValueError(f"invalid score count: {len(scores)} != {len(rows)}")
+    return scores
+
+
+def _predict_per_model_batch(
+    ens: MultiModelEnsemble,
+    sample_views: Dict[int, Tuple[Dict[str, np.ndarray], Dict[str, Dict[str, Any]]]],
+    pe_paths: List[Optional[str]],
+    include_de: bool,
+    malgraph_samples: Optional[Dict[int, Dict[str, Any]]] = None,
+    on_result: Optional[Callable[[int, Dict[str, Any]], None]] = None,
+) -> Dict[int, List[Dict[str, Any]]]:
+    """Batch only real feature rows, keeping per-sample success/error records.
+
+    A missing view never gets a zero-filled row. A failed batch forward pass is
+    retried per row so one bad sample cannot suppress the model for its peers.
+    MalGraph uses the same special pipeline and inclusion rules in both APIs.
+    """
+    results: Dict[int, List[Dict[str, Any]]] = {idx: [] for idx in sample_views}
+    registered = set(ens._model_names)
+
+    def emit(idx: int, item: Dict[str, Any]) -> None:
+        results[idx].append(item)
+        if on_result is not None:
+            on_result(idx, item)
+
+    def emit_score(idx: int, item: Dict[str, Any], score: float) -> None:
+        score = float(np.float32(score))
+        if not np.isfinite(score):
+            item.update(status="error", reason="non_finite_score")
+        else:
+            item.update(status="ok", score=score, prediction=int(score > 0.5))
+        emit(idx, item)
+
+    for vname, model_names in ens.view_groups.items():
+        for mname in model_names:
+            if mname not in registered:
+                continue
+            model = ens._models.get(mname)
+            mtype = ens._model_types.get(mname, "unknown")
+            pending: List[Tuple[int, Dict[str, Any], np.ndarray]] = []
+            for idx in sorted(sample_views):
+                views, view_meta = sample_views[idx]
+                item: Dict[str, Any] = {"model": mname, "view": vname, "engine": mtype}
+                if mtype == "special":
+                    if mname != "MalGraph":
+                        item.update(status="skipped", reason="special_pipeline_not_supported")
+                    elif not include_de:
+                        item.update(status="skipped", reason="MalGraph requires D/E features; set include_de=true")
+                    elif not pe_paths[idx]:
+                        item.update(status="error", reason="missing pe_path for MalGraph inference")
+                    else:
+                        try:
+                            sample = (malgraph_samples or {}).get(idx)
+                            if sample:
+                                _, score, mg_meta = _predict_malgraph_sample(sample)
+                            else:
+                                _, score, mg_meta = _predict_malgraph_single(pe_paths[idx])
+                            item["malgraph_meta"] = mg_meta
+                            emit_score(idx, item, score)
+                            continue
+                        except Exception as exc:
+                            item.update(status="unavailable", reason=str(exc))
+                    emit(idx, item)
+                    continue
+                if mtype == "skip":
+                    item.update(status="skipped", reason="model_pipeline_skipped")
+                    emit(idx, item)
+                    continue
+                x_view = views.get(vname)
+                if x_view is None:
+                    reason = view_meta.get(vname, {}).get("reason", "missing_view_feature")
+                    item.update(status="skipped", reason=f"missing_view_feature:{reason}")
+                    emit(idx, item)
+                    continue
+                if model is None:
+                    item.update(status="unavailable", reason="model_not_loaded")
+                    emit(idx, item)
+                    continue
+                try:
+                    row, dim_note = _coerce_row_dim(
+                        np.asarray(x_view).reshape(-1), _expected_dim_for_model(ens, mname),
+                    )
+                    if dim_note:
+                        item["input_adjust"] = dim_note
+                    pending.append((idx, item, row))
+                except Exception as exc:
+                    item.update(status="error", reason=str(exc))
+                    emit(idx, item)
+
+            # Models without a fixed input dimension may receive differently
+            # sized real rows. Keep such rows in separate, compatible batches.
+            groups: Dict[int, List[Tuple[int, Dict[str, Any], np.ndarray]]] = {}
+            for entry in pending:
+                groups.setdefault(len(entry[2]), []).append(entry)
+            for entries in groups.values():
+                rows = np.vstack([entry[2] for entry in entries])
+                try:
+                    scores = _infer_model_scores(ens, mname, rows)
+                except Exception as exc:
+                    if len(entries) == 1:
+                        idx, item, _ = entries[0]
+                        item.update(status="error", reason=str(exc))
+                        emit(idx, item)
+                        continue
+                    # No 0.5 placeholder: record the real outcome of each retry.
+                    for idx, item, row in entries:
+                        try:
+                            score = _infer_model_scores(ens, mname, row.reshape(1, -1))[0]
+                            emit_score(idx, item, score)
+                        except Exception as row_exc:
+                            item.update(status="error", reason=str(row_exc))
+                            emit(idx, item)
+                else:
+                    for (idx, item, _), score in zip(entries, scores):
+                        emit_score(idx, item, score)
+    return results
+
+
 def _predict_per_model(
     ens: MultiModelEnsemble,
     views: Dict[str, np.ndarray],
@@ -855,134 +1015,14 @@ def _predict_per_model(
     malgraph_sample: Optional[Dict[str, Any]] = None,
     on_result: Optional[Callable[[Dict[str, Any]], None]] = None,
 ) -> List[Dict[str, Any]]:
-    """逐模型预测。
+    """Single-sample adapter for the shared per-model batch inference path."""
+    results = _predict_per_model_batch(
+        ens, {0: (views, view_meta or {})}, [pe_path], include_de,
+        malgraph_samples={0: malgraph_sample} if malgraph_sample else None,
+        on_result=(lambda _idx, item: on_result(item)) if on_result else None,
+    )
+    return results[0]
 
-    malgraph_sample：分阶段扫描（engine/staged_scan.py）已经把 MalGraph 特征
-        抽好了（analysis_worker 出的），直接传进来用，别再抽一遍。
-    on_result：每产出一条结果就回调一次（分阶段扫描要实时推进进度）。
-    """
-    results: List[Dict[str, Any]] = []
-
-    def _emit(item: Dict[str, Any]) -> None:
-        results.append(item)
-        if on_result is not None:
-            on_result(item)
-
-    for vname, model_names in ens.view_groups.items():
-        x_view = views.get(vname)
-        for mname in model_names:
-            model = ens._models.get(mname)  # noqa: SLF001 - existing internal structure
-            mtype = ens._model_types.get(mname, "unknown")  # noqa: SLF001
-
-            item: Dict[str, Any] = {
-                "model": mname,
-                "view": vname,
-                "engine": mtype,
-            }
-
-            if mtype == "special":
-                if mname == "MalGraph":
-                    if not include_de:
-                        item["status"] = "skipped"
-                        item["reason"] = "MalGraph requires D/E features; set include_de=true"
-                        _emit(item)
-                        continue
-                    if not pe_path:
-                        item["status"] = "error"
-                        item["reason"] = "missing pe_path for MalGraph inference"
-                        _emit(item)
-                        continue
-                    try:
-                        if malgraph_sample:
-                            pred, score, mg_meta = _predict_malgraph_sample(
-                                malgraph_sample)
-                        else:
-                            pred, score, mg_meta = _predict_malgraph_single(pe_path)
-                        item["status"] = "ok"
-                        item["score"] = score
-                        item["prediction"] = pred
-                        item["malgraph_meta"] = mg_meta
-                    except Exception as e:
-                        item["status"] = "unavailable"
-                        item["reason"] = str(e)
-                    _emit(item)
-                    continue
-                item["status"] = "skipped"
-                item["reason"] = "special_pipeline_not_supported"
-                _emit(item)
-                continue
-
-            if x_view is None:
-                item["status"] = "skipped"
-                meta = (view_meta or {}).get(vname, {})
-                miss_reason = meta.get("reason", "missing_view_feature")
-                item["reason"] = f"missing_view_feature:{miss_reason}"
-                _emit(item)
-                continue
-
-            if model is None:
-                item["status"] = "unavailable"
-                item["reason"] = "model_not_loaded"
-                _emit(item)
-                continue
-
-            x_model = x_view
-            expected_model_dim = _expected_dim_for_model(ens, mname)
-            if expected_model_dim is not None:
-                adj_row, dim_note = _coerce_row_dim(
-                    np.asarray(x_view).reshape(-1),
-                    expected_model_dim,
-                )
-                x_model = adj_row.reshape(1, -1)
-                if dim_note:
-                    item["input_adjust"] = dim_note
-
-            try:
-                if mtype == "numpy":
-                    x_np = np.asarray(x_model, dtype=np.float32)
-                    proba = model.predict_proba(x_np)
-                    score = float(proba[0, 1])
-                    pred = int(score > 0.5)
-                elif mtype == "pytorch":
-                    if torch is None:
-                        raise RuntimeError("torch is not available")
-                    x_dtype = torch.long if _input_dtype(mname) == "long" else torch.float32
-                    x_t = torch.tensor(x_model, dtype=x_dtype)
-
-                    try:
-                        device = next(model.parameters()).device
-                    except StopIteration:
-                        device = torch.device("cpu")
-
-                    model.eval()
-                    with torch.no_grad():
-                        out = model(x_t.to(device))
-                        if isinstance(out, tuple):
-                            out = out[0]
-                        if out.shape[-1] == 1:
-                            score = float(out.squeeze(-1).detach().cpu().numpy()[0])
-                        else:
-                            score = float(torch.softmax(out, dim=1)[:, 1].detach().cpu().numpy()[0])
-                        pred = int(score > 0.5)
-                else:
-                    raise RuntimeError(f"unsupported engine: {mtype}")
-
-                item["status"] = "ok"
-                item["score"] = score
-                item["prediction"] = pred
-            except Exception as e:
-                item["status"] = "error"
-                item["reason"] = str(e)
-
-            _emit(item)
-
-    return results
-
-
-
-# =============================================================================
-#  5. MD5 校验工具函数
-# =============================================================================
 
 def _file_md5(path: str) -> str:
     """计算文件 MD5 哈希，用于模型完整性校验。"""
@@ -1622,12 +1662,12 @@ def _build_hash_hit_result(md5_hex: str, sha256_hex: str, crc32: str,
         "Status": 1, "StatusLabel": "Malicious", "IsMalicious": True, "Score": 1.0,
         "Source": source,
         "ScanResult": {
-            "VirusName": hit.get("name") or "KnownMalware",  # v4 库不存名称, 命中统一显示通用标签
+            "VirusName": name_for_hash_hit(),  # 与生产一致，不暴露库内签名名
             "Packed": {"IsPacked": False, "PackerName": "", "IsArchive": False, "ArchiveName": ""},
             "PerModelScores": {}, "PerModelPreds": {},
             "DriftEvidence": {"surface": 0.0, "structure": 0.0, "global": 0.0},
             "SampleDriftType": "normal", "AnomalyScore": 0.0, "IsDriftCandidate": False,
-            # HashMatch 不暴露 name/size —— 双哈希库 v4 起不存检出名称 (统一 KnownMalware);
+            # HashMatch 不暴露 name/size —— 双哈希库 v4 起不存检出名称 (统一 Malicious);
             # fuzzy 库虽存 name/size 但命中即恶意, 大小无比对价值, 口径与双哈希库一致。
             # fuzzy 命中额外带 fuzzy_type/sha256 (关联的原始样本哈希) 透出。
             "HashMatch": {k: v for k, v in hit.items() if k not in ("name", "size")},
@@ -2422,6 +2462,79 @@ def admin_config_set(payload: Dict[str, Any] = Body(default={})) -> Dict[str, An
 # 单文件推理核心函数（供 /predict-single 和 /predict-directory 共用）
 # ──────────────────────────────────────────────────────────────────
 
+def _format_model_result(
+    pe_path: str,
+    file_name: str,
+    file_size: int,
+    ens: MultiModelEnsemble,
+    per_model: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """The sole aggregation/formatting policy for both development endpoints."""
+    by_name = {item["model"]: item for item in per_model}
+    ok_results = [by_name[name] for name in ens._model_names
+                  if name in by_name and by_name[name].get("status") == "ok"]
+    if not ok_results:
+        raise RuntimeError("no_valid_model_predictions")
+    model_names = [item["model"] for item in ok_results]
+    scores_arr = np.asarray([item["score"] for item in ok_results], dtype=np.float32).reshape(1, -1)
+    if not np.isfinite(scores_arr).all():
+        raise ValueError("non_finite_model_scores")
+    preds_arr = (scores_arr > 0.5).astype(np.int64)
+    ens_score_arr = scores_arr.mean(axis=1)
+    ens_pred_arr = (ens_score_arr > 0.5).astype(int)
+
+    identifiers = compute_identifiers(pe_path)
+    identifiers["FileName"] = file_name
+    identifiers["FileSize"] = file_size
+    from engine.packer_detector import detect_packer
+    pack_info = detect_packer(pe_path)
+
+    drift_ev = {
+        "drift_evidence": np.zeros((1, 3)),
+        "sample_drift_type": np.array(["none"], dtype=object),
+        "anomaly_score": np.zeros(1),
+        "is_drift_candidate": np.zeros(1, dtype=bool),
+    }
+    # SDD's baseline refers to registry column indices. Compact/partial model
+    # matrices cannot be scored against it without inventing missing scores.
+    if model_names == list(ens._model_names):
+        try:
+            drift_ev.update(_get_sdd_engine().score_samples(scores_arr))
+        except Exception:
+            pass  # Existing fallback: drift evidence is optional, not a vote.
+
+    total_models = len(per_model)
+    ok_count = len(ok_results)
+    skipped_count = sum(item.get("status") == "skipped" for item in per_model)
+    malicious_votes = int(preds_arr.sum())
+    model_stats = {
+        "TotalModels": total_models,
+        "OkModels": ok_count,
+        "SkippedModels": skipped_count,
+        "ErrorModels": total_models - ok_count - skipped_count,
+        "MaliciousVotes": malicious_votes,
+        "BenignVotes": ok_count - malicious_votes,
+        "AgreementRate": round(malicious_votes / ok_count, 4),
+        "EnsembleScore": round(float(ens_score_arr[0]), 6),
+        "EnsemblePred": int(ens_pred_arr[0]),
+        "ScoreRange": [round(float(scores_arr.min()), 4), round(float(scores_arr.max()), 4)],
+        "AggregationMethod": "equal_weight_mean",
+        "DecisionThreshold": 0.5,
+        "AggregatedModels": model_names,
+        "ExcludedModels": {item["model"]: item.get("reason", item.get("status"))
+                           for item in per_model if item.get("status") != "ok"},
+    }
+    evidence = {
+        "predictions": ens_pred_arr,
+        "scores": ens_score_arr,
+        "per_model_scores": scores_arr,
+        "per_model_preds": preds_arr,
+        "model_stats": model_stats,
+        **drift_ev,
+    }
+    return format_scan_result(evidence, identifiers, pack_info, model_names)
+
+
 def _scan_single_pe(
     pe_path: str,
     file_name: str,
@@ -2430,106 +2543,19 @@ def _scan_single_pe(
     expected_view_dims: Dict[str, int],
     include_de: bool = True,
 ) -> Dict[str, Any]:
-    """对单个 PE 文件执行完整推理链路，返回 format_scan_result 格式的 dict。"""
-    # PE文件格式验证
+    """Extract, infer and apply the same final policy as directory scanning."""
     if not _is_valid_pe(pe_path):
         raise ValueError("文件结构不对，或者文件格式损坏")
-
     views, view_meta = _extract_views_for_single_sample(
         pe_path=pe_path,
         required_views=list(ens.view_groups.keys()),
         include_de=include_de,
         expected_view_dims=expected_view_dims,
     )
-
     per_model = _predict_per_model(
         ens, views, view_meta=view_meta, pe_path=pe_path, include_de=include_de,
     )
-    # ── Build (1, K) matrices from flat per_model list ──
-    ok_results = [r for r in per_model if r.get("status") == "ok"]
-    K = len(ok_results)
-    model_names = [r["model"] for r in ok_results]
-    scores_arr = np.array(
-        [r["score"] for r in ok_results], dtype=np.float32,
-    ).reshape(1, K) if K > 0 else np.zeros((1, 1), dtype=np.float32)
-    preds_arr = np.array(
-        [r["prediction"] for r in ok_results], dtype=np.int64,
-    ).reshape(1, K) if K > 0 else np.zeros((1, 1), dtype=int)
-
-    # ── Ensemble prediction (weighted average, aligns with run_all.py) ──
-    ens_model_set = set(ens._model_names)
-    ens_ok = [r for r in ok_results if r["model"] in ens_model_set]
-    if ens_ok:
-        ok_scores = np.array([r["score"] for r in ens_ok], dtype=np.float32)
-        ens_score_arr = np.array([ok_scores.mean()], dtype=np.float32)
-        ens_pred_arr = np.array([int(ens_score_arr[0] > 0.5)], dtype=int)
-    else:
-        ens_pred_arr = np.array([0], dtype=int)
-        ens_score_arr = np.array([0.0], dtype=np.float32)
-
-    # ── File identifiers + packer detection ──
-    identifiers = compute_identifiers(pe_path)
-    identifiers["FileName"] = file_name
-    identifiers["FileSize"] = file_size
-    from engine.packer_detector import detect_packer
-    pack_info = detect_packer(pe_path)
-
-    # ── SDD drift evidence ──
-    try:
-        sdd = _get_sdd_engine()
-        drift_ev = sdd.score_samples(scores_arr)
-        drift_evidence = drift_ev.get("drift_evidence", np.zeros(3))
-        sample_drift_type = drift_ev.get("sample_drift_type", "normal")
-        anomaly_score = drift_ev.get("anomaly_score", 0.0)
-        is_drift_candidate = drift_ev.get("is_drift_candidate", False)
-    except Exception:
-        drift_evidence = np.zeros(3)
-        sample_drift_type = "normal"
-        anomaly_score = 0.0
-        is_drift_candidate = False
-
-    # ── Model voting stats ──
-    total_models = len(per_model)
-    ok_count = len(ok_results)
-    skipped_count = sum(1 for r in per_model if r.get("status") == "skipped")
-    error_count = total_models - ok_count - skipped_count
-    malicious_votes = sum(1 for r in ok_results if r.get("prediction") == 1)
-    benign_votes = ok_count - malicious_votes
-    agreement_rate = malicious_votes / ok_count if ok_count > 0 else 0.0
-    ok_scores = [r["score"] for r in ok_results if "score" in r]
-
-    model_stats = {
-        "TotalModels": total_models,
-        "OkModels": ok_count,
-        "SkippedModels": skipped_count,
-        "ErrorModels": error_count,
-        "MaliciousVotes": malicious_votes,
-        "BenignVotes": benign_votes,
-        "AgreementRate": round(agreement_rate, 4),
-        "EnsembleScore": round(float(ens_score_arr[0]), 6) if K > 0 else 0.0,
-        "EnsemblePred": int(ens_pred_arr[0]) if K > 0 else 0,
-        "ScoreRange": [round(min(ok_scores), 4), round(max(ok_scores), 4)] if ok_scores else [0.0, 0.0],
-    }
-
-    # ── Build evidence dict for format_scan_result ──
-    evidence = {
-        "predictions": ens_pred_arr,
-        "scores": ens_score_arr,
-        "per_model_scores": scores_arr,
-        "per_model_preds": preds_arr,
-        "drift_evidence": drift_evidence,
-        "sample_drift_type": sample_drift_type,
-        "anomaly_score": anomaly_score,
-        "is_drift_candidate": is_drift_candidate,
-        "model_stats": model_stats,
-    }
-
-    return format_scan_result(
-        evidence=evidence,
-        identifiers=identifiers,
-        pack_info=pack_info,
-        model_names=model_names,
-    )
+    return _format_model_result(pe_path, file_name, file_size, ens, per_model)
 
 # 7. 同步包装器：使用 _tmp_upload 安全创建临时文件
 def _scan_single_pe_wrapper(
@@ -2634,340 +2660,56 @@ _PE_EXTENSIONS = {".exe", ".dll", ".sys", ".ocx", ".scr", ".bat", ".cmd",
 MAX_BATCH_FILES = int(os.environ.get("CODEFENDER_MAX_BATCH_FILES", 500))
 
 
-def _build_batch_views(
-    sample_views: Dict[int, Tuple[Dict[str, np.ndarray], Dict[str, Dict[str, Any]]]],
-    view_names: List[str],
-) -> Tuple[Dict[str, np.ndarray], Dict[int, Dict[str, Dict[str, Any]]]]:
-    """
-    Build batch view matrices from per-sample views.
-    
-    Args:
-        sample_views: Dict mapping sample indices to (views_dict, view_meta_dict)
-        view_names: List of view names to build batch matrices for
-    
-    Returns:
-        Tuple of (batch_views, per_sample_meta) where:
-        - batch_views: Dict mapping view names to (N, dim) numpy arrays
-        - per_sample_meta: Dict mapping sample indices to their view metadata
-    """
-    if not sample_views:
-        return {}, {}
-    
-    batch_views: Dict[str, np.ndarray] = {}
-    per_sample_meta: Dict[int, Dict[str, Dict[str, Any]]] = {}
-    
-    # Get sorted sample indices
-    sorted_indices = sorted(sample_views.keys())
-    
-    # Extract metadata for all samples (do once, not per view)
-    for idx in sorted_indices:
-        _, view_meta = sample_views[idx]
-        per_sample_meta[idx] = view_meta
-    
-    # First pass: determine dimension for each view from available samples
-    view_dims: Dict[str, int] = {}
-    for vname in view_names:
-        for idx in sorted_indices:
-            views, _ = sample_views[idx]
-            if vname in views:
-                view_dims[vname] = views[vname].reshape(-1).shape[0]
-                break
-        # B-fix: 整批都没有该视角（如 include_de=false 时的 D/E 视角）→
-        # 不再落 2381 全零兜底矩阵喂模型，直接跳过构建。该视角对应的
-        # 模型在 predict_all 中因视角缺席而整轮不参与，由聚合掩码排除。
-        if vname not in view_dims and vname == "V1_byte":
-            view_dims[vname] = RAW_LEN
-    
-    # Second pass: build batch matrix for each view
-    for vname in view_names:
-        if vname not in view_dims:
-            continue  # 整批缺席的视角：不构建假矩阵，对应模型由聚合掩码排除
-        view_rows: List[np.ndarray] = []
-        expected_dim = view_dims[vname]
-        
-        for idx in sorted_indices:
-            views, _ = sample_views[idx]
-            
-            if vname in views:
-                # View exists for this sample
-                row = views[vname].reshape(-1)
-                # Ensure consistent dimension
-                if row.shape[0] != expected_dim:
-                    if row.shape[0] < expected_dim:
-                        # Pad
-                        padded = np.zeros(expected_dim, dtype=np.float32)
-                        padded[:row.shape[0]] = row
-                        view_rows.append(padded)
-                    else:
-                        # Truncate
-                        view_rows.append(row[:expected_dim])
-                else:
-                    view_rows.append(row)
-            else:
-                # View missing - use zero-filled placeholder
-                view_rows.append(np.zeros(expected_dim, dtype=np.float32))
-        
-        if view_rows:
-            # Stack into (N, dim) batch matrix
-            batch_views[vname] = np.vstack(view_rows).astype(np.float32)
-    
-    return batch_views, per_sample_meta
-
-
-def _format_batch_results(
-    pe_paths: List[str],
-    batch_predictions: np.ndarray,
-    batch_scores: np.ndarray,
-    per_model_predictions: np.ndarray,
-    per_model_scores: np.ndarray,
-    model_names: List[str],
-    per_sample_meta: Dict[int, Dict[str, Dict[str, Any]]],
-    valid_indices: List[int],
-) -> List[Dict[str, Any]]:
-    """
-    Format batch inference results into per-sample result dictionaries.
-    
-    Args:
-        pe_paths: List of all PE file paths
-        batch_predictions: (N,) or (N, 1) ensemble predictions
-        batch_scores: (N,) or (N, 1) ensemble scores
-        per_model_predictions: (N, K) per-model predictions
-        per_model_scores: (N, K) per-model scores
-        model_names: List of model names (length K)
-        per_sample_meta: Dict mapping sample indices to view metadata
-        valid_indices: List of sample indices that were successfully processed
-    
-    Returns:
-        List of formatted result dictionaries
-    """
-    results: List[Dict[str, Any]] = []
-    
-    # Ensure predictions and scores are at least 1D
-    batch_predictions = np.atleast_1d(batch_predictions).flatten()
-    batch_scores = np.atleast_1d(batch_scores).flatten()
-    
-    for batch_idx, sample_idx in enumerate(valid_indices):
-        fpath = pe_paths[sample_idx]
-        fname = os.path.basename(fpath)
-        
-        try:
-            file_size = os.path.getsize(fpath)
-            
-            # Extract this sample's predictions and scores (handle 1D arrays)
-            ens_pred = int(batch_predictions[batch_idx])
-            ens_score = float(batch_scores[batch_idx])
-            sample_per_model_preds = per_model_predictions[batch_idx, :].reshape(1, -1)
-            sample_per_model_scores = per_model_scores[batch_idx, :].reshape(1, -1)
-            
-            # Get identifiers and packer info
-            identifiers = compute_identifiers(fpath)
-            identifiers["FileName"] = fname
-            identifiers["FileSize"] = file_size
-            
-            from engine.packer_detector import detect_packer
-            pack_info = detect_packer(fpath)
-            
-            # SDD drift evidence (placeholder for batch - would need batch SDD implementation)
-            drift_evidence = np.zeros(3)
-            sample_drift_type = "normal"
-            anomaly_score = 0.0
-            is_drift_candidate = False
-            
-            # Model voting stats
-            total_models = len(model_names)
-            malicious_votes = int(np.sum(sample_per_model_preds > 0.5))
-            benign_votes = total_models - malicious_votes
-            agreement_rate = malicious_votes / total_models if total_models > 0 else 0.0
-            
-            model_stats = {
-                "TotalModels": total_models,
-                "OkModels": total_models,
-                "SkippedModels": 0,
-                "ErrorModels": 0,
-                "MaliciousVotes": malicious_votes,
-                "BenignVotes": benign_votes,
-                "AgreementRate": round(agreement_rate, 4),
-                "EnsembleScore": round(ens_score, 6),
-                "EnsemblePred": ens_pred,
-                "ScoreRange": [
-                    round(float(np.min(sample_per_model_scores)), 4),
-                    round(float(np.max(sample_per_model_scores)), 4)
-                ],
-            }
-            
-            # Build evidence dict
-            evidence = {
-                "predictions": np.array([[ens_pred]]),
-                "scores": np.array([[ens_score]]),
-                "per_model_scores": sample_per_model_scores,
-                "per_model_preds": sample_per_model_preds,
-                "drift_evidence": drift_evidence,
-                "sample_drift_type": sample_drift_type,
-                "anomaly_score": anomaly_score,
-                "is_drift_candidate": is_drift_candidate,
-                "model_stats": model_stats,
-            }
-            
-            result = format_scan_result(
-                evidence=evidence,
-                identifiers=identifiers,
-                pack_info=pack_info,
-                model_names=model_names,
-            )
-            result["FilePath"] = fpath
-            results.append(result)
-            
-        except Exception as e:
-            results.append({
-                "FileName": fname,
-                "FilePath": fpath,
-                "Status": -1,
-                "StatusLabel": "Error",
-                "IsMalicious": False,
-                "Error": f"format_result_failed: {e}",
-            })
-    
-    return results
-
-
 async def _batch_scan_samples(
     pe_paths: List[str],
     ens: MultiModelEnsemble,
     expected_view_dims: Dict[str, int],
     include_de: bool = False,
 ) -> List[Dict[str, Any]]:
-    """
-    Batch process multiple PE samples with parallel feature extraction and batch inference.
-    
-    Args:
-        pe_paths: List of PE file paths to process
-        ens: MultiModelEnsemble instance
-        expected_view_dims: Dict mapping view names to expected dimensions
-        include_de: Whether to extract D/E features (BinaryNinja disassembly/graph)
-    
-    Returns:
-        List of formatted result dictionaries (one per sample)
-    """
-    loop = asyncio.get_event_loop()
-    
-    # Step 1: Parallel feature extraction
+    """Parallel feature extraction + real-row batch inference + shared policy."""
+    loop = asyncio.get_running_loop()
     sample_views = await loop.run_in_executor(
-        None,
-        _extract_views_for_batch,
-        pe_paths,
-        list(ens.view_groups.keys()),
-        include_de,
-        expected_view_dims,
+        None, _extract_views_for_batch, pe_paths,
+        list(ens.view_groups.keys()), include_de, expected_view_dims,
     )
-    
-    # Handle completely failed samples
-    valid_indices = sorted(sample_views.keys())
-    if not valid_indices:
-        # All samples failed - return error results
-        return [{
-            "FileName": os.path.basename(fpath),
-            "FilePath": fpath,
-            "Status": -1,
-            "StatusLabel": "Error",
-            "IsMalicious": False,
-            "Error": "feature_extraction_failed",
-        } for fpath in pe_paths]
-    
-    # Step 2: Build batch view matrices
-    batch_views, per_sample_meta = _build_batch_views(
-        sample_views,
-        list(ens.view_groups.keys()),
-    )
-    
     try:
-        per_model_predictions, per_model_scores = await loop.run_in_executor(
-            None,
-            ens.predict_all,
-            batch_views,
-        )
-        
-        # Step 4: Ensemble prediction (B3/B-fix 掩码聚合)
-        # 排除三类无效槽位，避免 0.5 常量把集成分数拉向 0.5：
-        #   a) 模型对象缺失 / special / skip（valid_model_mask 口径）
-        #   b) 本轮视角整批缺席的模型（如 include_de=false 时的 D/E 模型，
-        #      predict_all 从未给它们赋分，_scores 里是 0.5 初值）
-        valid_model_of_view = {}
-        for vname, mnames in ens.view_groups.items():
-            for mname in mnames:
-                valid_model_of_view[mname] = vname
-        available_views = set(batch_views.keys())
-
-        valid_k: List[int] = []
-        excluded: Dict[str, str] = {}
-        for k, mname in enumerate(ens._model_names):
-            # 先看类型再对象（special 槽位 load() 后对象为 None，但语义是 special）
-            if ens._model_types.get(mname) in ("special", "skip"):
-                excluded[mname] = "special_pipeline"
-                continue
-            if ens._models.get(mname) is None:
-                excluded[mname] = "model_not_loaded"
-                continue
-            vname = valid_model_of_view.get(mname)
-            if vname is not None and vname not in available_views:
-                excluded[mname] = f"view_unavailable:{vname}"
-                continue
-            valid_k.append(k)
-
-        if valid_k:
-            valid_scores = per_model_scores[:, valid_k]       # (N, K_valid)
-            batch_scores = valid_scores.mean(axis=1)           # 等权平均
-            batch_predictions = (batch_scores > 0.5).astype(int)
-            if excluded:
-                print(f"  [集成掩码] 本次批量排除 {len(excluded)} 个模型: "
-                      f"{ {m: r for m, r in list(excluded.items())[:8]} }"
-                      + (" ..." if len(excluded) > 8 else ""))
-        else:
-            N_batch = per_model_scores.shape[0]
-            batch_predictions = np.zeros(N_batch, dtype=int)
-            batch_scores = np.full(N_batch, 0.5, dtype=np.float32)
-
-        # Step 5: Format results
-        results = _format_batch_results(
-            pe_paths=pe_paths,
-            batch_predictions=batch_predictions,
-            batch_scores=batch_scores,
-            per_model_predictions=per_model_predictions,
-            per_model_scores=per_model_scores,
-            model_names=ens._model_names,
-            per_sample_meta=per_sample_meta,
-            valid_indices=valid_indices,
-        )
-        
-        # Add back failed samples
-        all_results: List[Dict[str, Any]] = []
-        result_idx = 0
-        for i, fpath in enumerate(pe_paths):
-            if i in valid_indices:
-                all_results.append(results[result_idx])
-                result_idx += 1
-            else:
-                all_results.append({
-                    "FileName": os.path.basename(fpath),
-                    "FilePath": fpath,
-                    "Status": -1,
-                    "StatusLabel": "Error",
-                    "IsMalicious": False,
-                    "Error": "feature_extraction_failed",
-                })
-        
-        return all_results
-        
-    except Exception as e:
-        # Batch inference failed - return errors for all samples
-        logging.error("Batch inference failed: %s", e)
+        per_sample_results = (await loop.run_in_executor(
+            None, _predict_per_model_batch, ens, sample_views, pe_paths, include_de,
+        )) if sample_views else {}
+    except Exception as exc:
+        logging.exception("Batch inference failed: %s", exc)
         return [{
-            "FileName": os.path.basename(fpath),
-            "FilePath": fpath,
-            "Status": -1,
-            "StatusLabel": "Error",
-            "IsMalicious": False,
-            "Error": f"batch_inference_failed: {e}",
+            "FileName": os.path.basename(fpath), "FilePath": fpath,
+            "Status": -1, "StatusLabel": "Error", "IsMalicious": False,
+            "Error": f"batch_inference_failed: {exc}",
         } for fpath in pe_paths]
+
+    def format_results() -> List[Dict[str, Any]]:
+        results = []
+        for idx, fpath in enumerate(pe_paths):
+            fname = os.path.basename(fpath)
+            if idx not in sample_views:
+                result = {
+                    "FileName": fname, "FilePath": fpath,
+                    "Status": -1, "StatusLabel": "Error", "IsMalicious": False,
+                    "Error": "feature_extraction_failed",
+                }
+            else:
+                try:
+                    result = _format_model_result(
+                        fpath, fname, os.path.getsize(fpath), ens, per_sample_results[idx],
+                    )
+                    result["FilePath"] = fpath
+                except Exception as exc:
+                    result = {
+                        "FileName": fname, "FilePath": fpath,
+                        "Status": -1, "StatusLabel": "Error", "IsMalicious": False,
+                        "Error": f"format_result_failed: {exc}",
+                    }
+            results.append(result)
+        return results
+
+    return await loop.run_in_executor(None, format_results)
 
 
 @app.post("/predict-directory")

@@ -26,12 +26,14 @@
 
 依赖:
     pefile       — EMBER 特征提取 (pip install pefile)
-    binaryninja  — 操作码/图特征 (商业许可证)
+    smda / lief / capstone — 操作码/图特征（默认 SMDA，ProgramIR）
+    binaryninja  — 可选旧后端（CODEFENDER_DISASM_BACKEND=bn，需商业许可证）
     matplotlib   — 图像可视化 (pip install matplotlib)
 """
 import os
 import math
 import hashlib
+import json
 import numpy as np
 import torch
 from enum import Enum, auto
@@ -73,11 +75,11 @@ class FeatureType(Enum):
     EMBER_STRING = auto()        # FloatTensor(104,)  StringInfo
     EMBER_METADATA = auto()      # FloatTensor(158,)  ExportInfo+DataDirs
 
-    # 操作码/汇编 (需要 BinaryNinja)
+    # 操作码/汇编 (ProgramIR，默认 SMDA)
     OPCODE_SEQ = auto()          # LongTensor(L,) 操作码索引
     FUNC_EMBEDDINGS = auto()     # FloatTensor(6144,) 48函数×128维嵌入
 
-    # 图结构 (需要 BinaryNinja)
+    # 图结构 (ProgramIR，默认 SMDA)
     PYG_GRAPH = auto()           # torch_geometric Data 对象
     GRAPH_STAT = auto()          # FloatTensor(22,) CFG+CallGraph 统计
 
@@ -86,6 +88,28 @@ class FeatureType(Enum):
     COLOR_IMAGE = auto()         # FloatTensor(3, H, W) jet colormap RGB
     MARKOV_IMAGE = auto()        # FloatTensor(1, 256, 256) Markov 转移矩阵
     ENTROPY_IMAGE = auto()       # FloatTensor(1, 256, 256) Shannon 熵热图
+
+
+# IR 特征的口径与主特征层对齐；升级时改版本，旧 BN/占位缓存不可复用。
+_IR_FEATURE_SCHEMA = "unified-ir/1"
+_IR_FEATURE_TYPES = frozenset((FeatureType.OPCODE_SEQ, FeatureType.FUNC_EMBEDDINGS,
+                               FeatureType.GRAPH_STAT, FeatureType.PYG_GRAPH))
+
+
+def _ir_modules():
+    """惰性导入，兼容包导入及旧训练脚本的直接文件加载。"""
+    if __package__:
+        from . import backend, features_from_ir
+        from .ir import SCHEMA_VERSION
+    else:
+        import sys
+        here = os.path.dirname(os.path.abspath(__file__))
+        if here not in sys.path:
+            sys.path.insert(0, here)
+        import backend
+        import features_from_ir
+        from ir import SCHEMA_VERSION
+    return backend, features_from_ir, SCHEMA_VERSION
 
 
 # ═══════════════════════════════════════
@@ -136,6 +160,17 @@ def _cache_path(pe_path, feature_type, suffix="npy"):
     os.makedirs(_CACHE_DIR, exist_ok=True)
     fh = _file_sha256(pe_path)
     return os.path.join(_CACHE_DIR, f"{fh}_{feature_type.name}.{suffix}")
+
+
+def _ir_cache_path(pe_path, feature_type, **params):
+    """按后端、IR/特征版本和输出参数隔离；其他特征继续使用原缓存键。"""
+    backend, _, ir_schema = _ir_modules()
+    identity = {"backend": backend.current_backend(), "ir_schema": ir_schema,
+                "feature_schema": _IR_FEATURE_SCHEMA, "params": params}
+    token = hashlib.sha256(json.dumps(identity, sort_keys=True).encode("utf-8")).hexdigest()[:24]
+    base = _cache_path(pe_path, feature_type)
+    stem, ext = os.path.splitext(base)
+    return "%s_ir_%s%s" % (stem, token, ext)
 
 
 def set_cache_dir(path):
@@ -298,192 +333,48 @@ def _extract_ember_subset(pe_path, feature_type):
 
 
 # ═══════════════════════════════════════
-#  3. 操作码序列提取 (BinaryNinja)
+#  3–5. 操作码 / 函数嵌入 / 图统计 (ProgramIR)
 # ═══════════════════════════════════════
 
 def _extract_opcode_seq(pe_path, seq_len):
-    """使用 BinaryNinja 提取操作码 token 序列"""
-    cache = _cache_path(pe_path, FeatureType.OPCODE_SEQ)
+    """与 D01 同口径；提取失败直接抛错，禁止原始字节近似。"""
+    backend, features, _ = _ir_modules()
+    seq_len = features._positive_size(seq_len, "seq_len")
+    cache = _ir_cache_path(pe_path, FeatureType.OPCODE_SEQ, seq_len=seq_len)
     if os.path.exists(cache):
-        return torch.tensor(np.load(cache), dtype=torch.long)
+        return torch.tensor(np.load(cache, allow_pickle=False), dtype=torch.long)
+    ir = backend.build_ir_for_features(pe_path)
+    result = features.opcode_sequence(ir, seq_len)
+    np.save(cache, result)
+    return torch.tensor(result, dtype=torch.long)
 
-    opcodes = np.zeros(seq_len, dtype=np.int64)
-    try:
-        from binaryninja import BinaryViewType
-        bv = BinaryViewType["PE"].open(pe_path)
-        if bv is None:
-            return torch.tensor(opcodes, dtype=torch.long)
-        bv.update_analysis_and_wait()
-
-        idx = 0
-        for func in bv.functions:
-            for block in func.basic_blocks:
-                for tokens, addr, size in block:
-                    # 操作码 hash → [1, 511] 索引空间
-                    if len(tokens) > 0:
-                        op_text = tokens[0].text.strip().lower()
-                        op_hash = stable_hash(op_text) % 511 + 1
-                        opcodes[idx] = op_hash
-                        idx += 1
-                        if idx >= seq_len:
-                            break
-                if idx >= seq_len:
-                    break
-            if idx >= seq_len:
-                break
-
-    except ImportError:
-        # BinaryNinja 不可用: 用字节值近似操作码
-        with open(pe_path, "rb") as f:
-            raw = f.read(seq_len)
-        for i, b in enumerate(raw[:seq_len]):
-            opcodes[i] = b % 511 + 1
-    except Exception as e:
-        print(f"[操作码提取失败] {pe_path}: {e}")
-
-    np.save(cache, opcodes)
-    return torch.tensor(opcodes, dtype=torch.long)
-
-
-# ═══════════════════════════════════════
-#  4. 函数级嵌入提取 (BinaryNinja)
-# ═══════════════════════════════════════
 
 def _extract_func_embeddings(pe_path, n_funcs=48, embed_dim=128):
-    """提取函数级嵌入: 每个函数用其基本块特征的均值表示"""
-    cache = _cache_path(pe_path, FeatureType.FUNC_EMBEDDINGS)
+    """与 D07 同口径（L2），不再生成随机占位；旧 L1 权重需配套重训。"""
+    backend, features, _ = _ir_modules()
+    n_funcs = features._positive_size(n_funcs, "n_funcs")
+    embed_dim = features._positive_size(embed_dim, "embed_dim")
+    cache = _ir_cache_path(pe_path, FeatureType.FUNC_EMBEDDINGS,
+                           n_funcs=n_funcs, embed_dim=embed_dim)
     if os.path.exists(cache):
-        return torch.tensor(np.load(cache), dtype=torch.float32)
-
-    result = np.zeros(n_funcs * embed_dim, dtype=np.float32)
-
-    try:
-        from binaryninja import BinaryViewType
-        bv = BinaryViewType["PE"].open(pe_path)
-        if bv is None:
-            return torch.tensor(result, dtype=torch.float32)
-        bv.update_analysis_and_wait()
-
-        for i, func in enumerate(bv.functions[:n_funcs]):
-            # 每个函数: 统计指令类别分布作为嵌入
-            func_vec = np.zeros(embed_dim, dtype=np.float32)
-            n_instrs = 0
-            for block in func.basic_blocks:
-                for tokens, addr, size in block:
-                    if len(tokens) > 0:
-                        # 用操作码文本的 hash 分配到 embed_dim 维度
-                        op_text = tokens[0].text.strip().lower()
-                        dim_idx = stable_hash(op_text) % embed_dim
-                        func_vec[dim_idx] += 1.0
-                        n_instrs += 1
-
-            if n_instrs > 0:
-                func_vec /= n_instrs  # 归一化
-
-            start = i * embed_dim
-            result[start:start + embed_dim] = func_vec
-
-    except ImportError:
-        # BinaryNinja 不可用: 用随机但确定性的值填充
-        rng = np.random.RandomState(stable_seed(pe_path))
-        result = rng.randn(n_funcs * embed_dim).astype(np.float32) * 0.01
-    except Exception as e:
-        print(f"[函数嵌入提取失败] {pe_path}: {e}")
-
+        return torch.tensor(np.load(cache, allow_pickle=False), dtype=torch.float32)
+    ir = backend.build_ir_for_features(pe_path)
+    result = features.function_embeddings(ir, n_funcs, embed_dim)
     np.save(cache, result)
     return torch.tensor(result, dtype=torch.float32)
 
 
-# ═══════════════════════════════════════
-#  5. 图统计特征提取 (BinaryNinja)
-# ═══════════════════════════════════════
-
 def _extract_graph_stat(pe_path):
-    """提取 CFG + CallGraph 22维统计特征"""
-    cache = _cache_path(pe_path, FeatureType.GRAPH_STAT)
+    """与主图统计视图一致：E03（12）+ E04（10），不再用 EMBER 近似。"""
+    backend, features, _ = _ir_modules()
+    cache = _ir_cache_path(pe_path, FeatureType.GRAPH_STAT)
     if os.path.exists(cache):
-        return torch.tensor(np.load(cache), dtype=torch.float32)
-
-    stats = np.zeros(22, dtype=np.float32)
-
-    try:
-        from binaryninja import BinaryViewType, SymbolType
-        bv = BinaryViewType["PE"].open(pe_path)
-        if bv is None:
-            return torch.tensor(stats, dtype=torch.float32)
-        bv.update_analysis_and_wait()
-
-        funcs = list(bv.functions)
-        n_funcs = len(funcs)
-        extern_syms = bv.get_symbols_of_type(SymbolType.ImportAddressSymbol)
-        n_external = len(extern_syms)
-
-        # CFG 统计
-        total_blocks, total_edges = 0, 0
-        max_blocks = 0
-        for func in funcs:
-            n_blocks = len(func.basic_blocks)
-            n_edges = sum(len(b.outgoing_edges) for b in func.basic_blocks)
-            total_blocks += n_blocks
-            total_edges += n_edges
-            max_blocks = max(max_blocks, n_blocks)
-
-        avg_blocks = total_blocks / max(n_funcs, 1)
-        density = total_edges / max(total_blocks * (total_blocks - 1), 1)
-
-        # CallGraph 统计
-        n_internal_calls = 0
-        fan_outs = []
-        for func in funcs:
-            callees = set()
-            for block in func.basic_blocks:
-                for edge in block.outgoing_edges:
-                    callees.add(edge.target.start)
-            fan_out = len(callees)
-            fan_outs.append(fan_out)
-            n_internal_calls += fan_out
-
-        avg_fan_out = np.mean(fan_outs) if fan_outs else 0
-        max_fan_out = max(fan_outs) if fan_outs else 0
-
-        # 填充 22 维
-        stats[0] = total_blocks
-        stats[1] = total_edges
-        stats[2] = total_edges / max(total_blocks, 1)  # 平均度
-        stats[3] = max_blocks
-        stats[4] = density
-        stats[5] = avg_blocks
-        stats[6] = n_funcs
-        stats[7] = n_external
-        stats[8] = n_internal_calls
-        stats[9] = n_internal_calls / max(n_funcs * (n_funcs - 1), 1)  # 调用密度
-        stats[10] = max_fan_out
-        stats[11] = avg_fan_out
-        stats[12] = n_external / max(n_funcs + n_external, 1)  # 外部调用比
-        stats[13] = sum(1 for fo in fan_outs if fo == 0) / max(n_funcs, 1)  # 叶子比
-        # 其余维度填入额外统计
-        if fan_outs:
-            stats[14] = np.std(fan_outs)
-            stats[15] = np.median(fan_outs)
-        stats[16] = min(n_funcs, 1000) / 1000  # 归一化函数数
-        stats[17] = min(total_blocks, 10000) / 10000  # 归一化块数
-        stats[18] = min(total_edges, 50000) / 50000  # 归一化边数
-        stats[19] = min(n_external, 500) / 500  # 归一化外部调用
-        stats[20] = min(max_blocks, 200) / 200  # 归一化最大块数
-        stats[21] = min(max_fan_out, 100) / 100  # 归一化最大扇出
-
-    except ImportError:
-        # BinaryNinja 不可用: 从 EMBER 特征近似
-        ember = _extract_ember_full(pe_path)
-        # 用 EMBER 的部分统计信息填充
-        stats[0] = float(ember[620])  # GeneralInfo 中的 size
-        stats[6] = float(ember[621])  # 导入函数数
-        stats[7] = float(ember[2225]) # 导出函数数
-    except Exception as e:
-        print(f"[图统计提取失败] {pe_path}: {e}")
-
-    np.save(cache, stats)
-    return torch.tensor(stats, dtype=torch.float32)
+        return torch.tensor(np.load(cache, allow_pickle=False), dtype=torch.float32)
+    ir = backend.build_ir_for_features(pe_path)
+    graph = features.graph_features(ir)
+    result = np.concatenate((graph["E03"], graph["E04"]))
+    np.save(cache, result)
+    return torch.tensor(result, dtype=torch.float32)
 
 
 # ═══════════════════════════════════════
@@ -673,6 +564,9 @@ class UnifiedDataset(torch.utils.data.Dataset):
             features = extract_feature(path, self.feature_type, **self.kwargs)
             return features, torch.tensor(label, dtype=torch.float32)
         except Exception as e:
+            if self.feature_type in _IR_FEATURE_TYPES:
+                # 不把失效的分析伪装成有标签的零特征用于训练。
+                raise
             print(f"[错误] {path}: {e}")
             # 返回零特征而非递归 (防止所有样本失败时无限递归)
             dim = get_feature_dim(self.feature_type, **self.kwargs)

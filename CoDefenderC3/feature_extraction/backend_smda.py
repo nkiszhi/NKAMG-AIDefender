@@ -29,33 +29,60 @@ except ImportError:
     from ir import (BasicBlock, CallSite, Function, OP_KEYWORD_SET, ProgramIR)
 
 
+def _check_smda_dependencies():
+    """实际导入（不只 find_spec），提前发现缺依赖或扩展 ABI 不兼容。"""
+    import importlib
+    for name in ("lief", "capstone", "smda.Disassembler"):
+        try:
+            importlib.import_module(name)
+        except Exception as error:
+            raise ImportError("SMDA 依赖 %s 无法导入: %s" % (name, error)) from error
+
+
 def _smda_import():
-    """导入 SMDA（按当前解释器版本挑正确的依赖目录）。"""
+    """显式依赖目录 > 解释器已安装包 > 当前 Python ABI 的 vendor 目录。
+
+    普通 pip 安装无需 _tools。显式目录无效时直接报错，不悄悄换来源。
+    修改依赖目录需重启进程；不在运行中卸载/替换已导入的原生扩展。
+    返回注入的目录，普通安装返回 None。
+    """
+    explicit = (os.environ.get("CODEFENDER_SMDA_PKGS") or "").strip()
+    errors = []
+    if not explicit:
+        # 失败的 SMDA 导入可能留下子模块，不能让它们遮住 vendor 回退。
+        before = set(sys.modules)
+        try:
+            _check_smda_dependencies()
+            return None
+        except ImportError as error:
+            errors.append("解释器已安装包: %s" % error)
+            for name in set(sys.modules) - before:
+                if name == "smda" or name.startswith("smda."):
+                    sys.modules.pop(name, None)
+
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     ver = "%d%d" % sys.version_info[:2]
-    # 每个版本目录都是**自包含**的（lief/capstone 是按 ABI 编的，必须用对应版本）:
-    #   py310_pkgs → python 3.10 (BN 自带的 bnpython3)
-    #   py312_pkgs → python 3.12 (普通 python)
-    cands = []
-    env = os.environ.get("CODEFENDER_SMDA_PKGS")
-    if env:
-        cands.append(env)
-    cands.append(os.path.join(os.path.dirname(here), "_tools", "py%s_pkgs" % ver))
-    for c in cands:
-        if not os.path.isdir(os.path.join(c, "smda")):
-            continue
-        # lief / capstone 是按 ABI 编的扩展：目录里没有就用解释器已装的版本。
-        # （py311_pkgs 只放纯 Python 包，lief/capstone 走 conda 环境）
-        if c not in sys.path:
-            sys.path.insert(0, c)
+    candidate = os.path.abspath(os.path.expanduser(explicit)) if explicit else os.path.join(
+        os.path.dirname(here), "_tools", "py%s_pkgs" % ver)
+    if not os.path.isdir(os.path.join(candidate, "smda")):
+        errors.append("目录 %s 不含 smda 包" % candidate)
+    else:
+        # vendor 中没有 lief/capstone 时可用解释器的版本；原生包必须匹配 ABI。
+        old_path = list(sys.path)
+        sys.path[:] = [candidate] + [p for p in sys.path if p != candidate]
+        before = set(sys.modules)
         try:
-            import lief  # noqa: F401
-            import capstone  # noqa: F401
-        except Exception as e:
-            raise ImportError("目录 %s 里没有可用的 lief/capstone: %s" % (c, e))
-        return c
-    raise ImportError("找不到 smda；用 CODEFENDER_SMDA_PKGS 指定目录")
-
+            _check_smda_dependencies()
+            return candidate
+        except ImportError as error:
+            sys.path[:] = old_path
+            for name in set(sys.modules) - before:
+                if name == "smda" or name.startswith("smda."):
+                    sys.modules.pop(name, None)
+            errors.append("目录 %s: %s" % (candidate, error))
+    hint = ("检查 CODEFENDER_SMDA_PKGS（更改后重启进程）" if explicit else
+            "请在当前解释器安装 smda、lief、capstone，或用 CODEFENDER_SMDA_PKGS 指定兼容目录")
+    raise ImportError("SMDA 不可用；%s；%s" % ("; ".join(errors), hint))
 
 
 # ── MalGraph 需要的额外信息 ────────────────────────────────────────────
