@@ -44,3 +44,6 @@ test_eval/
 test2_eval/
 .tmp/
 .vscode/
+
+# 其他分支的本地 worktree 检出（分析用，不入库）
+test_lm/
