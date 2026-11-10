@@ -20,7 +20,7 @@ from app.codefender_client import DEFAULT_MODEL_NAMES, ModelServiceBusy, scan_fi
 from app.config import settings
 from app.http_guard import PublicAPIGuard
 from app.file_info import save_upload, UploadStorageFull
-from app.sample_repository import SampleRepository
+from app.sample_repository import SampleRepository, identify_hash
 from app.stats_repository import StatsRepository
 from app.detection_queue import DetectionTaskStore, ProcessLease, QueueFull
 
@@ -302,6 +302,38 @@ async def sample_by_sha256(sha256: str) -> dict:
         "sha256": sha256.lower(),
         "sample_record": public_record,
         "detection_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    }
+
+
+@app.get('/sample-search')
+async def search_sample_hash(value: str) -> dict:
+    value = value.strip()
+    try:
+        kind = identify_hash(value)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    normalized = value.lower() if kind == 'sha256' else value.upper() if kind == 'tlsh' else value
+    try:
+        record = await asyncio.to_thread(sample_repository.find_by_hash, normalized)
+    except RuntimeError as error:
+        await asyncio.to_thread(task_store.record_hash_query, 'failed')
+        raise HTTPException(status_code=503, detail='样本库暂不可用') from error
+    await asyncio.to_thread(task_store.record_hash_query, 'hit' if record else 'miss')
+    label = 'Malicious' if record and kind == 'sha256' else 'Suspicious' if record else 'Benign'
+    public_record = SampleRepository.public_fields(record)
+    identity = public_record.get('identity', {})
+    return {
+        'success': True, 'hash_search': True, 'hash_type': kind,
+        'query_hash': normalized, 'database_hit': bool(record),
+        'detection_mode': 'hash_search', 'model_skipped': True,
+        'verdict': label, 'detection_status': label.lower(),
+        'reason': (f'{kind.upper()} 匹配样本库' if record else
+                   '样本库未匹配到该指纹' if sample_repository.configured else '样本库未配置'),
+        'filename': identity.get('文件名', '-'),
+        'sha256': identity.get('SHA256', normalized if kind == 'sha256' else ''),
+        'md5': identity.get('MD5', ''), 'file_size': identity.get('文件大小', 0),
+        'sample_record': public_record,
+        'detection_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
     }
 
 

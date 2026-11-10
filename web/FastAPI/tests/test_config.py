@@ -22,14 +22,20 @@ class ConfigLoadingTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 Settings()
 
-    def test_old_deployment_limit_is_capped_by_upload_policy(self):
+    def test_upload_limit_defaults_to_one_gib_and_respects_lower_policy(self):
         config = configparser.ConfigParser()
+        with patch('app.config._load_config', return_value=config):
+            self.assertEqual(Settings().max_upload_size, 1024 ** 3)
         config.read_dict({'server': {'max_upload_size': '104857600'}})
         with patch('app.config._load_config', return_value=config):
-            self.assertEqual(Settings().max_upload_size, 20 * 1024 * 1024)
+            self.assertEqual(Settings().max_upload_size, 100 * 1024 * 1024)
         config.read_dict({'uploads': {'max_file_size': '10485760'}})
         with patch('app.config._load_config', return_value=config):
             self.assertEqual(Settings().max_upload_size, 10 * 1024 * 1024)
+        config.read_dict({'server': {'max_upload_size': str(2 * 1024 ** 3)},
+                          'uploads': {'max_file_size': str(2 * 1024 ** 3)}})
+        with patch('app.config._load_config', return_value=config):
+            self.assertEqual(Settings().max_upload_size, 1024 ** 3)
 
     def test_example_config_is_loaded_without_local_config(self):
         with tempfile.TemporaryDirectory() as temp_dir:

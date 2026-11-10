@@ -26,7 +26,7 @@
           <div class="ds-route"><span>样本库命中</span><b>{{ number(snapshot.database_total) }}</b></div>
           <div class="ds-route"><span>模型检测完成</span><b>{{ number(snapshot.model_total) }}</b></div>
           <div class="ds-route"><span>独立检测样本 <small>SHA256 去重</small></span><b>{{ number(snapshot.unique_completed_samples) }}</b></div>
-          <div class="ds-query"><span>SHA256 查询</span><strong>{{ number(snapshot.query_total) }} <small>次</small></strong><p>命中 {{ number(snapshot.query_hit_total) }} · 未命中 {{ number(snapshot.query_miss_total) }} · 失败 {{ number(snapshot.query_failed_total) }}</p></div>
+          <div class="ds-query"><span>指纹查询 · SHA256 / TLSH / SSDeep</span><strong>{{ number(snapshot.query_total) }} <small>次</small></strong><p>命中 {{ number(snapshot.query_hit_total) }} · 未命中 {{ number(snapshot.query_miss_total) }} · 失败 {{ number(snapshot.query_failed_total) }}</p></div>
         </article>
       </div>
       <div class="ds-footer"><span>统计起点 {{ date(snapshot.started_at) }} · 更新于 {{ date(snapshot.updated_at, true) }}（北京时间）</span></div>

@@ -31,8 +31,9 @@ class Settings:
         self.port = self._getint("server", "port", 5006)
         self.cors_origins = self._get_list("server", "cors_origins", ["*"])
         self.max_upload_size = max(1, min(
-            self._getint("server", "max_upload_size", 20 * 1024 * 1024),
-            self._getint("uploads", "max_file_size", 20 * 1024 * 1024),
+            self._getint("server", "max_upload_size", 1024 * 1024 * 1024),
+            self._getint("uploads", "max_file_size", 1024 * 1024 * 1024),
+            1024 * 1024 * 1024,
         ))
         self.min_free_disk_bytes = max(0, self._getint("uploads", "min_free_disk_bytes", 512 * 1024 * 1024))
         self.orphan_ttl_seconds = max(600, self._getint("uploads", "orphan_ttl_seconds", 3600))

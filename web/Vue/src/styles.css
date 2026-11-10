@@ -33,7 +33,7 @@ button, input { font: inherit; }
 .page-shell { width: min(1200px, calc(100vw - 48px)); margin: 0 auto; padding: 34px 0 64px; }
 .header { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin: 0 0 25px; }
 .header-tools { display: flex; align-items: center; justify-content: flex-end; gap: 10px; min-width: 0; }
-.hash-search { display: flex; align-items: center; width: min(300px, 30vw); min-width: 190px; height: 38px; padding: 0 5px 0 11px; border: 1px solid rgba(82, 105, 157, .65); border-radius: 8px; background: rgba(18, 27, 47, .86); color: #8ea4d4; }
+.hash-search { display: flex; align-items: center; width: min(360px, 34vw); min-width: 190px; height: 38px; padding: 0 5px 0 11px; border: 1px solid rgba(82, 105, 157, .65); border-radius: 8px; background: rgba(18, 27, 47, .86); color: #8ea4d4; }
 .hash-search .el-icon { flex: 0 0 auto; font-size: 15px; }
 .hash-search input { min-width: 0; flex: 1; padding: 0 9px; border: 0; outline: 0; color: #dce6fb; background: transparent; font-family: "Consolas", monospace; font-size: 11px; }
 .hash-search input::placeholder { color: #7787a8; font-family: inherit; }
@@ -187,6 +187,8 @@ button, input { font: inherit; }
 .detection-warning, .database-hit { margin-bottom: 16px; padding: 14px 16px; border: 1px solid rgba(239, 180, 83, .4); border-radius: 9px; color: #f1cc87; background: rgba(113, 80, 32, .15); line-height: 1.7; }
 .database-hit { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; border-color: rgba(255, 89, 109, .32); color: #ff9aa5; background: rgba(134, 42, 63, .15); }
 .database-hit span { color: #a8a9bd; font-size: 11px; }
+.database-hit.hash-result-suspicious { border-color: rgba(239, 180, 83, .4); color: #f1cc87; background: rgba(113, 80, 32, .15); }
+.database-hit.hash-result-benign { border-color: rgba(67, 214, 176, .4); color: #65dfbd; background: rgba(35, 111, 92, .15); }
 .valid-text { color: var(--green); font-weight: 600; }
 .error-text { color: var(--red); font-weight: 600; }
 

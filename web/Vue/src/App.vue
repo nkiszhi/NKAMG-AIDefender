@@ -15,7 +15,7 @@
       <div class="header-tools">
         <form class="hash-search" @submit.prevent="searchSample">
           <el-icon aria-hidden="true"><Search /></el-icon>
-          <input v-model.trim="hashQuery" type="search" maxlength="64" spellcheck="false" placeholder="搜索 SHA256" aria-label="搜索 SHA256" />
+          <input v-model.trim="hashQuery" type="search" maxlength="160" spellcheck="false" placeholder="搜索 SHA256 / TLSH / SSDeep" aria-label="搜索 SHA256 / TLSH / SSDeep" />
           <button type="submit" :disabled="searching || !hashQuery">{{ searching ? '查询中' : '查询' }}</button>
         </form>
         <div class="status-tags">
@@ -127,10 +127,11 @@
           <button class="back-button" type="button" @click="resetResult">返回工作台</button>
           <h2>检测报告如下</h2>
           <div class="tags">
-            <el-tag :type="uploadResult.is_pe ? 'success' : 'warning'">
+            <el-tag v-if="!uploadResult.hash_search" :type="uploadResult.is_pe ? 'success' : 'warning'">
               {{ uploadResult.is_pe ? 'PE结构：有效' : '检测失败：非 PE 文件' }}
             </el-tag>
-            <el-tag v-if="uploadResult.database_hit" type="danger">Malicious · 命中 NKAMG 样本库</el-tag>
+            <el-tag v-if="uploadResult.hash_search" :type="uploadResult.verdict === 'Malicious' ? 'danger' : uploadResult.verdict === 'Suspicious' ? 'warning' : 'success'">{{ uploadResult.verdict }} · {{ uploadResult.hash_type.toUpperCase() }} {{ uploadResult.database_hit ? '匹配' : '未匹配' }}</el-tag>
+            <el-tag v-else-if="uploadResult.database_hit" type="danger">Malicious · 命中 NKAMG 样本库</el-tag>
             <el-tag v-else-if="uploadResult.is_pe && uploadResult.detection_mode === 'models'" type="info">样本库：未命中</el-tag>
             <el-tag v-if="ensembleResult && ['Malicious', 'Benign'].includes(ensembleResult.result)" :type="ensembleResult.result === 'Malicious' ? 'danger' : 'success'">
               {{ ensembleResult.result }}
@@ -145,7 +146,11 @@
       </div>
 
       <div v-show="showSection === 'fileInfo'" class="panel">
-        <div v-if="!uploadResult.is_pe" class="detection-warning">
+        <div v-if="uploadResult.hash_search" class="database-hit" :class="`hash-result-${uploadResult.verdict.toLowerCase()}`">
+          <strong>{{ uploadResult.verdict }} · {{ uploadResult.reason }}</strong>
+          <span class="mono break-text">{{ uploadResult.hash_type.toUpperCase() }}：{{ uploadResult.query_hash }}</span>
+        </div>
+        <div v-else-if="!uploadResult.is_pe" class="detection-warning">
           <strong>检测状态：检测失败</strong>
           <div>文件类型：非 PE 文件</div>
           <div>原因：{{ uploadResult.reason || '不是有效PE样本' }}</div>
@@ -163,6 +168,10 @@
           <h3 class="subhead">样本标签</h3>
           <el-descriptions :column="2" border>
             <el-descriptions-item v-for="(value, key) in uploadResult.sample_record.labels" :key="key" :label="key">{{ value || '-' }}</el-descriptions-item>
+          </el-descriptions>
+          <h3 class="subhead">样本指纹</h3>
+          <el-descriptions :column="1" border>
+            <el-descriptions-item v-for="(value, key) in uploadResult.sample_record.hashes" :key="key" :label="key"><span class="mono break-text">{{ value }}</span></el-descriptions-item>
           </el-descriptions>
         </template>
         <el-descriptions :column="1" border>
@@ -204,7 +213,8 @@
       </div>
 
       <div v-show="showSection === 'modelDetection'" class="panel">
-        <div v-if="!uploadResult.is_pe" class="detection-warning">本文件不是 PE，未提交 33 模型检测。</div>
+        <div v-if="uploadResult.hash_search" class="database-hit" :class="`hash-result-${uploadResult.verdict.toLowerCase()}`">指纹检索结果：{{ uploadResult.verdict }}。本次未调用 AI 检测引擎。</div>
+        <div v-else-if="!uploadResult.is_pe" class="detection-warning">本文件不是 PE，未提交 33 模型检测。</div>
         <div v-else-if="uploadResult.database_hit" class="database-hit">已命中 NKAMG 样本库，已跳过 33 模型检测。</div>
         <template v-else>
         <div class="summary-row">
@@ -260,7 +270,7 @@ const apiService = axios.create({
 const showSection = ref('fileInfo')
 const modelsOpen = ref(['modelCatalog', 'sampleLibrary'])
 const loading = ref(false)
-const maxUploadSize = ref(20 * 1024 * 1024)
+const maxUploadSize = ref(1024 * 1024 * 1024)
 const detectionMessage = ref('正在检测，可刷新页面继续等待')
 const detectionAbort = new AbortController()
 const TASK_KEY = 'aidefender_detection_task'
@@ -461,19 +471,18 @@ function resetResult() {
 }
 
 async function searchSample() {
-  if (!/^[0-9a-f]{64}$/i.test(hashQuery.value)) {
-    ElMessage.warning('请输入 64 位 SHA256')
+  if (!hashQuery.value || hashQuery.value.length > 160) {
+    ElMessage.warning('请输入 SHA256、TLSH 或 SSDeep 指纹')
     return
   }
   searching.value = true
   modelsOpen.value = []
   try {
-    const response = await apiService.get(`${apiBaseUrl.value}/samples/${hashQuery.value}`, { timeout: 15000 })
+    const response = await apiService.get(`${apiBaseUrl.value}/sample-search`, { params: { value: hashQuery.value }, timeout: 120000 })
     setDetectionResult(response.data)
-    ElMessage.success('已找到样本库记录')
+    ElMessage.success(response.data.database_hit ? '已找到指纹匹配记录' : '指纹查询完成，未匹配到记录')
   } catch (error) {
-    const status = error.response?.status
-    ElMessage.error(status === 404 ? '样本库中未找到该 SHA256' : (error.response?.data?.detail || '样本库查询失败'))
+    ElMessage.error(error.response?.data?.detail || '样本库查询失败')
   } finally {
     searching.value = false
     void detectionStatsPanel.value?.refresh()
