@@ -51,4 +51,8 @@ def create_app(core, *, development=False):
         result = await core._run_guarded(scan_directory, core, directory, recursive, include_de, formatter)
         return project_development_directory(result) if development else project_directory(result)
 
+    if development:
+        from engine.dev.streaming import register_stream
+        register_stream(app, core, formatter)
+
     return app

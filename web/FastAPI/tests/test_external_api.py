@@ -68,6 +68,7 @@ class ExternalAPITests(unittest.IsolatedAsyncioTestCase):
                     await asyncio.gather(worker, return_exceptions=True)
             scan.assert_called_once()
             self.assertTrue(scan.call_args.kwargs['include_de'])
+            self.assertIsNone(scan.call_args.kwargs['on_progress'])
         self.assertEqual(list(self.uploads.iterdir()), [])
         return response
 

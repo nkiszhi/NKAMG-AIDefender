@@ -261,6 +261,103 @@ class Contracts(unittest.IsolatedAsyncioTestCase):
             await asyncio.gather(*(core._warm_runtime_models() for _ in range(3)))
             self.assertEqual(load.call_count, 1)
 
+    async def stream_request(self, **kwargs):
+        return await self.request(development.app, "/predict-stream",
+                                  params={"include_de": "false"},
+                                  files={"file": ("input.exe", pe_bytes())}, **kwargs)
+
+    async def test_development_stream_final_equals_single_and_runs_models_once(self):
+        expected = (await self.single(development.app)).json()
+        response = await self.stream_request()
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.headers["x-accel-buffering"], "no")
+        events = [json.loads(line) for line in response.text.splitlines()]
+        self.assertEqual(events[-1], {"event": "result", "data": expected})
+        self.assertEqual(sum(event["event"] == "result" for event in events), 1)
+        completed = [event["data"]["models"] for event in events
+                     if event["event"] == "progress" and event["data"]["stage"] == "models"]
+        self.assertEqual([sum(item["status"] == "ok" for item in rows) for rows in completed], [1, 2])
+        for model in self.ens._models.values():
+            self.assertEqual(len(model.seen), 2)  # one single request + one stream
+        self.assertNotIn("/predict-stream", [route.path for route in core.app.routes])
+
+    async def test_stream_delivers_first_model_before_second_and_keeps_slot_on_disconnect(self):
+        handler = next(route.endpoint for route in development.app.routes if route.path == "/predict-stream")
+        gate = threading.Event()
+        forward = self.ens._models["IMCFN"].forward
+        paths = []
+        prepare = pipeline._prepare_sample
+
+        def tracked_prepare(*args):
+            paths.append(args[1])
+            return prepare(*args)
+
+        def blocked(rows):
+            if not gate.wait(4):
+                raise RuntimeError("test gate timed out")
+            return forward(rows)
+
+        with patch.object(self.ens._models["IMCFN"], "forward", side_effect=blocked), \
+             patch.object(pipeline, "_prepare_sample", side_effect=tracked_prepare):
+            upload = UploadFile(io.BytesIO(pe_bytes()), filename="input.exe")
+            response = await handler(upload, False)
+            self.assertTrue(upload.file.closed)
+            iterator = response.body_iterator
+            try:
+                first = json.loads(await asyncio.wait_for(iterator.__anext__(), 3))
+                self.assertEqual(first["data"]["stage"], "features")
+                event = json.loads(await asyncio.wait_for(iterator.__anext__(), 3))
+                rows = {item["model"]: item for item in event["data"]["models"]}
+                self.assertEqual(rows["MalConv"]["status"], "ok")
+                self.assertEqual(rows["IMCFN"]["status"], "waiting")
+                self.assertEqual(core._SCAN_RUNTIME.active, 1)
+                await iterator.aclose()
+                self.assertEqual(core._SCAN_RUNTIME.active, 1)
+                self.assertTrue(Path(paths[0]).exists())
+                # Disconnect must not admit another request or kill the worker.
+                self.assertEqual((await self.single(development.app)).status_code, 429)
+            finally:
+                gate.set()
+                await asyncio.gather(*list(development.app.state.development_stream_producers))
+            self.assertEqual(core._SCAN_RUNTIME.active, 0)
+            self.assertFalse(Path(paths[0]).exists())
+
+    async def test_development_stream_failures_never_emit_benign_result(self):
+        for model in self.ens._models.values():
+            model.score = float("nan")
+        response = await self.stream_request()
+        events = [json.loads(line) for line in response.text.splitlines()]
+        self.assertEqual(events[-1]["event"], "error")
+        self.assertNotIn("result", [event["event"] for event in events])
+        self.assertTrue(all(item["status"] == "error" for item in events[-2]["data"]["models"]))
+
+    async def test_development_stream_upload_limits_and_busy(self):
+        core._SCAN_RUNTIME.active = 1
+        self.assertEqual((await self.stream_request()).status_code, 429)
+        core._SCAN_RUNTIME.active = 0
+        with patch.object(core, "MAX_UPLOAD_BYTES", 8):
+            self.assertEqual((await self.stream_request()).status_code, 413)
+        response = await self.request(development.app, "/predict-stream", files={"file": ("empty.exe", b"")})
+        self.assertEqual(response.status_code, 400)
+
+    async def test_development_stream_analysis_failure_is_excluded_before_publishing(self):
+        prepare = pipeline._prepare_sample
+        def failed(*args):
+            views, meta, mg, _, _, seconds = prepare(*args)
+            return views, meta, mg, ("error", "analysis failed"), {"V8_color"}, seconds
+        with patch.object(pipeline, "_prepare_sample", side_effect=failed):
+            expected = (await self.single(development.app)).json()
+            response = await self.stream_request()
+        events = [json.loads(line) for line in response.text.splitlines()]
+        self.assertEqual(events[-1]["data"], expected)
+        self.assertEqual(expected["ScanResult"]["ModelStats"]["OkModels"], 1)
+        self.assertEqual(expected["ScanResult"]["ModelStats"]["ExcludedModels"], {"IMCFN": "analysis failed"})
+        for event in events:
+            if event["event"] == "progress":
+                row = next(item for item in event["data"]["models"] if item["model"] == "IMCFN")
+                self.assertNotEqual(row["status"], "ok")
+                self.assertNotIn("score", row)
+
     async def test_four_interfaces_malgraph_calls_main_not_ir_graph(self):
         self.ens.view_groups["V7_graph"] = ["MalGraph"]
         self.ens._model_names.append("MalGraph")

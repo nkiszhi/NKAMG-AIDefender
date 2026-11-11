@@ -1,7 +1,8 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 from app.config import settings
 from app.codefender_client import DEFAULT_MODEL_NAMES, parse_codefender_response, scan_file
@@ -89,7 +90,7 @@ class DevelopmentAdapterTests(unittest.TestCase):
                  patch('app.codefender_client.requests.post', return_value=response) as post, \
                  patch('app.codefender_client._scan_by_path') as by_path, \
                  patch('app.codefender_client._scan_by_stream') as stream:
-                result = scan_file(path, on_progress=lambda _: None)
+                result = scan_file(path)
                 by_path.assert_not_called()
                 stream.assert_not_called()
                 self.assertEqual(post.call_count, 1)
@@ -97,7 +98,7 @@ class DevelopmentAdapterTests(unittest.TestCase):
                 self.assertEqual(post.call_args.kwargs['params'], {'include_de': 'true'})
                 return result
 
-    def test_development_upload_bypasses_stream_and_path_for_one_or_many_workers(self):
+    def test_final_only_development_upload_bypasses_stream_and_path_for_one_or_many_workers(self):
         for urls in (None, ['http://first:18002', 'http://second:18002']):
             result = self.scan_development(diagnostic_result(), urls)
             self.assertEqual(result['集成结果']['display_result'], 'Generic.ML.Medium')
@@ -107,6 +108,60 @@ class DevelopmentAdapterTests(unittest.TestCase):
             self.scan_development({'IsMalicious': True, 'ScanResult': {'VirusName': 'Malicious'}})
         with self.assertRaises(RuntimeError):
             self.scan_development(diagnostic_result('Invented.Family'))
+
+    def test_web_development_uses_stream_and_forwards_progress_for_one_or_many_workers(self):
+        progress_data = {'stage': 'models', 'models': [{'model': 'MalConv', 'status': 'ok', 'score': 0.8, 'prediction': 1}]}
+        for urls in (['http://first'], ['http://first', 'http://second']):
+            response = MagicMock(status_code=200)
+            response.__enter__.return_value = response
+            response.iter_lines.return_value = iter(json.dumps(event).encode() for event in [
+                {'event': 'heartbeat'}, {'event': 'progress', 'data': progress_data},
+                {'event': 'result', 'data': diagnostic_result()},
+            ])
+            with tempfile.TemporaryDirectory() as folder:
+                path = Path(folder) / 'sample.exe'
+                path.write_bytes(b'fixture')
+                callback = Mock()
+                with patch.object(settings, 'codefender_response_contract', 'development'), \
+                     patch.object(settings, 'codefender_api_bases', urls), \
+                     patch('app.codefender_client.requests.post', return_value=response) as post:
+                    result = scan_file(path, on_progress=callback)
+                callback.assert_called_once_with(progress_data)
+                self.assertEqual(post.call_count, 1)
+                self.assertTrue(post.call_args.args[0].endswith('/predict-stream'))
+                self.assertTrue(post.call_args.kwargs['stream'])
+                self.assertEqual(result['集成结果']['display_result'], 'Generic.ML.Medium')
+
+    def test_stream_failure_or_truncation_does_not_resubmit_sample(self):
+        for events in ([{'event': 'error', 'detail': 'model failed'}], [{'event': 'heartbeat'}]):
+            response = MagicMock(status_code=200)
+            response.__enter__.return_value = response
+            response.iter_lines.return_value = iter(json.dumps(event).encode() for event in events)
+            with tempfile.TemporaryDirectory() as folder:
+                path = Path(folder) / 'sample.exe'
+                path.write_bytes(b'fixture')
+                with patch.object(settings, 'codefender_response_contract', 'development'), \
+                     patch.object(settings, 'codefender_api_bases', ['http://first', 'http://second']), \
+                     patch('app.codefender_client.requests.post', return_value=response) as post:
+                    with self.assertRaises(RuntimeError):
+                        scan_file(path, on_progress=lambda _: None)
+                self.assertEqual(post.call_count, 1)
+
+    def test_missing_stream_route_falls_back_once_to_unchanged_single(self):
+        missing = MagicMock(status_code=404)
+        missing.__enter__.return_value = missing
+        final = Mock(status_code=200)
+        final.json.return_value = diagnostic_result()
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'sample.exe'
+            path.write_bytes(b'fixture')
+            with patch.object(settings, 'codefender_response_contract', 'development'), \
+                 patch.object(settings, 'codefender_api_bases', ['http://first']), \
+                 patch('app.codefender_client.requests.post', side_effect=[missing, final]) as post:
+                result = scan_file(path, on_progress=lambda _: None)
+            self.assertEqual([call.args[0] for call in post.call_args_list],
+                             ['http://first/predict-stream', 'http://first/predict-single'])
+            self.assertEqual(result['集成结果']['display_result'], 'Generic.ML.Medium')
 
 
 if __name__ == '__main__':
