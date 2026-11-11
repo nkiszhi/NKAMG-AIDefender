@@ -1,5 +1,10 @@
 # 已验证代码回迁与清理（2026-11-10）
 
+> **历史快照，不是当前部署指南。** 2026-11-11 文档核对：下方保留当时正文及测试/合并结论；其中端口、绝对路径、命令、模型数量和性能统计仅适用于记录中的版本与环境，不能作为当前运行或上线验收依据。
+> 当前操作请使用 [启动与接口指南](README.md)、[训练指南](../train/README.md)、[测试指南](TESTING.md)及[文档索引](INDEX.md)。历史链接或命令可能已失效，请勿直接照抄执行。
+
+<!-- historical-snapshot -->
+
 目标目录：D:\VM_Share\CoDefenderC3_v9；引擎在其 CoDefenderC3 子目录。
 来源：main-test-lm-integration 工作区的已验证代码，包含默认 SMDA、main MalGraph/V1/V8、双接口契约及开发响应裁剪。
 

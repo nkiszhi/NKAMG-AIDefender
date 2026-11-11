@@ -1,5 +1,10 @@
 # CoDefenderC3 · docker/ 自动化测试脚本 测试记录
 
+> **历史快照，不是当前部署指南。** 2026-11-11 文档核对：下方保留当时正文及测试/合并结论；其中端口、绝对路径、命令、模型数量和性能统计仅适用于记录中的版本与环境，不能作为当前运行或上线验收依据。
+> 当前操作请使用 [启动与接口指南](README.md)、[训练指南](../train/README.md)、[测试指南](TESTING.md)及[文档索引](INDEX.md)。历史链接或命令可能已失效，请勿直接照抄执行。
+
+<!-- historical-snapshot -->
+
 | 项目 | 内容 |
 |---|---|
 | 被测对象 | `CoDefenderC3/docker/` 下 6 个脚本（`test_api.sh` / `check_requirements.py` / `check_context.py` / `check_model_imports.py` / `stage_signatures.py` / `build.sh`） |

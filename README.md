@@ -1,303 +1,103 @@
-# NKAMG-AIDefender 多模型恶意文件检测
+# NKAMG-AIDefender
 
-NKAMG-AIDefender 是一个独立的 PE 样本恶意文件检测 Web 项目，接入 CoDefenderC3 模型服务。系统由三部分组成：
+PE 文件检测 Web 项目，由 Vue 3 / Element Plus 前端、FastAPI 后端和 CoDefenderC3 模型服务组成。文档按 2026-11-11 的工作区代码核对；本地开发与生产 Docker 部署均受支持，不依赖旧的第三方镜像标签。
 
-- 前端：Vue3 + Element Plus，提供样本上传、基础信息展示、PE 结构展示和模型结果展示。
-- 后端：FastAPI，负责文件上传、PE 结构校验、基础信息计算、模型服务适配。
-- 模型服务：Docker 镜像 `peng233/codefender:v2`，提供 33 个检测模型的扫描能力。
+## 1. 文档入口
 
-用户上传待检样本后，后端会先判断文件是否为有效 PE 样本；只有通过 PE 结构校验的文件才会提交给模型服务检测。
+- [模型服务启动及返回协议](CoDefenderC3/docs/README.md)
+- [全部说明文档索引](CoDefenderC3/docs/INDEX.md)
+- [测试与接口验证](CoDefenderC3/docs/TESTING.md)
+- [模型清单与参考材料](CoDefenderC3/docs/PAPERS.md)
+- [数据集构建与训练](CoDefenderC3/train/README.md)
 
-## 检测流程
+## 2. 检测流程与返回行为
 
-1. 用户在网页上传待检 PE 样本。
-2. 后端计算 SHA256、MD5、文件大小、文件类型。
-3. 后端校验 PE 结构：`MZ` 头、`PE\0\0` 签名、COFF 文件头、PE32/PE32+ 可选头。
-4. 后端提取 PE 基础信息：架构、入口点、镜像基址、子系统、节数量、编译时间、节表等。
-5. 后端把有效 PE 样本提交给 Codefender Docker 模型服务。
-6. 前端展示基础信息、PE 结构信息、33 个模型结果和集成结果。
+1. 上传过程中计算 SHA256 / MD5，检查大小与可用磁盘空间。
+2. 按文件内容校验 PE 结构，不依赖文件名后缀。非 PE 返回 `detection_status=unsupported`、`verdict=null`，不进入模型队列；这是正常业务响应，不是恶意或良性结论。
+3. 有效 PE 优先查询已配置的样本数据库。命中直接返回，不排队、不执行模型；未命中进入后台检测队列。
+4. 未命中时 `POST /detect` 返回 HTTP 202 和 `task_id`；前端轮询任务接口展示排队、进度和最终结果。
+5. 模型适配器读取 Web 兼容协议的逐模型分数和集成结果。当前部署模型为 33 个 / 15 个视图，是否全部执行需检查模型覆盖，HTTP 200 不代表 33 个模型均成功。
+6. 原始上传样本在检测结束或直接返回后清理；任务结果有 TTL，不提供永久保留承诺。
 
-非 PE 文件会被后端拒绝，不会继续提交给模型检测。
+Web 样本数据库查询与 CoDefender 的签名库预检是两层独立功能。未配置 MySQL 时不能将空查询/统计当成数据库正常接入的证明。
 
-## 支持模型
+## 3. 开发环境启动
 
-当前模型清单共 33 个。
+准备 Python 环境、可运行 Vite 6 的 Node.js/npm、`CoDefenderC3/ensemble.pkl`。模型依赖安装和共享服务命令见[模型服务指南](CoDefenderC3/docs/README.md#2-开发环境启动)，先启动模型服务，使用下面的地址：
 
-| 模型 | 参考文献 |
-|---|---|
-| MalConv | Raff E, Barker J, Sylvester J, et al. Malware Detection by Eating a Whole EXE. AAAI Workshop on Artificial Intelligence for Cyber Security, 2018. [arXiv:1710.09435](https://arxiv.org/abs/1710.09435) |
-| MalConv2 | Raff E, Fleshman W, Zak R, et al. Classifying Sequences of Extreme Length with Constant Memory Applied to Malware Detection. AAAI, 2021. [arXiv:2012.09390](https://arxiv.org/abs/2012.09390) |
-| ByteTransformer | Vaswani A, Shazeer N, Parmar N, et al. Attention Is All You Need. NeurIPS, 2017. [arXiv:1706.03762](https://arxiv.org/abs/1706.03762) |
-| SaxeBerlinDNN | Saxe J, Berlin K. Deep Neural Network Based Malware Detection Using Two-Dimensional Binary Visualization. IEEE ISI, 2015. [doi:10.1109/ISI.2015.7165944](https://doi.org/10.1109/ISI.2015.7165944) |
-| EmberDNN | Anderson H S, Roth P. EMBER: An Open Dataset for Training Static PE Malware Machine Learning Models. KDD Workshop, 2018. [arXiv:1804.04637](https://arxiv.org/abs/1804.04637) |
-| NatarajKNN | Nataraj L, Karthikeyan S, Jacob G, et al. Malware Images: Visualization and Automatic Classification. VizSec, 2011. [doi:10.1145/2016904.2016908](https://doi.org/10.1145/2016904.2016908) |
-| DrebinSVM | Arp D, Spreitzenbarth M, Hübner M, et al. DREBIN: Effective and Explainable Detection of Android Malware in Your Pocket. NDSS, 2014. [ndss-symposium.org](https://www.ndss-symposium.org/ndss-paper/drebin-effective-and-explainable-detection-of-android-malware-in-your-pocket/) |
-| DL4MD | Hardy W, Chen L, Hou S, et al. DL4MD: A Deep Learning Framework for Intelligent Malware Detection. DMIN, 2016. [doi:10.1109/DMIN.2016.9](https://doi.org/10.1109/DMIN.2016.9) |
-| PEMinerRF | Shafiq M Z, Tabish S M, Mirza F, et al. PE-Miner: Mining Structural Information to Detect Malicious Executables in Realtime. RAID, 2009. [doi:10.1007/978-3-642-04342-0_1](https://doi.org/10.1007/978-3-642-04342-0_1) |
-| DrebinImport | Arp D, et al. DREBIN: Effective and Explainable Detection of Android Malware in Your Pocket. NDSS, 2014. [ndss-symposium.org](https://www.ndss-symposium.org/ndss-paper/drebin-effective-and-explainable-detection-of-android-malware-in-your-pocket/) |
-| ALOHANet | Aghakhani H, Gritti F, Mecca F, et al. When Malware is Packin' Heat; Limits of Machine Learning Classifiers Based on Static Analysis Features. USENIX Security, 2020. [usenix.org](https://www.usenix.org/conference/usenixsecurity20/presentation/aghakhani) |
-| EmberGBDT_Import | Anderson H S, Roth P. EMBER: An Open Dataset for Training Static PE Malware Machine Learning Models. KDD Workshop, 2018. [arXiv:1804.04637](https://arxiv.org/abs/1804.04637) |
-| RaffFeatureNet | Raff E, et al. Malware Detection by Eating a Whole EXE. AAAI Workshop, 2018. [arXiv:1710.09435](https://arxiv.org/abs/1710.09435) |
-| DrebinString | Arp D, et al. DREBIN: Effective and Explainable Detection of Android Malware in Your Pocket. NDSS, 2014. [ndss-symposium.org](https://www.ndss-symposium.org/ndss-paper/drebin-effective-and-explainable-detection-of-android-malware-in-your-pocket/) |
-| OpcodeLSTM | Deep Android Malware Detection. IEEE Transactions on Information Forensics and Security, 2017. [doi:10.1109/TIFS.2017.2713418](https://doi.org/10.1109/TIFS.2017.2713418) |
-| OpcodeTransformer | Ren Z, Wu H, Ning Q, et al. End-to-end Malware Detection for Android IoT Devices Using Deep Learning. IEEE Access, 2020. [doi:10.1109/ACCESS.2020.2993370](https://doi.org/10.1109/ACCESS.2020.2993370) |
-| OpcodeStatNet | Ahmadi M, Ulyanov D, Semenov S, et al. Novel Feature Extraction, Selection and Fusion for Effective Malware Family Classification. ACM CODASPY, 2016. [doi:10.1145/2857705.2857713](https://doi.org/10.1145/2857705.2857713) |
-| AsmEmbedNet | Ding S Y H, Fung B C M, Charland P. Asm2Vec: Boosting Static Representation Robustness for Binary Clone Search against Code Obfuscation and Compiler Optimization. IEEE S&P, 2019. [doi:10.1109/SP.2019.00003](https://doi.org/10.1109/SP.2019.00003) |
-| MalGraph | Ling X, Wu L, Deng W, et al. MalGraph: Hierarchical Graph Neural Networks for Robust Windows Malware Detection. IEEE INFOCOM, 2022. [github.com/ryderling/MalGraph](https://github.com/ryderling/MalGraph) |
-| CFGGAT | Yan J, Yan G, Jin D. Classifying Malware Represented as Control Flow Graphs Using Deep Graph CNN. IEEE DSN, 2019. [doi:10.1109/DSC47296.2019](https://doi.org/10.1109/DSC47296.2019) |
-| CFGGCN | Kipf T N, Welling M. Semi-Supervised Classification with Graph Convolutional Networks. ICLR, 2017. [arXiv:1609.02907](https://arxiv.org/abs/1609.02907) |
-| CFGDGCNN | Zhang M, Cui Z, Neumann M, et al. An End-to-End Deep Learning Architecture for Graph Classification. AAAI, 2018. [doi:10.1609/aaai.v32i1.11782](https://doi.org/10.1609/aaai.v32i1.11782) |
-| CallGraphGNN | Li Y, Gu C, Dullien T, et al. Graph Matching Networks for Learning the Similarity of Graph Structured Objects. ICML, 2019. [arXiv:1904.12787](https://arxiv.org/abs/1904.12787) |
-| GraphStatNet | Kinable J, Kostakis O. Malware Classification Based on Call Graph Clustering. Journal in Computer Virology, 7(4):233-245, 2011. [doi:10.1007/s11416-011-0151-y](https://doi.org/10.1007/s11416-011-0151-y) |
-| GrayscaleCNN | Nataraj L, et al. Malware Images: Visualization and Automatic Classification. VizSec, 2011. [doi:10.1145/2016904.2016908](https://doi.org/10.1145/2016904.2016908) |
-| InceptionV3 | Nataraj L, et al. Malware Images（VizSec 2011）可视化方法 + Szegedy C, Vanhoucke V, Ioffe S, et al. Rethinking the Inception Architecture for Computer Vision. CVPR, 2016. [arXiv:1512.00567](https://arxiv.org/abs/1512.00567) |
-| IMCFN | Vasan D, Alazab M, Wassan S, et al. IMCFN: Image-based Malware Classification Using Fine-tuned Convolutional Neural Network Architecture. Computer Networks, 171:107138, 2020. [doi:10.1016/j.comnet.2020.107138](https://doi.org/10.1016/j.comnet.2020.107138) |
-| ColorCNN | Fu J, Xue J, Wang Y, et al. Malware Visualization for Fine-Grained Classification. IEEE Access, 6:14510–14523, 2018. [doi:10.1109/ACCESS.2018.2805301](https://doi.org/10.1109/ACCESS.2018.2805301) |
-| MarkovCNN | Malware Identification Using Visualization Images and Deep Learning. Computers & Security, 2018. [doi:10.1016/j.cose.2018.09.001](https://doi.org/10.1016/j.cose.2018.09.001) |
-| EntropyMapCNN | Conti M, et al. Visual Reverse Engineering of Binary and Data Files. VizSec. [doi:10.1007/978-3-319-73198-8_1](https://doi.org/10.1007/978-3-319-73198-8_1) |
-| HashEmbedNet | Towards Interpretable and Robust ML-based Malware Detection. CCS Workshop on AI for Security, 2019. [doi:10.1145/3338466.3358907](https://doi.org/10.1145/3338466.3358907) |
-| MetadataNet | Shafiq M Z, Tabish S M, Mirza F, et al. PE-Miner: Mining Structural Information to Detect Malicious Executables in Realtime. In: Recent Advances in Intrusion Detection (RAID), LNCS 5758, pp. 121-141, 2009. [doi:10.1007/978-3-642-04342-0_1](https://doi.org/10.1007/978-3-642-04342-0_1) |
-| ResourceNet | Ahmadi M, Ulyanov D, Semenov S, et al. Novel Feature Extraction, Selection and Fusion for Effective Malware Family Classification. ACM CODASPY, 2016. [doi:10.1145/2857705.2857713](https://doi.org/10.1145/2857705.2857713) |
+| 服务 | 地址 | 说明 |
+|---|---|---|
+| 前端 | `http://127.0.0.1:9528` | Vite，`/api-backend` 代理到后端 |
+| Web 后端 | `http://127.0.0.1:5006` | FastAPI，单进程启动 |
+| Web 模型入口 | `http://127.0.0.1:8001` | 开发设置 `CODEFENDER_WEB_COMPAT_PORT=8001` |
+| 生产模型入口 | `http://127.0.0.1:18001` | 精简响应，不能直接供现有 Web 使用 |
+| 开发模型入口 | `http://127.0.0.1:18002` | 需 `CODEFENDER_ENABLE_DEV_API=1` |
 
-### 模型优化要点
-
-1. **维度对齐重训**：11 个模型的权重维度与线上特征维度不一致，这些票近似噪声。
-
-| 模型 | 注册维度（线上输入） | 权重实际维度 | 差异 |
-|:-:|:--:|:--:|:-:|
-| SaxeBerlinDNN | 512 | 776 | +264 |
-| EmberDNN | 512 | 776 | +264 |
-| NatarajKNN | 512 | 776（近邻库 3,339 行） | +264 |
-| DrebinSVM | 327 | 264 | −63 |
-| DL4MD | 327 | 264 | −63 |
-| DrebinImport | 1280 | 339 | −941 |
-| ALOHANet | 1280 | 339 | −941 |
-| RaffFeatureNet | 104 | 553 | +449 |
-| DrebinString | 104 | 553 | +449 |
-| MetadataNet | 158 | 60 | −98 |
-| HashEmbedNet | 512 | 64（4 路 Embedding 结构，输入类型不符） | 类型不符 |
-
-错位成对出现：DrebinImport/ALOHANet 同错成 339，RaffFeatureNet/DrebinString 同错成 553——同一视角的模型是在同一份错误切片上训练的。PEMinerRF 另有疑点：30 棵树的最大分裂特征下标为 104，未按完整 327 维训练。
-
-2. **字节模型截断**：MalConv/MalConv2/ByteTransformer 只读文件头（32KB/2MB），大文件欠拟合。
-3. **操作码词表固定**：当前用 `crc32` 哈希桶当词表，重训前后词表漂移。
-4. **伪图模型不吃边**：CFGGAT/CFGGCN/CFGDGCNN/CallGraphGNN 推理时是同一个 22 维统计上的 MLP，不是图模型。
-
-前端页面会通过后端 `/models` 接口显示模型清单。
-
-## 目录结构
-
-```text
-web/
-  FastAPI/   FastAPI 后端，提供上传检测、PE结构分析和模型服务适配
-  Vue/       Vue3 + Element Plus 单页前端
-    public/config.ini  浏览器访问后端的地址配置
-  config.ini 后端、Docker 模型服务和跨容器路径配置
-CoDefenderC3/ 模型推理服务及训练代码
-```
-
-## 环境要求
-
-- Docker Desktop 或 Docker Engine
-- Python 3.10+
-- Node.js 18+ 和 npm
-- Windows PowerShell、Linux shell 或 macOS shell 均可运行
-
-## 部署步骤
-
-### 1. 获取代码
+**后端：**在独立终端从仓库根目录执行，激活已安装依赖的 Python 环境。
 
 ```powershell
-cd C:\zjp\github
-git clone https://github.com/nkiszhi/NKAMG-AIDefender.git
-cd C:\zjp\github\NKAMG-AIDefender
-```
-
-### 2. 启动 Codefender 模型服务	
-
-拉取公开 Docker 镜像：
-
-```powershell
-docker pull peng233/codefender:v2
-```
-
-启动模型服务：
-
-```powershell
-docker run -d --name codefender-api -p 8001:8000 peng233/codefender:v2
-```
-
-验证模型服务：
-
-```powershell
-curl http://127.0.0.1:8001/health
-curl http://127.0.0.1:8001/openapi.json
-```
-
-如果容器名不是 `codefender-api`，需要修改 `web/config.ini`：
-
-```ini
-[docker]
-container_name = 实际容器名
-container_upload_dir = /tmp/codefender_uploads
-```
-
-查看实际容器名：
-
-```powershell
-docker ps
-```
-
-### 3. 配置后端
-
-`web/config.ini` 默认配置如下：
-
-```ini
-[server]
-host = 0.0.0.0
-port = 5005
-cors_origins = *
-max_upload_size = 104857600
-
-[paths]
-upload_dir = FastAPI/uploads
-
-[codefender]
-api_base = http://127.0.0.1:8001
-scan_endpoint = /scan/file
-predict_endpoint = /predict
-timeout = 300
-threshold = 0.5
-host_path_prefix =
-container_path_prefix =
-
-[docker]
-container_name = codefender-api
-container_upload_dir = /tmp/codefender_uploads
-```
-
-配置中的相对路径以 `web/` 为基准，默认上传目录是 `web/FastAPI/uploads`。前端地址配置保留在 `web/Vue/public/config.ini`，供浏览器通过 `/config.ini` 加载。
-
-默认模式不需要给 Docker 挂载目录。后端会把上传样本复制到模型容器的 `container_upload_dir`，再调用 `/scan/file` 检测。
-
-如果你希望使用目录挂载方式，也可以这样启动 Docker：
-
-```powershell
-docker run -d --name codefender-api -p 8001:8000 `
-  -v "C:\zjp\github\NKAMG-AIDefender\web\FastAPI\uploads:/samples/uploads" `
-  peng233/codefender:v2
-```
-
-同时把 `web/config.ini` 改成：
-
-```ini
-[codefender]
-host_path_prefix = C:\zjp\github\NKAMG-AIDefender\web\FastAPI\uploads
-container_path_prefix = /samples/uploads
-```
-
-### 4. 启动后端
-
-```powershell
-cd C:\zjp\github\NKAMG-AIDefender\web\FastAPI
-python -m venv .venv
-.\.venv\Scripts\activate
-pip install -r requirements.txt
+cd web
+if (-not (Test-Path config.ini)) { Copy-Item config.example.ini config.ini }
+cd FastAPI
+python -m pip install -r requirements.txt
 python main.py
 ```
 
-默认后端地址：
+Linux 使用 `test -f config.ini || cp config.example.ini config.ini` 创建配置。后端会依次读取 `web/config.example.ini`、`web/config.ini`，再接受 `CODEFENDER_<节名>_<键名>` 环境变量覆盖，例如 `CODEFENDER_SERVER_PORT`。
 
-```text
-http://127.0.0.1:5005
-```
+**前端：**在另一终端从仓库根目录执行：
 
-验证后端：
-
-```powershell
-curl http://127.0.0.1:5005/health
-curl http://127.0.0.1:5005/models
-```
-
-### 5. 启动前端
-
-```powershell
-cd C:\zjp\github\NKAMG-AIDefender\web\Vue
-npm install
+```bash
+cd web/Vue
+npm ci
 npm run dev
 ```
 
-默认前端地址：
+检查 `web/config.ini` 中 `server.port=5006`、`codefender.api_base=http://127.0.0.1:8001`、`scan_endpoint` 留空、`include_de=true`。前端 `public/config.ini` 的 `baseUrl=/api-backend` 与 Vite 代理保持一致。
 
-```text
-http://127.0.0.1:5173
+**Web 必须连接 `engine.web_compat:app`**，不要把 `api_base` 改为生产精简接口。三个模型端口可共享同一个模型进程，但不能把它们当成三个独立推理 worker。
+
+## 4. 生产部署
+
+1. 按[模型服务指南](CoDefenderC3/docs/README.md#3-生产环境启动)构建标准全引擎或 SMDA 纯模型镜像。现有 Web 使用宿主 `8001` → 容器 `8000` 的 Web 兼容端口；生产精简入口另行提供给业务客户端。
+2. 配置后端数据库、上传限制和模型地址。后端绑定本机 `5006`，使用单进程服务，不使用开发热重载。
+3. 在 `web/Vue` 执行 `npm ci`、`npm run build`，将 `dist/` 交给 Nginx。`npm run preview` 只用于预览构建结果，不替代生产静态服务。
+4. 仓库提供 [Nginx 模板](web/deploy/nginx.conf) 和 [systemd 模板](web/deploy/nk-amg-backend.service)。按实际机器修改用户、仓库绝对路径、Python 环境及 Nginx root；模板当前监听 `9528`，代理到 `127.0.0.1:5006`。
+5. 通过网关配置 TLS、访问控制及上传限额。模型管理和诊断接口不要直接公开。生产默认关闭开发入口。
+
+默认上传上限为 1 GiB（后端可降低，但不会超过硬上限），默认 1 个扫描槽 / 8 个等待任务，报告 TTL 为 3600 秒。Nginx 请求体限制必须留出 multipart 开销。
+
+只有配置并验证了独立模型进程/容器时才可增加 Web 扫描槽。`api_bases` 应指向独立服务的 **Web 兼容入口**，而非同一共享进程的三个协议端口；部署辅助脚本 `web/deploy/model_worker.py` 默认预演，启用前核对 `--help` 和生成的 Docker 配置。
+
+## 5. Web 后端接口
+
+下列路径直接调用 `5006`；浏览器同源请求使用 `/api-backend` 前缀。
+
+| 方法 | 路径 | 用途 |
+|---|---|---|
+| GET | `/`、`/health` | 后端存活；不代表模型就绪 |
+| GET | `/upload-policy` | 上传上限、报告 TTL、样本保留策略 |
+| GET | `/models`、`/model-health` | 模型目录、上游 `/readyz` 状态 |
+| GET | `/stats`、`/detection-stats` | 样本统计、检测任务统计 |
+| GET | `/samples/{sha256}`、`/sample-search?value=...` | 样本数据库 SHA256 / MD5 查询 |
+| POST | `/detect` | multipart `file`；可携带 `X-Detection-ID`（32 位小写十六进制） |
+| GET | `/detect/tasks/{task_id}` | 排队/运行/完成/失败/取消状态；完成响应中读取 `result` |
+| POST | `/detect/tasks/{task_id}/leave` | 标记客户端离开；HTTP 202 不等于正在运行的推理立即终止 |
+
+```bash
+curl http://127.0.0.1:5006/model-health
+curl -X POST http://127.0.0.1:5006/detect -F "file=@sample.exe"
+# 上一步返回 task_id 后持续轮询，直到终态
+# 将 TASK_ID 替换为上一步响应中的实际 task_id
+curl "http://127.0.0.1:5006/detect/tasks/TASK_ID"
 ```
 
-打开浏览器访问该地址，上传 PE 样本即可检测。
+Windows PowerShell 使用 `curl.exe`。`/detect` 对未命中有效 PE 通常返回 202；数据库命中或非 PE 可直接返回 200。队列满/上传并发受限返回 429，超限返回 413，存储不足返回 507；上传被 Windows 防护阻止时可能返回 422，不应自动关闭系统防护。
 
-## 生产构建
+## 6. 排查顺序
 
-前端构建：
-
-```powershell
-cd C:\zjp\github\NKAMG-AIDefender\web\Vue
-npm run build
-```
-
-构建产物在：
-
-```text
-web/Vue/dist
-```
-
-后端可使用 `uvicorn` 启动：
-
-```powershell
-cd C:\zjp\github\NKAMG-AIDefender\web\FastAPI
-uvicorn main:app --host 0.0.0.0 --port 5005
-```
-
-## 常用接口
-
-- `GET /health`：后端健康检查
-- `GET /models`：返回 33 个模型名称
-- `POST /detect`：上传 PE 文件并返回基础信息、PE 结构信息和模型检测结果
-
-## 排查问题
-
-### 前端能上传，但模型检测没有结果
-
-优先检查模型 Docker 是否正常：
-
-```powershell
-docker ps
-curl http://127.0.0.1:8001/health
-```
-
-再确认 `web/config.ini` 的容器名是否正确：
-
-```ini
-[docker]
-container_name = codefender-api
-```
-
-如果 `docker ps` 显示的容器名不是 `codefender-api`，把 `container_name` 改成实际名称，然后重启后端。
-
-### 上传后提示不是 PE 样本
-
-后端会校验 `MZ` 头、`PE\0\0` 签名和可选头结构。普通文本、压缩包、PDF、损坏样本会被拒绝。
-
-### Docker 端口冲突
-
-如果本机 8001 已被占用，可以换一个宿主机端口：
-
-```powershell
-docker run -d --name codefender-api -p 8011:8000 peng233/codefender:v2
-```
-
-同时修改：
-
-```ini
-[codefender]
-api_base = http://127.0.0.1:8011
-```
+1. `GET /model-health` 及模型 `GET /readyz` 是否就绪，端口是否指向当前实例。
+2. 后端配置是否连接 Web 兼容入口；`include_de` 是否为模型接口的查询参数。
+3. 异步任务是否进入终态；报告是否已过期，排队请求是否仍在轮询。
+4. 检查数据库连接、后端日志、模型日志和被排除模型原因。未执行/失败不等同于良性。
+5. 修改镜像内代码或产物后重建镜像和容器，仅重启旧容器不会使用新镜像。

@@ -1,199 +1,83 @@
-# SMDA 反汇编后端（替代 BinaryNinja）
+# SMDA 与反汇编后端
 
-- 目的：用 SMDA（https://github.com/danielplohmann/smda）替代 BinaryNinja 承担 D/E 特征与
-  MalGraph CFG 提取，解决三个问题：**不需要商业授权**、**不会在畸形样本上挂死**、**快 5~10 倍**。
-- 状态：2026-10-19 实现并实测通过（容器路径 `python -m engine.analysis_worker`）。
+核对日期：2026-11-11。启动步骤见 [README](README.md)，训练步骤见 [训练指南](../train/README.md)。本文件说明实际接线，不承诺 BN/SMDA 特征逐位相同或固定性能提升。
 
----
+## 1. 后端选择
 
-## 1. 开关
+共享启动 `python -m engine.serve` 在导入应用前执行 `engine.startup.configure_disassembly_backend`：未配置时设为 `smda`，仅接受 `smda` / `bn`；非法值拒绝启动。
 
-| 环境变量 | 默认 | 说明 |
-|---|---|---|
-| `CODEFENDER_DISASM_BACKEND` | `smda` | `smda` / `bn`（BinaryNinja 旧路径保留） |
-| `CODEFENDER_SMDA_TIMEOUT` | `120` | 单样本 SMDA 分析墙钟预算（秒） |
-| `CODEFENDER_SMDA_API_NAME_STYLE` | `short` | `short` 去掉导入名的 `dll!` 前缀（复用现有 MalGraph 词表）；`raw` 保留原名 |
-| `CODEFENDER_ANALYSIS_TIMEOUT_MAX` | `3600` | BN 分析超时上限（原代码硬编码 600，已放开） |
+- 训练 D/E、开发脚本、CPU/GPU SMDA 镜像均默认 SMDA。
+- 标准镜像包含 BinaryNinja 基础环境与许可证，但**不意味着共享启动默认选择 BN**。需要 BN 时显式设置 `CODEFENDER_DISASM_BACKEND=bn`，并验证依赖及授权。
+- `engine.analysis_worker` 的低层默认值与共享启动层不同，不建议绕过统一启动自行调用内部 worker。
+- `CODEFENDER_ENV=prod` 不是后端开关，也不是响应协议开关。
 
-## 2. 改动清单
+SMDA 由 `requirements.txt` 安装；兼容版本样本见 `constraints-smda-validated.txt`。该约束文件记录历史验证组合，不是最新版本推荐或自动升级规则。
 
-| 文件 | 改动 |
+## 2. 实际数据流
+
+```text
+PE → fast 特征（A/B/C/F/G/H）
+   → SMDA 或 BN D/E 数值特征 → 普通模型
+   → 独立 MalGraph CFG/FCG + 原词表/权重 → MalGraph
+   → 成功模型聚合 → Web/生产/开发响应边界
+```
+
+- `include_de=false` 不提取 D/E，当前部署的 10 个相关模型通常跳过；图像、哈希和元数据等 fast 视图仍可运行。
+- SMDA 不生成训练 BN 路径的中间 `.bndb`。非 MalGraph IR 候选仅在显式开关下启用，见 [IR 契约](IR_CONTRACT.md)。
+- MalGraph 保留原特殊管线、词表及权重，不消费候选 ProgramIR。
+- SMDA 默认把 `dll!FuncName` 规范为 `FuncName`，复用既有外部函数词表；`CODEFENDER_SMDA_API_NAME_STYLE=raw` 会改变口径，不应无验证切换。
+- 反汇编后端、符号名、哈希桶映射和图提取变化都可能影响旧权重。稳定编码不等于与历史训练映射一致，需重建特征并验证或重训。
+
+## 3. 超时与失败
+
+| 参数 | 当前接线 |
 |---|---|
-| `feature_extraction/smda_extract.py` | **新增**：SMDA 后端，产出 D01–D07 / E03 / E04 与 MalGraph 同构的 CFG/FCG |
-| `insn_categories.py` | **新增**：x86 指令类别表（15 类），BN 与 SMDA 共用 |
-| `feature_extraction/extract_feature.py` | `extract_de_only` 按后端开关分发；类别表改为共用顶层模块；BN 导入保持惰性 |
-| `models/MalGraph_2022/utils.py` | `extract_cfg_and_fcg` 按后端开关分发；BN 导入改为**可选**（无 BN 环境也能导入） |
-| `engine/analysis_worker.py` | 新增 SMDA 分支（一次分析同时产出 D/E 与 MalGraph），BN 分支保留 |
-| `engine/staged_scan.py` | `analysis_timeout()` 上限由硬编码 600 改为 `CODEFENDER_ANALYSIS_TIMEOUT_MAX`（默认 3600） |
-| `requirements.txt` | 增加 `smda>=4.3.10` |
+| `CODEFENDER_ANALYSIS_TIMEOUT` | 在线隔离分析的单样本预算，由 `engine/staged_scan.py` 读取 |
+| `CODEFENDER_REQUEST_TIMEOUT` | 共享扫描运行时请求预算 |
+| `CODEFENDER_HARD_TIMEOUT` | 超过硬预算终止模型进程，由 Supervisor 等恢复 |
+| `CODEFENDER_SMDA_TIMEOUT` | 特征提取/训练 SMDA 预算；入口默认值不同，不能用一个数字概括全部路径 |
+| `CODEFENDER_SMDA_WORKERS` | 训练侧 SMDA 提取进程数，默认 loader 的 `n_workers` |
+| `CODEFENDER_DE_PER_FILE_TIMEOUT` | 批量特征提取的旧预算回退变量，不是 HTTP 请求预算 |
 
-## 3. 实测（ida_env smda 5.0.1 / torch-cpu smda 4.3.10，两版 API 兼容）
+SMDA 的协作预算不保证所有底层依赖都不会卡住。线上保留隔离分析、请求和硬超时保护；HTTP 请求超时后真实任务未停止时仍占用容量。不要把超时降级等同于全部模型成功。
 
-| 样本 | SMDA 耗时 | BN 耗时（对照） | SMDA 产出 |
-|---|---:|---:|---|
-| notepad.exe (360 KB) | 1.2–3.7 s | 30–130 s | 522 函数 / 6,515 块 / 37,750 指令 |
-| cmd.exe (340 KB) | 18–22 s | 30–130 s | 831 函数 |
-| kernel32.dll (862 KB) | 5.8–19 s | 30–130 s | 2,638 函数 |
+当前 `smda_extract.de_features_are_empty` 检查指令/函数是否均为空；IR 候选另有严格完整性校验。无有效分析结果不能以“全零特征成功”写入训练缓存。成功记 `de_done`，硬失败记 `de_fail`，软超时保留重试机会；历史失败日志仍会影响重跑，需要先诊断，不批量清除用户缓存。
 
-特征维度与 BN 版**逐位对齐**：D01 4096 / D02–D03 256 / D04 15 / D05 12 / D06 10 / D07 6144 /
-E03 12 / E04 10；MalGraph 输入的 `block_features` 全部 11 维、`function_edges`、`acfg_list`、
-`function_names`（本地名规范化为 `sub_<addr>`）结构一致。
+## 4. CPU 与 GPU 镜像
 
-## 4. 与 BN 版的有意差异（需要配套重训）
+| Dockerfile / target | 预检与依赖 | 用途 |
+|---|---|---|
+| `Dockerfile` | 完整签名库、BN 基础镜像/许可证，启动可选 SMDA/BN | 标准全引擎 |
+| `Dockerfile.smda` | CPU PyTorch、SMDA，无签名库 | prod 配置的纯模型对照 |
+| `Dockerfile.smda.gpu --target train` | CUDA PyTorch、SMDA，哈希关闭 | 纯模型推理/离线测评基础镜像 |
+| `Dockerfile.smda.gpu --target serve` | CUDA PyTorch、SMDA，完整签名库 | GPU 全引擎 |
 
-1. **哈希改为稳定 crc32**：BN 版 D01/D02/D03/D07 用进程随机的 `hash()`，每次进程结果都不同；
-   SMDA 版改用 `zlib.crc32`（稳定、可复现）。→ **依赖这些特征的模型（Opcode\*、AsmEmbedNet）必须重训**。
-2. **导入名格式**：SMDA 为 `dll.dll!Func`，BN 多为 `Func`；默认去掉前缀以**复用现有 MalGraph 词表**，
-   需要原名时设 `CODEFENDER_SMDA_API_NAME_STYLE=raw`。
-3. **MalGraph 词表**：若历史上是用 BN 建的词表，前缀规范化后一般可直接复用；否则需重建并重训 MalGraph。
-
-## 5. 镜像部署
-
-```dockerfile
-# 在 CoDefenderC3/Dockerfile 的 pip 段加入
-RUN pip install --no-cache-dir smda>=4.3.10
-```
-
-启动时指定后端（默认值已是 smda，显式写更清楚）：
+GPU `train` target 不等于已经内嵌全部训练代码/数据集；当前 COPY 清单不包含 `train/`。真正训练需另外准备训练源码、依赖、数据和输出目录。
 
 ```bash
-docker run -d --name codefender -p 8000:8000 \
-  -e CODEFENDER_DISASM_BACKEND=smda \
-  -e CODEFENDER_ANALYSIS_TIMEOUT=240 \
-  -e CODEFENDER_REQUEST_TIMEOUT=600 \
-  -e CODEFENDER_HARD_TIMEOUT=660 \
-  -e CODEFENDER_MAX_CONCURRENT=8 \
-  codefender-c3:v8.1
-```
-
-> 不需要再安装/授权 BinaryNinja；镜像里保留 BN 代码只是留了回退路径（`CODEFENDER_DISASM_BACKEND=bn`）。
-
-## 6. 验收
-
-```bash
-# 容器内单样本自检
-docker exec codefender python -m engine.analysis_worker /path/sample.exe /tmp/out.pkl
-python3 - <<'EOF'
-import pickle
-r = pickle.load(open('/tmp/out.pkl','rb'))
-print(sorted(r['features']), r['errors'], r['timing'])
-print(r['malgraph'] and (r['malgraph']['function_number'], len(r['malgraph']['acfg_list'])))
-EOF
-```
-
-## 7. hash() 随机性与 hash 优化
-
-### 7.1 问题
-
-D01/D02/D03/D07 的序列 id 与 n-gram 分桶由 Python 内置 `hash()` 生成，而 `str.__hash__`
-**每进程随机**（镜像与 supervisor 配置均未设置 `PYTHONHASHSEED`）。训练期的 D/E 特征由多个
-独立子进程（`feature_extraction/_de_worker_persistent.py`）提取 ⇒ 训练集本身就是多套随机
-映射的混合，推理端无论用哪种确定性映射都无法与之对齐。
-
-### 7.2 SMDA 后端的处理
-
-`feature_extraction/smda_extract.py` 用 `zlib.crc32` 替代 `hash()`（`_stable_bucket`），
-使 D02/D03/D07 的分桶在进程间稳定。注意：**这只保证"同一份代码每次运行一致"**，
-并不等于与旧权重训练时的随机映射一致 —— 依赖这些维度的旧权重仍然需要重训。
-
-### 7.3 推理期掩码开关（实验 A）
-
-环境变量 `CODEFENDER_MASK_VIEWS`（逗号分隔的视图名，默认空 = 关闭）：
-
-```bash
-# 把 V6_opcode_stat 里的哈希依赖特征段 D02/D03 整段置零，
-# 模型只能依赖 D04 指令类别分布 / D05 函数统计 / D06 基本块统计
-CODEFENDER_MASK_VIEWS=V6_opcode_stat
-```
-
-- 只影响推理期的视图拼装：**不改权重、不改视图维度**，可随时开关做 A/B 对比；
-- 生效后 `/predict-single` 的视图元信息会出现 `masked(D02,D03)` 标记；
-- 实现见 `engine/view_masking.py`（含自检：`python -m engine.view_masking`）。
-
-实测：OpcodeStatNet 的 ROC-AUC 由 0.5478 提升到 0.6108（+0.042），
-且 14 个未受影响模型的分数逐位一致（证明补丁只作用于目标视图）。
-
-## 8. GPU 镜像（两个变体）
-
-### 8.1 为什么分两个版本
-
-| 变体 | `--target` | 哈希预检 | 签名库 | 用途 |
-|---|---|---|---|---|
-| 训练 / 离线测评 | `train` | sha256 / md5 / fuzzy **全关** | 不打进镜像 | 训练、测评——所有样本真正走模型打分 |
-| 线上生产 | `serve` | **全开** | 构建期内嵌 `/app/signatures` | 生产——命中签名库直接短路返回 |
-
-两者**反汇编后端、特征口径、模型权重、引擎逻辑完全一致** ⇒ 分数可比。
-唯一差异是"哈希预检是否短路"。
-
-> 生产档位与训练档位的区别由 `CODEFENDER_REQUIRE_HASH_DB` 决定：
-> `=1` 时签名库缺失或损坏会**拒绝启动**（响的失败优于静默降级）；
-> `=0` 时哈希库不参与，缺库也能起（纯模型模式）。
-> 所以训练版必须是 `REQUIRE_HASH_DB=0`，否则引擎启动即报错。
-
-### 8.2 构建
-
-```bash
-cd CoDefenderC3
-
-# ① 训练 / 测评版（不需要签名库）
-docker build -f Dockerfile.smda.gpu --target train -t codefender-c3:gpu-train .
-
-# ② 线上生产版（必须先暂存签名库）
+# 在 CoDefenderC3/ 执行；两种 target 按用途选择
+# 纯模型，无需签名库
+docker build -f Dockerfile.smda.gpu --target train -t codefender-c3:gpu-model .
+# 完整引擎，需要签名库暂存
 python docker/stage_signatures.py
 docker build -f Dockerfile.smda.gpu --target serve -t codefender-c3:gpu-serve .
-
-# 导出（拷到服务器）
-docker save codefender-c3:gpu-train | gzip > codefender-c3-gpu-train.tar.gz
-docker save codefender-c3:gpu-serve | gzip > codefender-c3-gpu-serve.tar.gz
+# 服务器需具备 NVIDIA GPU、匹配驱动和 NVIDIA Container Toolkit
+docker run -d --name codefender-c3-gpu --gpus all \
+  -p 127.0.0.1:8001:8000 -p 127.0.0.1:18001:18001 \
+  -e CODEFENDER_PRODUCTION_HOST=0.0.0.0 -e CODEFENDER_ENABLE_DEV_API=0 \
+  codefender-c3:gpu-serve
 ```
 
-### 8.3 CUDA 版本与驱动要求
+GPU Dockerfile 默认轮子为 `torch 2.5.1+cu121` / `torchvision 0.20.1+cu121`；可用对应构建参数调整，但兼容性需重新验证。CUDA 不可用时当前应用可降级 CPU，所以请求成功不能证明 GPU 实际启用。
 
-默认 `torch 2.5.1+cu121 / torchvision 0.20.1+cu121` → **CUDA 12.1 runtime，驱动 >= 525.60.13**
-（3090 / 4090 / A10 都可以）。驱动较新（>= 550）想换 cu124 时不用改文件：
+三个监听器共享模型进程与状态。`CODEFENDER_MAX_CONCURRENT` 限制扫描容量，不等于启动同数量独立模型进程/权重副本；特征提取子进程、设备内存仍需实际测量。部分变量被 Supervisor 的 `environment=` 固定，`docker run -e` 不一定能覆盖，应同时核对 Dockerfile 和 ini。
+
+## 5. 验证
 
 ```bash
-docker build -f Dockerfile.smda.gpu --target serve \
-  --build-arg TORCH_INDEX_URL=https://download.pytorch.org/whl/cu124 \
-  --build-arg TORCH_VERSION=2.6.0+cu124 \
-  --build-arg TORCHVISION_VERSION=0.21.0+cu124 \
-  -t codefender-c3:gpu-serve .
+curl http://127.0.0.1:18002/health
+curl -X POST "http://127.0.0.1:18002/predict-single?include_de=true" -F "file=@sample.exe"
+python -B tools/verify_smda_http.py --sample /data/sample.exe --report docs/test-records/smda-http-new.json
 ```
 
-服务器需装 **NVIDIA Container Toolkit**，否则 `docker run --gpus all` 会报 "could not select device driver"。
-
-### 8.4 运行
-
-```bash
-docker run -d --name codefender -p 8000:8000 --gpus all \
-    -e CUDA_VISIBLE_DEVICES=0 \
-    -e CODEFENDER_MAX_CONCURRENT=4 \
-    codefender-c3:gpu-serve
-```
-
-- `CUDA_VISIBLE_DEVICES=0`：**必须指定**，否则 N 个 worker 会散到多张卡上各占一份上下文；
-- `CODEFENDER_MAX_CONCURRENT`：每个并发 worker 会各自加载一份 ensemble → 各占一份 CUDA 上下文
-  （约 300~500MB 显存/份）。24GB 卡上 4~8 个没问题；再高就先降 `CODEFENDER_MODEL_DEVICE=cpu`。
-- 推理设备：`CODEFENDER_MODEL_DEVICE` = `auto`（默认，有 CUDA 就用）/ `cuda` / `cuda:N` / `cpu`；
-  `cuda` 不可用时**自动降级 CPU** 并打日志，不会启动失败。
-  `CODEFENDER_MALGRAPH_DEVICE` 同理（只管 MalGraph）。
-
-### 8.5 GPU 的实际收益边界（重要，别高估）
-
-单样本耗时构成（6160 样本实测，CPU 版）：
-
-| 阶段 | p50 | 能否被 GPU 加速 |
-|---|---:|---|
-| SMDA 反汇编（capstone，纯 CPU） | **6.28 s** | ❌ 瓶颈在这 |
-| fast 模型前向 | 1.22 s | ✅ |
-| slow 模型前向（D/E 模型） | 1.89 s | ✅ |
-
-⇒ **GPU 只能加速那 ~3.1 s 的模型前向，端到端理论上限约 20~30%**；
-真正的吞吐杠杆是**并发**（80 核机器上 `CODEFENDER_MAX_CONCURRENT` 还能往上调，
-但每个 worker 一份 CUDA 上下文，所以要用 `CUDA_VISIBLE_DEVICES` 把它们钉到同一张卡上，
-或 `CODEFENDER_MODEL_DEVICE=cpu` 让模型留在 CPU、只让 MalGraph 用 GPU）。
-
-### 8.6 与 CPU 版的关系
-
-`Dockerfile.smda`（CPU）与 `Dockerfile.smda.gpu`（GPU）的**引擎代码完全相同**，
-只有 torch 轮子与哈希开关不同 ⇒ 两个版本产出的分数可直接比对。
+检查后端名称、实际设备日志、`PerModelScores` 与覆盖计数，不要求开发入口返回已删除的 `PerModelDetails`。真实 PE 验证与历史报告边界见 [测试指南](TESTING.md)、[历史验证记录](SMDA_RUNTIME_VALIDATION_2026-11-10.md)。
