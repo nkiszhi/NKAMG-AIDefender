@@ -53,6 +53,7 @@ from models.ensemble import MultiModelEnsemble, _input_dtype
 from engine.inference import compute_identifiers, _is_valid_pe
 from engine.view_masking import apply_view_mask
 from engine.web_result_formatter import format_scan_result
+from engine.naming import name_for_hash_hit
 
 # nkrepo 哈希库（SHA256 + MD5 预检）：scaner 目录入 sys.path 后顶层导入。
 # 注意目录名用 scaner（非 scanner），避免与 scanner.py 模块同名遮蔽。
@@ -1712,16 +1713,17 @@ def _build_hash_hit_result(md5_hex: str, sha256_hex: str, crc32: str,
     return {
         "MD5": md5_hex, "SHA256": sha256_hex, "CRC32": crc32,
         "FileName": file_name, "FileSize": file_size,
-        "Status": 1, "StatusLabel": "Malicious", "IsMalicious": True, "Score": 1.0,
+        "Status": 1, "StatusLabel": name_for_hash_hit(source, hit.get("fuzzy_type")),
+        "IsMalicious": True, "Score": 1.0,
         "Source": source,
         "ScanResult": {
             "Packed": {"IsPacked": False, "PackerName": "", "IsArchive": False, "ArchiveName": ""},
             "PerModelScores": {}, "PerModelPreds": {},
             "DriftEvidence": {"surface": 0.0, "structure": 0.0, "global": 0.0},
             "SampleDriftType": "normal", "AnomalyScore": 0.0, "IsDriftCandidate": False,
-            # HashMatch 不暴露 name/size: the public verdict is Malicious;
-            # fuzzy 库虽存 name/size 但命中即恶意, 大小无比对价值, 口径与双哈希库一致。
-            # fuzzy 命中额外带 fuzzy_type/sha256 (关联的原始样本哈希) 透出。
+            # Do not expose stored name/size. fuzzy_type identifies the actual
+            # match; its associated sha256 does not imply an exact SHA256 hit.
+            # TLSH/SSDeep names are Suspicious; numeric hash-hit fields stay unchanged.
             "HashMatch": {k: v for k, v in hit.items() if k not in ("name", "size")},
         },
     }

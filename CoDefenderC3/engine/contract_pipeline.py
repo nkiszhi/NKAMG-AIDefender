@@ -53,7 +53,11 @@ def _prepare_sample(core, pe_path, ens, expected, include_de):
 def _hash_result(hit, names):
     result = deepcopy(hit)
     if names:
-        result.setdefault("ScanResult", {})["VirusName"] = name_for_hash_hit()
+        scan_result = result.setdefault("ScanResult", {})
+        hash_match = scan_result.get("HashMatch") or {}
+        scan_result["VirusName"] = name_for_hash_hit(
+            result.get("Source"), hash_match.get("fuzzy_type"),
+        )
     return result
 
 

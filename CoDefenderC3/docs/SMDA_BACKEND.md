@@ -47,10 +47,13 @@ SMDA 的协作预算不保证所有底层依赖都不会卡住。线上保留隔
 
 | Dockerfile / target | 预检与依赖 | 用途 |
 |---|---|---|
-| `Dockerfile` | 完整签名库、BN 基础镜像/许可证，启动可选 SMDA/BN | 标准全引擎 |
+| [Dockerfile](../Dockerfile) | `multiscan_basic_v3`、CPU PyTorch、SMDA、完整签名库，无 BN 许可证 | 标准 CPU 全引擎 |
 | `Dockerfile.smda` | CPU PyTorch、SMDA，无签名库 | prod 配置的纯模型对照 |
+| [Dockerfile.smda.cpu-serve](../Dockerfile.smda.cpu-serve) | CPU PyTorch、SMDA，完整签名库 | 不依赖 BN/CUDA 的 CPU 全引擎 |
 | `Dockerfile.smda.gpu --target train` | CUDA PyTorch、SMDA，哈希关闭 | 纯模型推理/离线测评基础镜像 |
 | `Dockerfile.smda.gpu --target serve` | CUDA PyTorch、SMDA，完整签名库 | GPU 全引擎 |
+
+CPU 全引擎使用 `bash docker/build_smda_cpu.sh codefender-c3:smda-cpu`，脚本完成三族只读布局门禁、暂存和 COPY 预检；生产设备固定 CPU，默认扫描容量 1。配置、端口和运行命令见 [启动指南](README.md#33-cpu-smda-完整签名库镜像)。布局检查不是实际容器/数据库命中验收。
 
 GPU `train` target 不等于已经内嵌全部训练代码/数据集；当前 COPY 清单不包含 `train/`。真正训练需另外准备训练源码、依赖、数据和输出目录。
 

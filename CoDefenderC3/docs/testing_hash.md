@@ -14,7 +14,7 @@
 ## 2. 启动配置与布局
 
 - 标准全引擎镜像设置 `CODEFENDER_HASH_DB_ENABLED=1`、`CODEFENDER_FUZZY_DB_ENABLED=1`、`CODEFENDER_REQUIRE_HASH_DB=1`；必需库缺失拒绝启动。
-- SMDA CPU / GPU train 变体为纯模型模式，三个开关关闭，但 `CODEFENDER_ENV` 仍可为 prod。
+- SMDA CPU 纯模型（`Dockerfile.smda`）/ GPU train 变体关闭这三个开关；CPU 全引擎（[Dockerfile.smda.cpu-serve](../Dockerfile.smda.cpu-serve)）/ GPU serve 变体开启，均可为 prod。CPU 全引擎还要求三族非空布局门禁。
 - `REQUIRE_HASH_DB=0` 只是取消强制启动门禁，**不等于关闭哈希预检**；是否预检看 ENABLED 配置。
 - 构建签名源可以使用版本化 `current/releases`，`stage_signatures.py` 解析当前版本后将完整库暂存打包；标准镜像内初始库是扁平布局。
 - 库根由 `CODEFENDER_HASH_DB_DIR` 指定。运行时 active 版本、构建源版本和镜像内版本要分开核对，不把挂卷覆盖当成标准部署步骤。
@@ -40,7 +40,8 @@ curl -X POST "http://127.0.0.1:18001/predict-single?include_de=true" -F "file=@k
 ```
 
 - 开发命中可提供 `Source`、`ScanResult.HashMatch`；模型可能完全未执行，缺模型统计属于该路径正常边界。
-- 生产命中仅保留业务投影：MD5、SHA256、IsMalicious、VirusName、Packed。VirusName 固定 `Malicious`，不暴露库内病毒名、命中细节和分数。
+- 生产命中仅保留业务投影：MD5、SHA256、IsMalicious、VirusName、Packed，不暴露库内病毒名、命中细节和分数。SHA256 命中输出 `Malicious`；TLSH/SSDeep 命中输出 `Suspicious`；MD5、imphash、authentihash 保持 `Malicious`。按实际 `Source` / `HashMatch.fuzzy_type` 命名，不把 fuzzy 记录关联的 SHA256 当成精确命中。
+- 开发/Web（含流式）保留的 `StatusLabel` 同步采用以上名称；字段结构、`Status=1`、`IsMalicious=true`、`Score=1.0`、目录计数和预检短路不变。`Suspicious` 不是新增数值状态或计数桶。
 - 命中短路的默认 Packed 值不证明已做完整壳分析；未命中才继续有效模型聚合。
 - 目录扫描按内容选 PE；成功/失败/超时区分见 [返回契约](README.md#4-接口返回数据差异)。
 

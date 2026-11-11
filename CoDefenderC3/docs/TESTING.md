@@ -21,10 +21,16 @@
 python -m pip install -r tests/requirements-merge.txt
 python -B tests/test_ir_contract.py
 python -B tests/test_stable_hash.py
+python -B tests/test_smda_cpu_docker.py
+python -B tests/test_multiscan_smda_docker.py
 python -B -m unittest discover -s tests -p "test_merge_*.py" -v
 python -B tools/run_web_regression.py
 python -B tools/run_shared_listener_smoke.py
 ```
+
+`test_multiscan_smda_docker.py` 检查主 Dockerfile 的无 BN 基础镜像、SMDA 启动、CPU 依赖、内嵌产物及生产配置；同样是离线检查，不执行镜像构建。
+
+`test_smda_cpu_docker.py` 是 CPU 全引擎的离线配置/签名布局回归：验证三族门禁、CPU/生产配置、共享启动、端口与探针语法。使用临时伪数据，不读取或修改真实库；通过不能证明 Docker 构建、真实 SQLite、模型推理或签名命中。
 
 `run_web_regression.py` 在临时镜像目录运行现有 Web 测试，不修改 `web/`；部分测试和冻结校验需要仓库的历史 Git 对象，纯导出代码包可能无法执行这些门禁。
 

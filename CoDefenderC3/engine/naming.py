@@ -2,7 +2,8 @@
 engine/naming — VirusName 命名与恶意度分档
 ==========================================
 生产档命名规则（对外契约）:
-  哈希库命中 (sha256/md5/fuzzy/tlsh 任一级) → "Malicious"
+  SHA256 / MD5 / imphash / authentihash 命中 → "Malicious"
+  TLSH / SSDeep 命中                       → "Suspicious"
   ML 判定恶意, 按聚合分档              → "Generic.ML.{Low, Medium, High}"
   ML 判定良性                          → "Benign"
 
@@ -21,8 +22,9 @@ TIER_LOW = "Low"
 TIER_MEDIUM = "Medium"
 TIER_HIGH = "High"
 
-# 哈希命中的固定标签
+# 哈希命中的展示标签；不改变 Status / IsMalicious / Score。
 NAME_HASH_HIT = "Malicious"
+NAME_SUSPICIOUS_HASH_HIT = "Suspicious"
 # ML 判定良性的固定标签
 NAME_BENIGN = "Benign"
 
@@ -54,6 +56,16 @@ def name_for_ml(score: float) -> str:
     return "Generic.ML.%s" % tier
 
 
-def name_for_hash_hit() -> str:
-    """哈希库命中路径的 VirusName（固定 "Malicious"）。"""
+def name_for_hash_hit(source: Optional[str] = None,
+                      fuzzy_type: Optional[str] = None) -> str:
+    """Name the actual matched hash, not the associated sample SHA256.
+
+    Only TLSH/SSDeep matches from the fuzzy database change to Suspicious.
+    Exact SHA256/MD5, other fuzzy types and legacy no-argument calls retain
+    Malicious; numeric decisions and model naming are unaffected.
+    """
+    source = str(source or "").strip().lower()
+    fuzzy_type = str(fuzzy_type or "").strip().lower()
+    if source in {"fuzzy_db", "fuzzy"} and fuzzy_type in {"tlsh", "ssdeep"}:
+        return NAME_SUSPICIOUS_HASH_HIT
     return NAME_HASH_HIT

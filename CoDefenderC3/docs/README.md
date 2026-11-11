@@ -112,7 +112,7 @@ npm run dev
 
 ### 3.1 标准全引擎镜像
 
-准备：Docker、基础镜像 `multiscan_basic_v3:with_binja`、有效的 `license.txt`、`ensemble.pkl`，以及完整的 SHA256 / MD5 / fuzzy 签名库。构建脚本会解析当前签名库并暂存到 `.docker_build/signatures/`。
+使用项目主 [Dockerfile](../Dockerfile)，基于不含 BinaryNinja 的 `multiscan_basic_v3`，安装 CPU PyTorch、SMDA 及项目运行依赖；不再需要 `license.txt`。基础镜像须提供 Python ≥ 3.10、pip、TLS 证书和兼容系统运行库；缺少 Python 或仍可导入 BinaryNinja 时构建会提前失败。准备 `ensemble.pkl` 及完整 SHA256 / MD5 / fuzzy 签名库，构建脚本解析当前库并暂存到 `.docker_build/signatures/`。
 
 ```bash
 cd CoDefenderC3
@@ -125,9 +125,9 @@ docker run -d --name codefender-c3-prod --restart unless-stopped \
   codefender-c3:prod
 ```
 
-镜像及 Supervisor 配置固定为 `CODEFENDER_ENV=prod`、哈希/模糊预检开启、`CODEFENDER_REQUIRE_HASH_DB=1`、运行时覆盖文件禁用。必需签名库缺失时拒绝启动。统一启动默认选择 SMDA；标准镜像虽含 BN 环境和许可证，仍需显式 `CODEFENDER_DISASM_BACKEND=bn` 才选择 BN。
+镜像复用 `start_codefender.smda.sh` 和 `codefender.smda.cpu-serve.ini`，Supervisor 固定生产档位、SMDA、CPU、哈希/模糊预检开启及运行时覆盖禁用；容器不能通过 `docker run -e CODEFENDER_DISASM_BACKEND=bn` 切回 BN。本地通用启动脚本的可选 BN 分支不受影响。三族签名布局在构建期检查，真实数据库和模型仍需启动验收。
 
-代码、模型和签名库已打进镜像，无需挂载；不要随意挂卷覆盖 `/app/signatures`。容器内部生产入口默认只监听回环地址，因此上例显式设为 `0.0.0.0` 才能进行端口映射；宿主端口仍仅本机可访问。
+代码、模型和签名库已打进镜像，无需挂载；不要随意挂卷覆盖 `/app/signatures`。容器内 Web `8000`、生产 `18001` 默认监听 `0.0.0.0`，开发入口默认关闭；上例宿主端口仅本机可访问。CPU 默认扫描容量 1、分析/请求/硬预算 600/900/960 秒，可用 `docker run -e` 调整。基础镜像名称可用 `--build-arg BASE_IMAGE=仓库/镜像:标签` 覆盖，但必须是无 BN 的兼容基础镜像。
 
 ### 3.2 SMDA 纯模型镜像（评估/对照）
 
@@ -144,7 +144,28 @@ docker run -d --name codefender-c3-smda --restart unless-stopped \
 
 与标准镜像二选一，避免端口冲突。`Dockerfile.smda` 同样使用 `prod` 配置和生产响应入口，但关闭哈希预检、`engine_mode=model_only`；**不能把它当成完整签名库生产部署**。
 
-### 3.3 检查与更新
+### 3.3 CPU SMDA 完整签名库镜像
+
+使用 [Dockerfile.smda.cpu-serve](../Dockerfile.smda.cpu-serve)，不依赖 BinaryNinja、许可证或 CUDA；内嵌模型与 SHA256 / MD5 / fuzzy 签名库。CPU 纯模型 `Dockerfile.smda` 保持不变。
+
+从 `CoDefenderC3/` 执行一键构建（需 Docker、Bash 和可用 Python）：
+
+```bash
+bash docker/build_smda_cpu.sh codefender-c3:smda-cpu --progress=plain
+
+docker run -d --name codefender-c3-smda-cpu --restart unless-stopped \
+  -p 127.0.0.1:8001:8000 -p 127.0.0.1:18001:18001 \
+  codefender-c3:smda-cpu
+```
+
+脚本先只读检查当前签名源的三类布局，再暂存到 `.docker_build/signatures/`、检查 COPY 上下文并构建；不会更新源签名库。SHA256 / MD5 / fuzzy 缺目录、缺元数据或没有非空数据分片时拒绝构建。布局通过不等于数据库 schema、实际命中或签名质量通过。
+
+- Supervisor 固定 `prod`、SMDA、两个模型设备为 `cpu`、哈希/模糊预检开启、强制哈希库及运行时文件禁用；这些关键项不会被同名 `docker run -e` 改成纯模型/GPU模式。
+- 默认扫描容量为 1，预算为分析 600 / 请求 900 / 硬超时 960 秒。容量及预算可用 `docker run -e` 调整；应保持请求预算大于分析、硬预算大于请求，并先测资源。
+- 容器内 Web `8000`、生产 `18001` 监听 `0.0.0.0`，便于上述端口映射；开发入口默认关闭。Docker HEALTHCHECK 查询生产 `/readyz`，启动期仍须真实权重和数据库就绪。
+- 源码、模型和暂存库通过 COPY 打入镜像；不要挂卷覆盖 `/app/signatures`。API 更新产生的容器增量不自动进入原镜像，重建前须备份。
+
+### 3.4 检查与更新
 
 ```bash
 curl http://127.0.0.1:18001/readyz
@@ -175,7 +196,17 @@ docker exec codefender-c3-prod tail -n 100 /var/log/supervisor/codefender_err.lo
 
 开发接口明确删除的字段路径是 `ScanResult.PerModelPreds`、`ScanResult.PerModelDetails`、`ScanResult.ModelStats.AggregatedModels`，字段直接不存在，不是返回 `null`。
 
-生产/开发的 `VirusName`：哈希命中为 `Malicious`，模型良性为 `Benign`，模型恶意为 `Generic.ML.Low/Medium/High`。开发状态还可为 `Status=2`（`DriftSuspect`），不要仅按状态码是否非零判断恶意，以 `IsMalicious` 为准。
+哈希命中展示规则：生产/开发使用 `ScanResult.VirusName`，Web/开发保留的 `StatusLabel` 同步采用下表；Web 的 `ScanResult` 不新增 `VirusName`。
+
+| 实际命中类型 | 展示名称 |
+|---|---|
+| SHA256 | `Malicious` |
+| TLSH、SSDeep | `Suspicious` |
+| MD5、imphash、authentihash | `Malicious`（不变） |
+
+只调整展示名称，不改变预检顺序、`Status=1`、`IsMalicious=true`、`Score=1.0` 或目录计数；TLSH/SSDeep 命中仍计入原有 `MaliciousCount`，不新增 Suspicious 计数。fuzzy 命中记录的关联 SHA256 不代表 SHA256 精确匹配。
+
+模型命名保持不变：良性为 `Benign`，恶意为 `Generic.ML.Low/Medium/High`。开发状态仍可为 `Status=2`（`DriftSuspect`），不要仅按状态码是否非零判断恶意，以 `IsMalicious` 为准。
 
 ### 4.1 生产单文件返回
 
