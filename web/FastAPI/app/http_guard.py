@@ -46,8 +46,9 @@ class PublicAPIGuard:
     async def __call__(self, scope, receive, send):
         if scope['type'] != 'http':
             return await self.app(scope, receive, send)
-        path = scope.get('path', '')
-        upload = scope['method'] == 'POST' and path == '/detect'
+        path = scope.get('path', '').rstrip('/')
+        api_upload = scope['method'] == 'POST' and path == '/api/v1/detect'
+        upload = scope['method'] == 'POST' and (path == '/detect' or api_upload)
         lookup = path.startswith('/samples/') or path == '/sample-search'
         group = 'upload' if upload else 'lookup' if lookup else 'read'
         peer = (scope.get('client') or ('unknown', 0))[0]
@@ -62,14 +63,16 @@ class PublicAPIGuard:
         key = ('browser', peer, client_id) if client_id else ('anonymous', peer)
         if not self.allow(key, group, self.CLIENT_LIMITS[group], now):
             return await self.reject(scope, receive, send, 429, '请求过于频繁，请稍后重试')
-        cap = self.max_body_bytes if upload else 65536
+        # The dedicated single-file API has no application-level byte ceiling.
+        # Browser uploads retain their existing limit and both share rate limits.
+        cap = None if api_upload else self.max_body_bytes if upload else 65536
         try:
             length = int(headers.get(b'content-length', b'0'))
             if length < 0:
                 raise ValueError()
         except ValueError:
             return await self.reject(scope, receive, send, 400, '请求长度无效')
-        if length > cap:
+        if cap is not None and length > cap:
             return await self.reject(scope, receive, send, 413, '请求体超过大小限制')
         count, exceeded = 0, False
 
@@ -78,7 +81,7 @@ class PublicAPIGuard:
             message = await receive()
             if message['type'] == 'http.request':
                 count += len(message.get('body', b''))
-                if count > cap:
+                if cap is not None and count > cap:
                     exceeded = True
                     raise BodyLimitExceeded('Request body too large')
             return message

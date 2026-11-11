@@ -168,6 +168,15 @@ button, input { font: inherit; }
 .el-radio-button__inner { border: 0 !important; border-radius: 6px !important; color: #95a3bf; background: transparent; box-shadow: none !important; }
 .el-radio-button__original-radio:checked + .el-radio-button__inner { color: #eff3ff; background: #334b7d; box-shadow: none !important; }
 .panel { margin-top: 15px; }
+.ensemble-verdict { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 20px; padding: 22px 24px; margin: 8px 0 20px; border: 1px solid #475569; border-left-width: 4px; border-radius: 12px; background: rgba(71, 85, 105, .12); color: #cbd5e1; }
+.ensemble-verdict.is-malicious { border-color: #ef6473; background: rgba(239, 100, 115, .08); color: #ff8997; }
+.ensemble-verdict.is-benign { border-color: #35c89b; background: rgba(53, 200, 155, .08); color: #68dfb8; }
+.ensemble-verdict-main { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+.ensemble-verdict-title { color: #d8e0f2; font-size: 14px; font-weight: 600; }
+.ensemble-verdict-main strong { font-size: clamp(21px, 4vw, 28px); line-height: 1.3; overflow-wrap: anywhere; }
+.ensemble-verdict-note { font-size: 12px; color: #acbad2; }
+.ensemble-verdict-metrics { display: flex; flex-wrap: wrap; gap: 12px 24px; font-size: 13px; color: #acbad2; }
+.ensemble-verdict-metrics b { display: block; margin-top: 6px; color: #edf2ff; font-size: 17px; font-weight: 600; }
 .subhead { margin: 23px 0 11px; color: #d7e1f4; font-size: 14px; font-weight: 620; }
 .model-table { width: 100%; margin-top: 15px; }
 .el-table, .el-table tr, .el-table th.el-table__cell, .el-table td.el-table__cell { color: #d1dbed; background: #18233a; border-color: #2d3a57; }

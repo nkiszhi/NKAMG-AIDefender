@@ -14,6 +14,10 @@ class QueueFull(Exception):
     pass
 
 
+class ExpiredRequest(Exception):
+    pass
+
+
 class DetectionTaskStore:
     def __init__(self, path: Path, ttl_seconds: int):
         self.path = Path(path)
@@ -32,6 +36,8 @@ class DetectionTaskStore:
             for name in ('client_seen_at', 'client_left_at', 'progress_json'):
                 if name not in columns:
                     connection.execute(f'ALTER TABLE detection_tasks ADD COLUMN {name} TEXT')
+            if 'request_source' not in columns:
+                connection.execute("ALTER TABLE detection_tasks ADD COLUMN request_source TEXT NOT NULL DEFAULT 'web'")
             connection.execute("UPDATE detection_tasks SET client_seen_at=created_at WHERE client_seen_at IS NULL")
             detection_metrics.initialize(connection)
 
@@ -50,18 +56,22 @@ class DetectionTaskStore:
         with self._lock, self._connect() as connection:
             connection.execute("UPDATE detection_tasks SET status='queued',progress_json=NULL WHERE status='running'")
 
-    def create(self, task_id, filename, file_path, capacity, sha256=None):
+    def create(self, task_id, filename, file_path, capacity, sha256=None, request_source='web'):
+        if request_source not in ('web', 'api'):
+            raise ValueError('Invalid request source')
         now = datetime.now().isoformat(timespec='microseconds')
         with self._lock, self._connect() as connection:
             connection.execute('BEGIN IMMEDIATE')
             existing = connection.execute('SELECT * FROM detection_tasks WHERE task_id=?', (task_id,)).fetchone()
             if existing:
                 return dict(existing)
+            if request_source == 'api' and connection.execute('SELECT 1 FROM detection_metrics WHERE task_id=?', (task_id,)).fetchone():
+                raise ExpiredRequest()
             count = connection.execute("SELECT COUNT(*) FROM detection_tasks WHERE status IN ('queued','running')").fetchone()[0]
             if count >= capacity:
                 raise QueueFull()
-            connection.execute('INSERT INTO detection_tasks(task_id,status,filename,file_path,created_at,updated_at) VALUES(?,?,?,?,?,?)',
-                               (task_id, 'queued', filename, str(file_path), now, now))
+            connection.execute('INSERT INTO detection_tasks(task_id,status,filename,file_path,created_at,updated_at,request_source) VALUES(?,?,?,?,?,?,?)',
+                               (task_id, 'queued', filename, str(file_path), now, now, request_source))
             connection.execute('UPDATE detection_tasks SET client_seen_at=? WHERE task_id=?', (now, task_id))
             detection_metrics.begin(connection, task_id, sha256)
             return dict(connection.execute('SELECT * FROM detection_tasks WHERE task_id=?', (task_id,)).fetchone())
@@ -93,14 +103,14 @@ class DetectionTaskStore:
 
     def leave(self, task_id):
         with self._lock, self._connect() as connection:
-            connection.execute("UPDATE detection_tasks SET client_left_at=? WHERE task_id=? AND status IN ('queued','running')",
+            connection.execute("UPDATE detection_tasks SET client_left_at=? WHERE task_id=? AND request_source='web' AND status IN ('queued','running')",
                                (datetime.now().isoformat(), task_id))
 
     def cancel_abandoned(self, heartbeat_seconds=120, leave_seconds=30):
         now = datetime.now()
         with self._lock, self._connect() as connection:
             connection.execute('BEGIN IMMEDIATE')
-            rows = connection.execute("""SELECT task_id,file_path FROM detection_tasks WHERE status='queued' AND
+            rows = connection.execute("""SELECT task_id,file_path FROM detection_tasks WHERE status='queued' AND request_source='web' AND
                 ((client_left_at IS NOT NULL AND client_left_at<?) OR
                  (client_left_at IS NULL AND client_seen_at<?))""",
                 ((now-timedelta(seconds=leave_seconds)).isoformat(),
@@ -119,7 +129,7 @@ class DetectionTaskStore:
     def claim_next(self):
         with self._lock, self._connect() as connection:
             connection.execute('BEGIN IMMEDIATE')
-            row = connection.execute("SELECT * FROM detection_tasks WHERE status='queued' AND client_left_at IS NULL AND client_seen_at>=? ORDER BY rowid LIMIT 1",
+            row = connection.execute("SELECT * FROM detection_tasks WHERE status='queued' AND (request_source='api' OR (client_left_at IS NULL AND client_seen_at>=?)) ORDER BY rowid LIMIT 1",
                                      ((datetime.now()-timedelta(seconds=120)).isoformat(),)).fetchone()
             if not row:
                 return None

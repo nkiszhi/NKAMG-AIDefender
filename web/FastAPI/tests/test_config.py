@@ -8,6 +8,20 @@ from app.config import _load_config, Settings
 
 
 class ConfigLoadingTests(unittest.TestCase):
+    def test_development_response_contract_is_explicit_and_upload_only(self):
+        config = configparser.ConfigParser()
+        with patch('app.config._load_config', return_value=config):
+            self.assertEqual(Settings().codefender_response_contract, 'web')
+        config.read_dict({'codefender': {'response_contract': 'development', 'api_base': 'http://127.0.0.1:18002'}})
+        with patch('app.config._load_config', return_value=config):
+            self.assertEqual(Settings().codefender_response_contract, 'development')
+        config.read_dict({'codefender': {'scan_endpoint': '/scan'}})
+        with patch('app.config._load_config', return_value=config), self.assertRaises(ValueError):
+            Settings()
+        config.read_dict({'codefender': {'scan_endpoint': '', 'response_contract': 'production'}})
+        with patch('app.config._load_config', return_value=config), self.assertRaises(ValueError):
+            Settings()
+
     def test_parallel_workers_require_isolated_addresses(self):
         config = configparser.ConfigParser()
         config.read_dict({'server': {'max_concurrent_scans': '2'}})

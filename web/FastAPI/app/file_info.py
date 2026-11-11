@@ -1,4 +1,5 @@
 import asyncio
+import errno
 import hashlib
 import mimetypes
 import os
@@ -26,16 +27,17 @@ def safe_filename(filename: Optional[str]) -> str:
     return name or "sample.bin"
 
 
-async def save_upload(file: UploadFile) -> Tuple[Path, Dict[str, object]]:
+async def save_upload(file: UploadFile, *, unlimited: bool = False) -> Tuple[Path, Dict[str, object]]:
     try:
-        return await asyncio.to_thread(_save_upload_sync, file)
+        return await asyncio.to_thread(_save_upload_sync, file, unlimited)
     finally:
         await file.close()
 
 
-def _save_upload_sync(file: UploadFile) -> Tuple[Path, Dict[str, object]]:
+def _save_upload_sync(file: UploadFile, unlimited: bool = False) -> Tuple[Path, Dict[str, object]]:
     settings.upload_dir.mkdir(parents=True, exist_ok=True)
-    if shutil.disk_usage(settings.upload_dir).free < settings.min_free_disk_bytes + settings.max_upload_size:
+    reserve = CHUNK_SIZE if unlimited else settings.max_upload_size
+    if shutil.disk_usage(settings.upload_dir).free < settings.min_free_disk_bytes + reserve:
         raise UploadStorageFull('服务器临时存储空间不足，请稍后重试')
     original_name = safe_filename(file.filename)
     temp_path = settings.upload_dir / f".upload-{os.getpid()}-{uuid.uuid4().hex}"
@@ -49,8 +51,10 @@ def _save_upload_sync(file: UploadFile) -> Tuple[Path, Dict[str, object]]:
         with temp_path.open('wb') as output:
             while chunk := file.file.read(CHUNK_SIZE):
                 size += len(chunk)
-                if size > settings.max_upload_size:
+                if not unlimited and size > settings.max_upload_size:
                     raise ValueError(f'文件超过大小限制：{settings.max_upload_size / (1024 * 1024):g} MiB')
+                if unlimited and shutil.disk_usage(settings.upload_dir).free < settings.min_free_disk_bytes + len(chunk):
+                    raise UploadStorageFull('服务器临时存储空间不足，请稍后重试')
                 sha256.update(chunk)
                 md5.update(chunk)
                 output.write(chunk)
@@ -60,10 +64,12 @@ def _save_upload_sync(file: UploadFile) -> Tuple[Path, Dict[str, object]]:
         temp_path.replace(final_path)
         info = build_file_info(final_path, original_name=original_name, sha256_value=digest, md5_value=md5.hexdigest(), size=size)
         return final_path, info
-    except BaseException:
+    except BaseException as error:
         temp_path.unlink(missing_ok=True)
         if final_path:
             final_path.unlink(missing_ok=True)
+        if isinstance(error, OSError) and error.errno in (errno.ENOSPC, errno.EDQUOT):
+            raise UploadStorageFull('服务器临时存储空间不足，请稍后重试') from error
         raise
 
 
