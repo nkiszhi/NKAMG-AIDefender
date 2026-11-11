@@ -12,9 +12,11 @@ from datetime import datetime, time, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from fastapi import FastAPI, File, Header, HTTPException, Request, Response, UploadFile
+from fastapi import FastAPI, File, Header, HTTPException, Query, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
+from starlette.datastructures import UploadFile as StarletteUploadFile
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.codefender_client import DEFAULT_MODEL_NAMES, ModelServiceBusy, scan_file
 from app.config import settings
@@ -22,7 +24,7 @@ from app.http_guard import PublicAPIGuard
 from app.file_info import save_upload, UploadStorageFull
 from app.sample_repository import SampleRepository, identify_hash
 from app.stats_repository import StatsRepository
-from app.detection_queue import DetectionTaskStore, ProcessLease, QueueFull
+from app.detection_queue import DetectionTaskStore, ProcessLease, QueueFull, ExpiredRequest
 
 
 logging.basicConfig(
@@ -369,20 +371,26 @@ async def _lookup_uploaded_sample(info: dict):
     return None, database_error
 
 
-async def _run_detection(file_path: Path, info: dict, on_progress=None) -> dict:
+async def _run_detection(file_path: Path, info: dict, on_progress=None, *, force_models=False) -> dict:
     # Recheck after waiting: the library may have gained this sample meanwhile.
-    known_result, database_error = await _lookup_uploaded_sample(info)
+    known_result, database_error = (None, None) if force_models else await _lookup_uploaded_sample(info)
     if known_result is not None:
         return known_result
 
     for attempt in range(21):
         try:
-            exe_result = await asyncio.to_thread(scan_file, file_path, on_progress=on_progress)
+            options = {'include_de': True} if force_models else {}
+            exe_result = await asyncio.to_thread(scan_file, file_path, on_progress=on_progress, **options)
             break
         except ModelServiceBusy:
             if attempt == 20:
                 raise RuntimeError('模型服务持续繁忙，请稍后再试')
             await asyncio.sleep(3)
+    if force_models:
+        ensemble = exe_result.get('集成结果') or {}
+        label = ensemble.get('display_result') or ensemble.get('result')
+        if label not in ('Generic.ML.Low', 'Generic.ML.Medium', 'Generic.ML.High', 'Benign') or ensemble.get('source') == 'signature':
+            raise RuntimeError('模型接口未返回 ML 联合等级，请检查开发诊断接口及引擎预检配置')
     return _payload(
         info,
         detection_status="completed",
@@ -435,7 +443,7 @@ async def _process_detection_task(task_id: str, file_path: Path, row: dict) -> N
         info = await asyncio.to_thread(build_file_info, file_path, row['filename'])
         def progress(payload):
             task_store.update_progress(task_id, {'file_info': info, **payload})
-        result = await _run_detection(file_path, info, on_progress=progress)
+        result = await _run_detection(file_path, info, on_progress=progress, force_models=row.get('request_source') == 'api')
         result['timing'] = {'queue_seconds': round(queued_seconds, 3),
                             'processing_seconds': round(monotonic_time.monotonic() - started, 3)}
         await asyncio.to_thread(task_store.complete, task_id, result)
@@ -573,6 +581,117 @@ async def detection_task_leave(task_id: str) -> dict:
         raise HTTPException(status_code=400, detail='检测请求标识无效')
     await asyncio.to_thread(task_store.leave, task_id)
     return {'accepted': True}
+
+
+_api_uploads_inflight = 0
+API_ML_LABELS = ('Generic.ML.Low', 'Generic.ML.Medium', 'Generic.ML.High', 'Benign')
+
+
+def _api_error(task_id, status_code, detail):
+    return JSONResponse({'result': 'Failed', 'detail': detail}, status_code=status_code,
+                        headers={'X-Detection-ID': task_id})
+
+
+async def _api_final_result(row, response, wait_seconds):
+    task_id = row['task_id']
+    result_url = f'/api/v1/detect/tasks/{task_id}'
+    response.headers['X-Detection-ID'] = task_id
+    response.headers['Location'] = result_url
+    deadline = monotonic_time.monotonic() + wait_seconds
+    while row['status'] in ('queued', 'running') and monotonic_time.monotonic() < deadline:
+        await asyncio.sleep(min(0.5, max(0, deadline - monotonic_time.monotonic())))
+        row = await asyncio.to_thread(task_store.get, task_id)
+        if not row:
+            return _api_error(task_id, 410, '检测结果已过期，请使用新的请求标识提交')
+    if row['status'] == 'completed':
+        result = json.loads(row['result_json'])
+        ensemble = (result.get('exe_result') or {}).get('集成结果') or {}
+        label = ensemble.get('display_result') or ensemble.get('result')
+        if label not in API_ML_LABELS:
+            return _api_error(task_id, 502, '模型服务没有返回有效联合判定')
+        return {'result': label}
+    if row['status'] in ('failed', 'cancelled'):
+        return _api_error(task_id, 502, row.get('error') or '模型检测失败')
+    response.status_code = 202
+    return {'status': row['status'], 'task_id': task_id, 'result_url': result_url}
+
+
+@app.post('/api/v1/detect', tags=['单文件联合判定'],
+          summary='上传一个样本，返回一个模型联合判定',
+          description='默认等待最终判定；超过 wait_seconds 返回 202，可按 Location 查询同一任务。'
+                      '此接口不设 Web 文件大小上限，网页上传限制保持原样。仅接受有效 PE；不使用 Web 样本库捷径。'
+                      '成功结果为 Generic.ML.Low/Medium/High 或 Benign；检测失败为 Failed。'
+                      'X-Detection-ID 为可选的 32 位小写十六进制幂等标识，同一标识对应同一个请求。',
+          openapi_extra={'requestBody': {'required': True, 'content': {'multipart/form-data': {
+              'schema': {'type': 'object', 'required': ['file'], 'properties': {
+                  'file': {'type': 'string', 'format': 'binary'}}, 'additionalProperties': False}}}}})
+async def api_detect(request: Request, response: Response,
+                     x_detection_id: str = Header(default=''),
+                     wait_seconds: int = Query(default=600, ge=0, le=3600)):
+    global _api_uploads_inflight
+    if x_detection_id and not re.fullmatch(r'[a-f0-9]{32}', x_detection_id):
+        return _api_error('', 400, '检测请求标识无效')
+    task_id = x_detection_id or uuid.uuid4().hex
+    existing = await asyncio.to_thread(task_store.get, task_id)
+    if existing:
+        if existing.get('request_source') != 'api':
+            return _api_error(task_id, 409, '请求标识已用于网页任务，请使用新的标识')
+        return await _api_final_result(existing, response, wait_seconds)
+    if _api_uploads_inflight >= 2:
+        return _api_error(task_id, 429, '上传服务繁忙，请稍后重试')
+    _api_uploads_inflight += 1
+    file_path = None
+    try:
+        # Parse ourselves so multiple file parts (even with different names) are rejected.
+        async with request.form(max_files=1, max_fields=0) as form:
+            items = list(form.multi_items())
+            if len(items) != 1 or items[0][0] != 'file' or not isinstance(items[0][1], StarletteUploadFile):
+                return _api_error(task_id, 422, '每次必须且只能上传一个 file 文件')
+            file_path, info = await save_upload(items[0][1], unlimited=True)
+    except UploadStorageFull as error:
+        return _api_error(task_id, 507, str(error))
+    except StarletteHTTPException as error:
+        return _api_error(task_id, error.status_code, str(error.detail))
+    except Exception:
+        logger.exception('API 样本上传失败 task_id=%s', task_id)
+        return _api_error(task_id, 500, '样本上传失败')
+    finally:
+        _api_uploads_inflight -= 1
+    if not info['is_pe']:
+        await asyncio.to_thread(file_path.unlink, missing_ok=True)
+        result = _payload(info, detection_mode='rejected', verdict=None)
+        await asyncio.to_thread(task_store.record_direct_result, task_id, result)
+        return _api_error(task_id, 422, info['pe_info'].get('reason') or '不是有效 PE 样本，未调用模型')
+    try:
+        row = await asyncio.to_thread(task_store.create, task_id, info['filename'], file_path,
+                                     settings.max_queued_scans + settings.max_concurrent_scans,
+                                     sha256=info['sha256'], request_source='api')
+    except QueueFull:
+        await asyncio.to_thread(file_path.unlink, missing_ok=True)
+        return _api_error(task_id, 429, '模型队列已满，请稍后重试')
+    except ExpiredRequest:
+        await asyncio.to_thread(file_path.unlink, missing_ok=True)
+        return _api_error(task_id, 410, '该请求标识的结果已过期，请使用新的标识')
+    except BaseException:
+        await asyncio.to_thread(file_path.unlink, missing_ok=True)
+        raise
+    if row['file_path'] != str(file_path):
+        await asyncio.to_thread(file_path.unlink, missing_ok=True)
+    if row.get('request_source') != 'api':
+        return _api_error(task_id, 409, '请求标识已用于网页任务，请使用新的标识')
+    task_wakeup.set()
+    return await _api_final_result(row, response, wait_seconds)
+
+
+@app.get('/api/v1/detect/tasks/{task_id}', tags=['单文件联合判定'], summary='查询最终联合判定，不重复检测或计数')
+async def api_detection_result(task_id: str, response: Response,
+                               wait_seconds: int = Query(default=0, ge=0, le=3600)):
+    if not re.fullmatch(r'[a-f0-9]{32}', task_id):
+        return _api_error('', 400, '检测请求标识无效')
+    row = await asyncio.to_thread(task_store.get, task_id)
+    if not row or row.get('request_source') != 'api':
+        return _api_error(task_id, 404, 'API 检测任务不存在或结果已过期')
+    return await _api_final_result(row, response, wait_seconds)
 
 
 if __name__ == "__main__":

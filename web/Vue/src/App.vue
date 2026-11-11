@@ -133,8 +133,8 @@
             <el-tag v-if="uploadResult.hash_search" :type="uploadResult.verdict === 'Malicious' ? 'danger' : uploadResult.verdict === 'Suspicious' ? 'warning' : 'success'">{{ uploadResult.verdict }} · {{ uploadResult.hash_type.toUpperCase() }} {{ uploadResult.database_hit ? '匹配' : '未匹配' }}</el-tag>
             <el-tag v-else-if="uploadResult.database_hit" type="danger">Malicious · 命中 NKAMG 样本库</el-tag>
             <el-tag v-else-if="uploadResult.is_pe && uploadResult.detection_mode === 'models'" type="info">样本库：未命中</el-tag>
-            <el-tag v-if="ensembleResult && ['Malicious', 'Benign'].includes(ensembleResult.result)" :type="ensembleResult.result === 'Malicious' ? 'danger' : 'success'">
-              {{ ensembleResult.result }}
+            <el-tag v-if="!isModelReport && ensembleResult && ['Malicious', 'Benign'].includes(ensembleResult.result)" :type="ensembleResult.result === 'Malicious' ? 'danger' : 'success'">
+              {{ ensembleLabel }}
             </el-tag>
           </div>
         </div>
@@ -143,6 +143,19 @@
             {{ item.label }}
           </el-radio-button>
         </el-radio-group>
+      </div>
+
+      <div v-if="isModelReport" class="ensemble-verdict" :class="ensembleResult?.result === 'Malicious' ? 'is-malicious' : ensembleResult?.result === 'Benign' ? 'is-benign' : 'is-pending'" role="status">
+        <div class="ensemble-verdict-main">
+          <span class="ensemble-verdict-title">33 模型联合结果</span>
+          <strong>{{ uploadResult.partial ? '等待联合判定' : (ensembleLabel || '未取得有效结果') }}</strong>
+          <span v-if="!uploadResult.partial && ensembleLabel === 'Malicious'" class="ensemble-verdict-note">引擎未返回恶意等级</span>
+        </div>
+        <div v-if="ensembleResult?.source === 'models'" class="ensemble-verdict-metrics">
+          <span>参与联合判定 <b>{{ ensembleResult.ok_models }} / {{ ensembleResult.total_models }}</b></span>
+          <span v-if="ensembleResult.probability !== null && ensembleResult.probability !== undefined">联合评分 <b>{{ getProbabilityPercent(ensembleResult.probability) }}%</b></span>
+          <span v-if="ensembleResult.excluded_models">未取得有效结果 <b>{{ ensembleResult.excluded_models }}</b></span>
+        </div>
       </div>
 
       <div v-show="showSection === 'fileInfo'" class="panel">
@@ -216,6 +229,7 @@
         <div v-if="uploadResult.hash_search" class="database-hit" :class="`hash-result-${uploadResult.verdict.toLowerCase()}`">指纹检索结果：{{ uploadResult.verdict }}。本次未调用 AI 检测引擎。</div>
         <div v-else-if="!uploadResult.is_pe" class="detection-warning">本文件不是 PE，未提交 33 模型检测。</div>
         <div v-else-if="uploadResult.database_hit" class="database-hit">已命中 NKAMG 样本库，已跳过 33 模型检测。</div>
+        <div v-else-if="ensembleResult?.source === 'signature'" class="database-hit">Malicious · 命中引擎签名库，已跳过 33 模型检测。</div>
         <template v-else>
         <div class="summary-row">
           <el-tag size="large" type="info">{{ uploadResult.partial ? '检测中 · 已返回部分结果' : '检测结束' }} · 共 {{ modelCount }} 个模型</el-tag>
@@ -232,7 +246,7 @@
               <el-progress v-else :percentage="getProbabilityPercent(row.probability)" :color="getProbabilityColor(row.probability)" />
             </template>
           </el-table-column>
-          <el-table-column label="结果" width="120">
+          <el-table-column label="结果" width="160">
             <template #default="{ row }">
               <el-tag :type="row.result === 'Malicious' ? 'danger' : row.result === 'Benign' ? 'success' : 'info'">
                 {{ ['Malicious', 'Benign'].includes(row.result) ? row.result : (row.result || '—') }}
@@ -354,6 +368,12 @@ const modelResults = computed(() => {
 const ensembleResult = computed(() => {
   const results = uploadResult.value?.exe_result || uploadResult.value?.results || {}
   return results['集成结果'] || null
+})
+
+const isModelReport = computed(() => Boolean(uploadResult.value?.is_pe && !uploadResult.value.hash_search && !uploadResult.value.database_hit && ensembleResult.value?.source !== 'signature'))
+const ensembleLabel = computed(() => {
+  const label = ensembleResult.value?.display_result || ensembleResult.value?.result
+  return ['Generic.ML.Low', 'Generic.ML.Medium', 'Generic.ML.High', 'Malicious', 'Benign'].includes(label) ? label : ''
 })
 
 const modelRows = computed(() => Object.entries(modelResults.value).map(([model, data]) => ({

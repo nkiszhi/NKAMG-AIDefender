@@ -50,11 +50,16 @@ class Settings:
         self.codefender_api_base = self.codefender_api_bases[0]
         self.codefender_scan_endpoint = self._get("codefender", "scan_endpoint", "")
         self.codefender_predict_endpoint = self._get("codefender", "predict_endpoint", "/predict-single")
+        self.codefender_response_contract = self._get("codefender", "response_contract", "web").strip().lower()
+        if self.codefender_response_contract not in ("web", "development"):
+            raise ValueError('codefender.response_contract 必须为 web 或 development')
         self.codefender_include_de = self._get("codefender", "include_de", "true").strip().lower() in ("true", "1", "yes", "on")
         self.codefender_timeout = self._getint("codefender", "timeout", 300)
         self.threshold = self._getfloat("codefender", "threshold", 0.5)
         self.host_path_prefix = self._get("codefender", "host_path_prefix", "").strip()
         self.container_path_prefix = self._get("codefender", "container_path_prefix", "").strip()
+        if self.codefender_response_contract == 'development' and self.codefender_scan_endpoint:
+            raise ValueError('开发诊断接口仅支持上传，请将 codefender.scan_endpoint 留空')
         self.docker_container_name = self._get("docker", "container_name", "").strip()
         self.docker_container_upload_dir = self._get("docker", "container_upload_dir", "/codefender_uploads").strip()
         if self.max_concurrent_scans > len(self.codefender_api_bases):

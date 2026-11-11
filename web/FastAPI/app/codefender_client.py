@@ -7,6 +7,7 @@ import threading
 import logging
 import time
 import json
+import math
 from collections import OrderedDict
 from pathlib import Path
 from typing import Any, Dict, Iterable, Optional, Tuple
@@ -14,6 +15,7 @@ from typing import Any, Dict, Iterable, Optional, Tuple
 import requests
 
 from .config import settings
+from .multipart_upload import MultipartUpload
 
 
 DEFAULT_MODEL_NAMES = [
@@ -58,8 +60,9 @@ _endpoint_pool = ModelEndpointPool()
 logger = logging.getLogger('aidefender.model_client')
 
 
-def scan_file(file_path: Path, on_progress=None) -> Dict[str, Dict[str, Any]]:
+def scan_file(file_path: Path, on_progress=None, *, include_de=None) -> Dict[str, Dict[str, Any]]:
     urls = settings.codefender_api_bases
+    scan_options = {} if include_de is None else {'include_de': include_de}
     if len(urls) > 1:
         attempted = set()
         while len(attempted) < len(urls):
@@ -69,8 +72,8 @@ def scan_file(file_path: Path, on_progress=None) -> Dict[str, Dict[str, Any]]:
             attempted.add(url)
             started = time.monotonic()
             try:
-                result = (_scan_by_stream(file_path, url, on_progress) if on_progress
-                          else _scan_by_upload(file_path, api_base=url))
+                result = (_scan_by_stream(file_path, url, on_progress, **scan_options) if on_progress and settings.codefender_response_contract == 'web'
+                          else _scan_by_upload(file_path, api_base=url, **scan_options))
                 if result is not None:
                     return result
                 # Unknown failures/timeouts must not resubmit the same sample.
@@ -81,27 +84,35 @@ def scan_file(file_path: Path, on_progress=None) -> Dict[str, Dict[str, Any]]:
                 _endpoint_pool.release(url)
                 logger.info('模型请求结束 endpoint=%s elapsed_seconds=%.3f', url, time.monotonic() - started)
         raise ModelServiceBusy('所有模型服务正在忙碌')
-    path_result = _scan_by_path(file_path)
+    if settings.codefender_response_contract == 'development':
+        # The diagnostic API has no stream/path route. Never submit twice.
+        result = _scan_by_upload(file_path, api_base=urls[0], **scan_options)
+        if result is None:
+            raise RuntimeError('开发模型接口检测失败，请检查接口地址、响应字段和模型服务日志')
+        return result
+
+    path_result = _scan_by_path(file_path) if include_de is None else None
     if path_result is not None:
         return path_result
 
-    upload_result = (_scan_by_stream(file_path, urls[0], on_progress) if on_progress
-                     else _scan_by_upload(file_path))
+    upload_result = (_scan_by_stream(file_path, urls[0], on_progress, **scan_options) if on_progress
+                     else _scan_by_upload(file_path, **scan_options))
     if upload_result is not None:
         return upload_result
 
     raise RuntimeError("模型服务检测失败，请检查容器日志和模型服务连接")
 
 
-def _scan_by_stream(file_path, api_base, on_progress):
+def _scan_by_stream(file_path, api_base, on_progress, include_de=None):
     with Path(file_path).open('rb') as handle:
+        body = MultipartUpload(handle)
         with requests.post(api_base + '/predict-stream',
-                           files={'file': (Path(file_path).name + '.exe', handle, 'application/octet-stream')},
-                           params={'include_de': str(settings.codefender_include_de).lower()},
+                           data=body, headers=body.headers,
+                           params={'include_de': str(settings.codefender_include_de if include_de is None else include_de).lower()},
                            timeout=(5, max(450, settings.codefender_timeout)), stream=True) as response:
             if response.status_code == 404:
                 # Explicitly absent route means no inference was accepted.
-                return _scan_by_upload(file_path, api_base=api_base)
+                return _scan_by_upload(file_path, api_base=api_base, **({} if include_de is None else {'include_de': include_de}))
             if response.status_code == 429:
                 raise ModelServiceBusy('模型服务忙碌')
             response.raise_for_status()
@@ -140,7 +151,7 @@ def _scan_by_path(file_path: Path) -> Optional[Dict[str, Dict[str, Any]]]:
         return None
 
 
-def _scan_by_upload(file_path: Path, api_base=None) -> Optional[Dict[str, Dict[str, Any]]]:
+def _scan_by_upload(file_path: Path, api_base=None, include_de=None) -> Optional[Dict[str, Dict[str, Any]]]:
     endpoint = _normalize_endpoint(settings.codefender_predict_endpoint)
     if not endpoint:
         return None
@@ -148,16 +159,27 @@ def _scan_by_upload(file_path: Path, api_base=None) -> Optional[Dict[str, Dict[s
     url = f"{api_base or settings.codefender_api_base}{endpoint}"
     try:
         with Path(file_path).open("rb") as handle:
+            body = MultipartUpload(handle)
             response = requests.post(
                 url,
-                files={"file": (f"{Path(file_path).name}.exe", handle, "application/octet-stream")},
-                params={"include_de": str(settings.codefender_include_de).lower()},
+                data=body, headers=body.headers,
+                params={"include_de": str(settings.codefender_include_de if include_de is None else include_de).lower()},
                 timeout=max(450, settings.codefender_timeout),
             )
         if response.status_code == 429:
             raise ModelServiceBusy('模型服务忙碌')
         response.raise_for_status()
-        return parse_codefender_response(response.json())
+        data = response.json()
+        if settings.codefender_response_contract == 'development':
+            scan = data.get('ScanResult') or {}
+            if not isinstance(scan, dict) or not isinstance(scan.get('PerModelScores'), dict):
+                raise ValueError('缺少逐模型分数，请连接开发诊断接口，不能使用生产精简接口')
+            if scan.get('VirusName') not in ('Generic.ML.Low', 'Generic.ML.Medium', 'Generic.ML.High', 'Malicious', 'Benign'):
+                raise ValueError('开发接口未返回约定的联合判定命名')
+            score = data.get('Score')
+            if type(data.get('IsMalicious')) is not bool or type(score) not in (int, float) or not math.isfinite(score) or not 0 <= score <= 1:
+                raise ValueError('开发接口联合判定或评分无效')
+        return parse_codefender_response(data)
     except ModelServiceBusy:
         raise
     except Exception as error:
@@ -270,13 +292,20 @@ def _parse_v8_response(data: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
     stats = scan.get("ModelStats") or {}
     if data.get("Status") == -1 or (stats and stats.get("OkModels") == 0):
         raise ValueError("模型服务没有返回有效子模型预测")
+    if not isinstance(scores, dict):
+        raise ValueError('逐模型分数格式无效')
 
     results = OrderedDict()
     for name, score in scores.items():
+        if isinstance(score, bool) or not isinstance(score, (int, float)) or not math.isfinite(score) or not 0 <= score <= 1:
+            raise ValueError(f'模型 {name} 返回无效分数')
         raw = {"probability": score}
         prediction = predictions.get(name)
         if prediction in (0, 1):
             raw["is_malware"] = bool(prediction)
+        else:
+            # New diagnostic contract omits PerModelPreds: strictly > 0.5.
+            raw["is_malware"] = score > 0.5
         results[name] = _format_model_result(raw, name)
 
     for item in scan.get('PerModelDetails') or []:
@@ -286,13 +315,43 @@ def _parse_v8_response(data: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
             results[name] = {'probability': None, 'result': labels.get(item.get('status'), '未完成'),
                              'status': item.get('status'), 'reason': item.get('reason', '')}
 
+    # The compact diagnostic API supplies exclusion reasons, not detailed states.
+    for name, reason in (stats.get('ExcludedModels') or {}).items():
+        if name not in results:
+            results[name] = {'probability': None, 'result': '未取得有效结果',
+                             'status': 'excluded', 'reason': str(reason or '未参与联合判定')}
+
     final = dict(data)
     ensemble = _format_model_result(final, "CoDefender集成模型")
+    label = scan.get('VirusName')
+    if label in ('Generic.ML.Low', 'Generic.ML.Medium', 'Generic.ML.High', 'Malicious', 'Benign'):
+        expected = 'Benign' if label == 'Benign' else 'Malicious'
+        if ensemble['result'] != expected:
+            raise ValueError('模型服务联合命名与判定不一致')
+        # Forward only approved names actually returned by the engine; no tier guessing.
+        ensemble['display_result'] = label
+    else:
+        ensemble['display_result'] = ensemble['result']
     if not scores:
-        if data.get("IsMalicious") is not True:
+        if data.get("IsMalicious") is not True or (isinstance(label, str) and label.startswith('Generic.ML.')):
             raise ValueError("模型服务返回空预测结果")
         # Hash database hits return an ensemble verdict without running submodels.
         results["签名库预检"] = dict(ensemble)
+        ensemble['source'] = 'signature'
+    else:
+        total = stats.get('TotalModels')
+        if total is not None and (type(total) is not int or total < len(results)):
+            raise ValueError('模型总数与逐模型结果不一致')
+        if stats.get('OkModels') is not None and stats['OkModels'] != len(scores):
+            raise ValueError('成功模型数与分数数量不一致')
+        if total == len(DEFAULT_MODEL_NAMES) and set(results).issubset(DEFAULT_MODEL_NAMES):
+            for name in DEFAULT_MODEL_NAMES:
+                if name not in results:
+                    results[name] = {'probability': None, 'result': '未取得有效结果',
+                                     'status': 'unreported', 'reason': '引擎未返回该模型的分数或排除原因'}
+            results = OrderedDict((name, results[name]) for name in DEFAULT_MODEL_NAMES)
+        ensemble.update(source='models', total_models=total or len(results),
+                        ok_models=len(scores), excluded_models=(total or len(results)) - len(scores))
     results["集成结果"] = ensemble
     return results
 
