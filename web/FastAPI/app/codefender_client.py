@@ -72,7 +72,7 @@ def scan_file(file_path: Path, on_progress=None, *, include_de=None) -> Dict[str
             attempted.add(url)
             started = time.monotonic()
             try:
-                result = (_scan_by_stream(file_path, url, on_progress, **scan_options) if on_progress and settings.codefender_response_contract == 'web'
+                result = (_scan_by_stream(file_path, url, on_progress, **scan_options) if on_progress
                           else _scan_by_upload(file_path, api_base=url, **scan_options))
                 if result is not None:
                     return result
@@ -85,8 +85,8 @@ def scan_file(file_path: Path, on_progress=None, *, include_de=None) -> Dict[str
                 logger.info('模型请求结束 endpoint=%s elapsed_seconds=%.3f', url, time.monotonic() - started)
         raise ModelServiceBusy('所有模型服务正在忙碌')
     if settings.codefender_response_contract == 'development':
-        # The diagnostic API has no stream/path route. Never submit twice.
-        result = _scan_by_upload(file_path, api_base=urls[0], **scan_options)
+        result = (_scan_by_stream(file_path, urls[0], on_progress, **scan_options) if on_progress
+                  else _scan_by_upload(file_path, api_base=urls[0], **scan_options))
         if result is None:
             raise RuntimeError('开发模型接口检测失败，请检查接口地址、响应字段和模型服务日志')
         return result
@@ -123,7 +123,7 @@ def _scan_by_stream(file_path, api_base, on_progress, include_de=None):
                 if event.get('event') == 'progress':
                     on_progress(event['data'])
                 elif event.get('event') == 'result':
-                    return parse_codefender_response(event['data'])
+                    return _parse_upload_response(event['data'])
                 elif event.get('event') == 'error':
                     raise RuntimeError(event.get('detail') or '模型检测失败')
     raise RuntimeError('模型进度连接结束，未收到最终结果')
@@ -170,21 +170,25 @@ def _scan_by_upload(file_path: Path, api_base=None, include_de=None) -> Optional
             raise ModelServiceBusy('模型服务忙碌')
         response.raise_for_status()
         data = response.json()
-        if settings.codefender_response_contract == 'development':
-            scan = data.get('ScanResult') or {}
-            if not isinstance(scan, dict) or not isinstance(scan.get('PerModelScores'), dict):
-                raise ValueError('缺少逐模型分数，请连接开发诊断接口，不能使用生产精简接口')
-            if scan.get('VirusName') not in ('Generic.ML.Low', 'Generic.ML.Medium', 'Generic.ML.High', 'Malicious', 'Benign'):
-                raise ValueError('开发接口未返回约定的联合判定命名')
-            score = data.get('Score')
-            if type(data.get('IsMalicious')) is not bool or type(score) not in (int, float) or not math.isfinite(score) or not 0 <= score <= 1:
-                raise ValueError('开发接口联合判定或评分无效')
-        return parse_codefender_response(data)
+        return _parse_upload_response(data)
     except ModelServiceBusy:
         raise
     except Exception as error:
         print(f"CoDefender上传预测API调用失败: {error}")
         return None
+
+
+def _parse_upload_response(data):
+    if settings.codefender_response_contract == 'development':
+        scan = data.get('ScanResult') or {}
+        if not isinstance(scan, dict) or not isinstance(scan.get('PerModelScores'), dict):
+            raise ValueError('缺少逐模型分数，请连接开发诊断接口，不能使用生产精简接口')
+        if scan.get('VirusName') not in ('Generic.ML.Low', 'Generic.ML.Medium', 'Generic.ML.High', 'Malicious', 'Benign'):
+            raise ValueError('开发接口未返回约定的联合判定命名')
+        score = data.get('Score')
+        if type(data.get('IsMalicious')) is not bool or type(score) not in (int, float) or not math.isfinite(score) or not 0 <= score <= 1:
+            raise ValueError('开发接口联合判定或评分无效')
+    return parse_codefender_response(data)
 
 
 def _prepare_scan_path(file_path: Path) -> str:

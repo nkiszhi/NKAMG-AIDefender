@@ -443,7 +443,9 @@ async def _process_detection_task(task_id: str, file_path: Path, row: dict) -> N
         info = await asyncio.to_thread(build_file_info, file_path, row['filename'])
         def progress(payload):
             task_store.update_progress(task_id, {'file_info': info, **payload})
-        result = await _run_detection(file_path, info, on_progress=progress, force_models=row.get('request_source') == 'api')
+        api_request = row.get('request_source') == 'api'
+        result = await _run_detection(file_path, info, on_progress=None if api_request else progress,
+                                      force_models=api_request)
         result['timing'] = {'queue_seconds': round(queued_seconds, 3),
                             'processing_seconds': round(monotonic_time.monotonic() - started, 3)}
         await asyncio.to_thread(task_store.complete, task_id, result)

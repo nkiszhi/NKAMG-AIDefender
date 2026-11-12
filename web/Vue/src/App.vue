@@ -659,6 +659,9 @@ async function pollDetectionTask(taskId) {
         : '正在检测，可刷新页面继续等待'
       if (task.progress?.stage === 'binaryninja') detectionMessage.value = '正在进行反汇编与图特征分析，已完成的模型结果可先查看'
       if (task.progress?.stage === 'binaryninja_slow') detectionMessage.value = '深度分析已超过 90 秒，仍在继续（本阶段上限 180 秒）；已完成的模型结果可先查看'
+      if (task.progress?.stage === 'features') detectionMessage.value = '正在提取样本特征并进行反汇编分析'
+      if (task.progress?.stage === 'models') detectionMessage.value = '正在检测，已完成的模型结果可先查看'
+      if (task.progress?.stage === 'finalizing') detectionMessage.value = '模型检测已结束，正在汇总联合判定'
       await new Promise(resolve => window.setTimeout(resolve, 2500))
     }
   } catch (error) {
