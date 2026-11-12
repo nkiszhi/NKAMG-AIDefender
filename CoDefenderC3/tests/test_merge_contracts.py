@@ -24,7 +24,7 @@ from starlette.datastructures import UploadFile
 import engine.app as core
 import engine.dev.app as development
 from engine import contract_pipeline as pipeline, prediction_policy as policy
-from engine.naming import name_for_ml
+from engine.naming import name_for_hash_hit, name_for_ml
 from engine.scan_runtime import ScanRuntime, ScanBusy, ScanTimeout
 from engine.serve import listeners
 
@@ -65,6 +65,16 @@ class Extractor:
         for fid in core.config.VIEW_GROUPS["V8_color"]["binja_features"]:
             values[fid] = np.zeros(core.FEATURE_DIMS[fid], dtype=np.float32)
         return values
+
+
+HASH_NAME_CASES = (
+    ("sha256_db", {"sha256": "s"}, "Malicious"),
+    ("md5_db", {"md5": "m"}, "Malicious"),
+    ("fuzzy_db", {"fuzzy_type": "ssdeep", "sha256": "associated-sha256"}, "Suspicious"),
+    ("fuzzy_db", {"fuzzy_type": "tlsh", "sha256": "associated-sha256"}, "Suspicious"),
+    ("fuzzy_db", {"fuzzy_type": "imphash", "sha256": "associated-sha256"}, "Malicious"),
+    ("fuzzy_db", {"fuzzy_type": "authentihash", "sha256": "associated-sha256"}, "Malicious"),
+)
 
 
 class Contracts(unittest.IsolatedAsyncioTestCase):
@@ -152,6 +162,49 @@ class Contracts(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual((await self.single(app)).json()["ScanResult"]["VirusName"], "Malicious")
                 self.assertEqual((await self.directory(app)).json()["Results"][0]["ScanResult"]["VirusName"], "Malicious")
         self.assertEqual(hit["ScanResult"]["VirusName"], "old-family")
+
+    async def test_hash_names_across_production_development_web_and_stream(self):
+        for source, match, expected in HASH_NAME_CASES:
+            with self.subTest(source=source, fuzzy_type=match.get("fuzzy_type")):
+                hit = core._build_hash_hit_result("m", "s", "c", "input.exe", 256, match, source)
+                original = json.loads(json.dumps(hit))
+                with patch.object(core, "_hash_precheck", return_value=hit), \
+                     patch.object(core, "_hash_precheck_file", return_value=hit), \
+                     patch.object(core, "_load_ensemble", side_effect=AssertionError("hash hit must not load models")):
+                    for app in (core.app, development.app, core.web_app):
+                        single = await self.single(app)
+                        directory = await self.directory(app)
+                        self.assertEqual(single.status_code, 200, single.text)
+                        self.assertEqual(directory.status_code, 200, directory.text)
+                        body = directory.json()
+                        self.assertEqual(body["Summary"]["MaliciousCount"], 1)
+                        self.assertEqual(body["Summary"]["BenignCount"], 0)
+                        self.assertEqual(body["Summary"]["ScannedFiles"], 1)
+                        for result in (single.json(), body["Results"][0]):
+                            self.assertTrue(result["IsMalicious"])
+                            if app is core.web_app:
+                                self.assertNotIn("VirusName", result["ScanResult"])
+                            else:
+                                self.assertEqual(result["ScanResult"]["VirusName"], expected)
+                            if app is core.app:
+                                self.assertNotIn("StatusLabel", result)
+                                self.assertNotIn("HashMatch", result["ScanResult"])
+                            else:
+                                self.assertEqual(result["StatusLabel"], expected)
+                                self.assertEqual(result["Status"], 1)
+                                self.assertEqual(result["Score"], 1.0)
+                                self.assertEqual(result["Source"], source)
+                                self.assertEqual(result["ScanResult"]["HashMatch"], match)
+                    stream = await self.request(core.web_app, "/predict-stream",
+                                                params={"include_de": "false"},
+                                                files={"file": ("input.exe", pe_bytes())})
+                    self.assertEqual(stream.status_code, 200, stream.text)
+                    final = [json.loads(line) for line in stream.text.splitlines()][-1]
+                    self.assertEqual(final["event"], "result")
+                    self.assertEqual(final["data"]["StatusLabel"], expected)
+                    self.assertTrue(final["data"]["IsMalicious"])
+                    self.assertNotIn("VirusName", final["data"]["ScanResult"])
+                self.assertEqual(hit, original)
 
     async def test_development_partial_models_keep_counts_and_exclusion_reasons(self):
         self.ens._model_types["IMCFN"] = "skip"
@@ -288,6 +341,59 @@ class Contracts(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(summary["ScannedFiles"], 0)
                 self.assertEqual(summary["BenignCount"], 0)
             self.assertEqual(response.json()["Summary"]["TimeoutCount"], 1)
+
+
+class HashNamingTests(unittest.TestCase):
+    def test_names_follow_actual_matching_algorithm(self):
+        for source, match, expected in HASH_NAME_CASES:
+            with self.subTest(source=source, match=match):
+                self.assertEqual(name_for_hash_hit(source, match.get("fuzzy_type")), expected)
+        self.assertEqual(name_for_hash_hit(" FUZZY_DB ", " SSDeep "), "Suspicious")
+        self.assertEqual(name_for_hash_hit("fuzzy", "TLSH"), "Suspicious")
+
+    def test_other_sources_and_legacy_calls_keep_malicious(self):
+        self.assertEqual(name_for_hash_hit(), "Malicious")
+        for source, fuzzy_type in ((None, None), ("sha256_db", "tlsh"),
+                                   ("md5_db", "ssdeep"), ("unknown", "tlsh"),
+                                   ("fuzzy_db", None), ("fuzzy_db", "vhash")):
+            with self.subTest(source=source, fuzzy_type=fuzzy_type):
+                self.assertEqual(name_for_hash_hit(source, fuzzy_type), "Malicious")
+
+    def test_hash_result_changes_only_display_name(self):
+        for source, match, expected in HASH_NAME_CASES:
+            with self.subTest(source=source, match=match):
+                stored_match = dict(match, name="private-family", size=256)
+                hit = core._build_hash_hit_result("m", "s", "c", "input.exe", 256,
+                                                 stored_match, source)
+                self.assertEqual((hit["Status"], hit["IsMalicious"], hit["Score"]), (1, True, 1.0))
+                self.assertEqual(hit["StatusLabel"], expected)
+                self.assertEqual(hit["ScanResult"]["HashMatch"], match)
+                self.assertNotIn("VirusName", hit["ScanResult"])
+                named = pipeline._hash_result(hit, names=True)
+                self.assertEqual(named["ScanResult"].pop("VirusName"), expected)
+                self.assertEqual(named, hit)
+                self.assertEqual(pipeline._hash_result(hit, names=False), hit)
+
+    def test_memory_and_file_prechecks_keep_exact_hash_precedence(self):
+        with tempfile.TemporaryDirectory(prefix="hash-naming-fixture-") as directory:
+            path = Path(directory) / "input.exe"
+            path.write_bytes(pe_bytes())
+            for source, match, expected in HASH_NAME_CASES:
+                with self.subTest(source=source, match=match):
+                    exact = source in ("sha256_db", "md5_db")
+                    with patch.object(core, "_sha256_db", object()), \
+                         patch.object(core, "_md5_db", object()), \
+                         patch.object(core, "_fuzzy_db", object()), \
+                         patch.object(core, "_lookup_hashes", return_value=(match, source) if exact else (None, None)), \
+                         patch.object(core, "_lookup_fuzzy", return_value=(match, source)) as fuzzy:
+                        memory = core._hash_precheck(pe_bytes(), path.name, 256)
+                        streamed = core._hash_precheck_file(str(path))
+                        self.assertEqual(memory, streamed)
+                        self.assertEqual(memory["StatusLabel"], expected)
+                        if exact:
+                            fuzzy.assert_not_called()
+                        else:
+                            self.assertEqual(fuzzy.call_count, 2)
 
 
 class PolicyTests(unittest.TestCase):

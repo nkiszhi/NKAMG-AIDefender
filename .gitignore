@@ -48,3 +48,6 @@ test_lm/
 
 # Local sample scans and raw API responses (keep on disk, not in Git)
 CoDefenderC3/scan-results/
+
+# Local development dependencies, logs and API test evidence
+.dev/

@@ -6,7 +6,9 @@
 
 | 脚本 | 用途与边界 |
 |---|---|
-| `docker/build.sh` | 暂存签名库 → 检查上下文 → 构建标准镜像 |
+| `docker/build.sh` | 暂存签名库 → 检查上下文 → 默认构建基于 `multiscan_basic_v3` 的 CPU SMDA 全引擎 |
+| [docker/build_smda_cpu.sh](../docker/build_smda_cpu.sh) | 三族源布局门禁 → 暂存 → COPY 预检 → CPU SMDA 完整签名库镜像 |
+| [docker/check_signature_layout.py](../docker/check_signature_layout.py) | 只读检查三族目录、非空元数据与数据分片，不验证 SQLite schema/签名质量 |
 | `docker/stage_signatures.py` | 解析当前签名发布目录，生成独立构建暂存树；不是在线更新接口 |
 | `docker/check_context.py` | 核对 Dockerfile 的 COPY 源和忽略规则 |
 | `docker/check_requirements.py` | 静态扫描第三方导入和 requirements 覆盖；不是安装/运行测试 |
@@ -26,12 +28,15 @@ python docker/check_model_imports.py
 bash docker/build.sh codefender-c3:prod --progress=plain
 ```
 
-`build.sh` 的第一个参数为镜像标签，剩余参数传给 `docker build`；可用 `PYTHON=/path/to/python` 指定本机解释器。它构建标准 Dockerfile，不负责选择 SMDA/GPU 变体。
+`build.sh` 的第一个参数为镜像标签，剩余参数传给 `docker build`；可用 `PYTHON=/path/to/python` 指定本机解释器。它默认构建标准 Dockerfile。CPU SMDA 全引擎使用专用 `bash docker/build_smda_cpu.sh codefender-c3:smda-cpu --progress=plain`；CPU 纯模型和 GPU 变体仍按对应 Dockerfile 显式构建。
 
 预检其他 Dockerfile：
 
 ```bash
 python docker/check_context.py --dockerfile Dockerfile.smda --context . --list-copy
+# CPU 完整签名库镜像需先运行 stage_signatures.py
+python docker/check_signature_layout.py --sig-dir .docker_build/signatures
+python docker/check_context.py --dockerfile Dockerfile.smda.cpu-serve --context . --list-copy
 # GPU serve 需要先暂存签名库；检查器用于 COPY 源检查，不证明 Docker 多阶段构建可运行
 python docker/check_context.py --dockerfile Dockerfile.smda.gpu --context . --list-copy
 ```

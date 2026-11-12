@@ -59,7 +59,7 @@ npm run dev
 
 ## 4. 生产部署
 
-1. 按[模型服务指南](CoDefenderC3/docs/README.md#3-生产环境启动)构建标准全引擎或 SMDA 纯模型镜像。现有 Web 使用宿主 `8001` → 容器 `8000` 的 Web 兼容端口；生产精简入口另行提供给业务客户端。
+1. 按[模型服务指南](CoDefenderC3/docs/README.md#3-生产环境启动)构建基于 `multiscan_basic_v3` 的 CPU SMDA 标准全引擎、[CPU SMDA 完整签名库镜像](CoDefenderC3/docs/README.md#33-cpu-smda-完整签名库镜像)或纯模型镜像。现有 Web 使用宿主 `8001` → 容器 `8000` 的 Web 兼容端口；生产精简入口另行提供给业务客户端。
 2. 配置后端数据库、上传限制和模型地址。后端绑定本机 `5006`，使用单进程服务，不使用开发热重载。
 3. 在 `web/Vue` 执行 `npm ci`、`npm run build`，将 `dist/` 交给 Nginx。`npm run preview` 只用于预览构建结果，不替代生产静态服务。
 4. 仓库提供 [Nginx 模板](web/deploy/nginx.conf) 和 [systemd 模板](web/deploy/nk-amg-backend.service)。按实际机器修改用户、仓库绝对路径、Python 环境及 Nginx root；模板当前监听 `9528`，代理到 `127.0.0.1:5006`。

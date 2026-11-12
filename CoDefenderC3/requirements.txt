@@ -27,7 +27,7 @@ numpy>=1.21             # engine/app.py / core / models / feature_extraction 全
 fastapi>=0.110          # engine/app.py 顶层
 starlette>=0.27         # engine/app.py 直接 from starlette.responses import JSONResponse
                         #   （fastapi 会带上，显式声明以免上游依赖变动后语义漂移）
-uvicorn>=0.29           # python -m uvicorn engine.app:app（start_codefender.sh）
+uvicorn>=0.29           # engine.serve 的共享 HTTP 服务
 python-multipart>=0.0.9 # /predict-single 的 multipart/form-data 上传（缺则 FastAPI 启动即报错）
 
 
@@ -45,7 +45,7 @@ tqdm>=4.60              # MalGraph 生产模型：models/MalGraph_2022/{utils,Vo
 # torch>=2.0            # models/* 全部深度模型；feature_extraction/unified.py **顶层** import torch
 # torchvision           # IMCFN_2020 / InceptionV3_2020
 # torch_geometric       # 图模型 CFG_GAT / GCN / DGCNN / CallGraphGNN / GraphStatNet / MalGraph
-# binaryninja           # 商业库，由基础镜像 multiscan_basic_v3:with_binja 提供
+# binaryninja 不随标准 SMDA 镜像安装；仅本地显式 bn 后端需要自行准备商业 SDK/许可。
 #
 #  ⚠ torch>=2.6 起 torch.load() 默认 weights_only=True：
 #    engine/app.py 加载 MalGraph ckpt 未显式传 weights_only，当前 state_dict 形态不受影响，
@@ -54,7 +54,7 @@ tqdm>=4.60              # MalGraph 生产模型：models/MalGraph_2022/{utils,Vo
 
 # ── 4. 训练 / 数据集构建（推理容器不需要，全部注释）────────────────────────
 #  依据：这些包只被 train/ 与数据集构建脚本触达，或只服务「离线生成特征缓存」。
-#  说明：图像视图（V8_gray / V8_color）在生产推理里走 BinaryNinja 的 F01/F02 特征
+#  说明：图像视图（V8_gray / V8_color）在生产推理里走 F01/F02 numpy 特征
 #       （feature_extraction/extract_feature.py，纯 numpy 实现），
 #       并不走 unified.py 的 PIL/matplotlib 图像提取 → 故二者也归入本段。
 #
@@ -92,3 +92,5 @@ tqdm>=4.60              # MalGraph 生产模型：models/MalGraph_2022/{utils,Vo
 #       import filetype  → scaner/filetype.py   （本地实现，勿装 PyPI filetype）
 # SMDA 反汇编后端（替代 BinaryNinja，BSD-3，无商业授权）
 smda>=4.3.10
+lief                   # backend_smda 实际导入的 PE 原生依赖，版本约束随 SMDA 解析
+capstone               # backend_smda 的指令/操作数类型，版本约束随 SMDA 解析

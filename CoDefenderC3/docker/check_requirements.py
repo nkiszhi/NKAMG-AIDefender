@@ -80,6 +80,7 @@ VENDORED = {
 
 # 「启用但闭包内不出现」的白名单：属正常情况，不报为残留
 EXPECTED_NON_IMPORT = {
+    "lief": "SMDA 原生 PE 依赖；backend_smda 通过 importlib 动态导入，AST 不直接出现",
     "uvicorn": "由 `python -m uvicorn` 启动，代码中从不 import",
     "multipart": "python-multipart：FastAPI 解析 form-data 时按需加载，代码不直接 import",
 }
@@ -87,6 +88,8 @@ EXPECTED_NON_IMPORT = {
 # 「有意不声明」的包：代码里确实用到，但不在生产链路 → requirements.txt 已整条删除。
 # 列在这里，避免 --all 每次把它们报成"漏项"，同时保留"为什么可以不装"的说明。
 INTENTIONAL_EXCLUSION = {
+    "binaryninja": "标准镜像使用 SMDA，不安装 BN；仅本地显式 bn 后端自行准备 SDK/许可",
+    "bn_bootstrap": "可选 BN 初始化适配脚本；标准 SMDA 生产路径不使用",
     "anthropic": "漂移归因 LLM（core/llm_module.py）；API 从未调用，仅离线实验用 → requirements §5",
 }
 
@@ -95,7 +98,6 @@ INSTALLED_ELSEWHERE = {
     "torch": "Dockerfile 第 1 层：--index-url https://download.pytorch.org/whl/cpu",
     "torchvision": "Dockerfile 第 1 层：随 torch 一起从 PyTorch CPU 源安装",
     "torch_geometric": "Dockerfile 第 1 层：单独 pip install",
-    "binaryninja": "基础镜像 multiscan_basic_v3:with_binja 自带（商业库）",
 }
 
 RUNTIME_ROOT = ["engine", "core", "models", "scaner", "feature_extraction"]
