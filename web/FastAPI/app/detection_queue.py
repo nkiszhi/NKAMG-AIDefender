@@ -38,6 +38,16 @@ class DetectionTaskStore:
                     connection.execute(f'ALTER TABLE detection_tasks ADD COLUMN {name} TEXT')
             if 'request_source' not in columns:
                 connection.execute("ALTER TABLE detection_tasks ADD COLUMN request_source TEXT NOT NULL DEFAULT 'web'")
+            for name, definition in [('sha256', 'TEXT'), ('file_size', 'INTEGER NOT NULL DEFAULT 0'),
+                                     ('error_code', 'TEXT'), ('retryable', 'INTEGER')]:
+                if name not in columns:
+                    connection.execute(f'ALTER TABLE detection_tasks ADD COLUMN {name} {definition}')
+            connection.execute('''CREATE TABLE IF NOT EXISTS model_memory_failures (
+                sha256 TEXT NOT NULL, revision TEXT NOT NULL, task_id TEXT NOT NULL,
+                reason TEXT NOT NULL, created_at TEXT NOT NULL,
+                PRIMARY KEY(sha256, revision))''')
+            connection.execute('''CREATE TABLE IF NOT EXISTS model_node_cooldowns (
+                endpoint TEXT PRIMARY KEY, generation_json TEXT NOT NULL, until_epoch REAL NOT NULL)''')
             connection.execute("UPDATE detection_tasks SET client_seen_at=created_at WHERE client_seen_at IS NULL")
             detection_metrics.initialize(connection)
 
@@ -54,9 +64,32 @@ class DetectionTaskStore:
     def recover(self):
         # Call only after acquiring the process lease, never during import.
         with self._lock, self._connect() as connection:
-            connection.execute("UPDATE detection_tasks SET status='queued',progress_json=NULL WHERE status='running'")
+            rows = connection.execute("SELECT task_id FROM detection_tasks WHERE status='running'").fetchall()
+            for row in rows:
+                connection.execute("UPDATE detection_tasks SET status='failed',error=?,error_code='MODEL_STATUS_UNKNOWN',retryable=0,updated_at=? WHERE task_id=?",
+                                   ('Web 服务曾中断，无法确认模型是否完成；未自动重放样本。', datetime.now().isoformat(), row['task_id']))
+                detection_metrics.finish(connection, row['task_id'], status='failed')
+            return len(rows)
 
-    def create(self, task_id, filename, file_path, capacity, sha256=None, request_source='web'):
+    def set_metadata(self, task_id, sha256, file_size):
+        with self._lock, self._connect() as connection:
+            connection.execute('UPDATE detection_tasks SET sha256=?,file_size=? WHERE task_id=?',
+                               (sha256, file_size, task_id))
+
+    def record_rejection(self, task_id, info, source, reason, code):
+        now = datetime.now().isoformat()
+        with self._lock, self._connect() as connection:
+            connection.execute('BEGIN IMMEDIATE')
+            changed = connection.execute('''INSERT OR IGNORE INTO detection_tasks
+                (task_id,status,filename,file_path,created_at,updated_at,request_source,sha256,file_size,error,error_code,retryable)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?)''',
+                (task_id,'failed',info['filename'],'',now,now,source,info['sha256'],info['file_size'],reason,code,0))
+            if changed.rowcount:
+                detection_metrics.begin(connection, task_id, info['sha256'])
+                detection_metrics.finish(connection, task_id, status='failed')
+        return self.get(task_id)
+
+    def create(self, task_id, filename, file_path, capacity, sha256=None, request_source='web', file_size=0):
         if request_source not in ('web', 'api'):
             raise ValueError('Invalid request source')
         now = datetime.now().isoformat(timespec='microseconds')
@@ -73,6 +106,8 @@ class DetectionTaskStore:
             connection.execute('INSERT INTO detection_tasks(task_id,status,filename,file_path,created_at,updated_at,request_source) VALUES(?,?,?,?,?,?,?)',
                                (task_id, 'queued', filename, str(file_path), now, now, request_source))
             connection.execute('UPDATE detection_tasks SET client_seen_at=? WHERE task_id=?', (now, task_id))
+            connection.execute('UPDATE detection_tasks SET sha256=?,file_size=? WHERE task_id=?',
+                               (sha256, max(0, int(file_size)), task_id))
             detection_metrics.begin(connection, task_id, sha256)
             return dict(connection.execute('SELECT * FROM detection_tasks WHERE task_id=?', (task_id,)).fetchone())
 
@@ -126,23 +161,83 @@ class DetectionTaskStore:
             connection.execute("UPDATE detection_tasks SET progress_json=? WHERE task_id=? AND status='running'",
                                (json.dumps(progress, ensure_ascii=False), task_id))
 
-    def claim_next(self):
+    def claim_next(self, max_concurrent=2, large_threshold=100 * 1024 * 1024):
         with self._lock, self._connect() as connection:
             connection.execute('BEGIN IMMEDIATE')
+            running = connection.execute("SELECT file_size,sha256 FROM detection_tasks WHERE status='running'").fetchall()
+            if len(running) >= max_concurrent or any(r['file_size'] >= large_threshold for r in running):
+                return None
             row = connection.execute("SELECT * FROM detection_tasks WHERE status='queued' AND (request_source='api' OR (client_left_at IS NULL AND client_seen_at>=?)) ORDER BY rowid LIMIT 1",
                                      ((datetime.now()-timedelta(seconds=120)).isoformat(),)).fetchone()
             if not row:
+                return None
+            # FIFO head blocks new small jobs, so a large sample cannot starve.
+            if running and (row['file_size'] >= large_threshold or
+                            (row['sha256'] and any(r['sha256'] == row['sha256'] for r in running))):
                 return None
             connection.execute("UPDATE detection_tasks SET status='running',updated_at=? WHERE task_id=?",
                                (datetime.now().isoformat(), row['task_id']))
             return dict(row)
 
-    def set_status(self, task_id, status, error=None):
+    def set_status(self, task_id, status, error=None, error_code=None, retryable=None):
         with self._lock, self._connect() as connection:
             changed = connection.execute('UPDATE detection_tasks SET status=?,error=?,updated_at=? WHERE task_id=?',
                                          (status, error, datetime.now().isoformat(), task_id))
             if changed.rowcount and status in ('failed', 'cancelled'):
+                connection.execute('UPDATE detection_tasks SET error_code=?,retryable=? WHERE task_id=?',
+                                   (error_code, None if retryable is None else int(retryable), task_id))
                 detection_metrics.finish(connection, task_id, status=status)
+
+    def remember_memory_failure(self, task_id, revision, reason):
+        with self._lock, self._connect() as connection:
+            row = connection.execute('SELECT sha256 FROM detection_tasks WHERE task_id=?', (task_id,)).fetchone()
+            if row and row['sha256']:
+                connection.execute('''INSERT OR REPLACE INTO model_memory_failures
+                    (sha256,revision,task_id,reason,created_at) VALUES(?,?,?,?,?)''',
+                    (row['sha256'], revision, task_id, reason, datetime.now().isoformat()))
+
+    def memory_failure(self, sha256, revision):
+        if not sha256:
+            return None
+        with self._lock, self._connect() as connection:
+            row = connection.execute('SELECT * FROM model_memory_failures WHERE sha256=? AND revision=?',
+                                     (sha256, revision)).fetchone()
+            return dict(row) if row else None
+
+    def forget_memory_failure(self, sha256, revision):
+        with self._lock, self._connect() as connection:
+            return connection.execute('DELETE FROM model_memory_failures WHERE sha256=? AND revision=?',
+                                      (sha256, revision)).rowcount
+
+    def save_cooldown(self, endpoint, generation, until_epoch):
+        with self._lock, self._connect() as connection:
+            connection.execute('INSERT OR REPLACE INTO model_node_cooldowns VALUES(?,?,?)',
+                               (endpoint, json.dumps(generation), until_epoch))
+
+    def load_cooldowns(self):
+        with self._lock, self._connect() as connection:
+            return [dict(row) for row in connection.execute('SELECT * FROM model_node_cooldowns')]
+
+    def clear_cooldown(self, endpoint):
+        with self._lock, self._connect() as connection:
+            connection.execute('DELETE FROM model_node_cooldowns WHERE endpoint=?', (endpoint,))
+
+    def scheduling_status(self, large_threshold):
+        with self._lock, self._connect() as connection:
+            rows = connection.execute("SELECT file_size FROM detection_tasks WHERE status='running'").fetchall()
+        return {'active_tasks': len(rows), 'large_sample_running': any(r['file_size'] >= large_threshold for r in rows),
+                'large_sample_bytes': large_threshold}
+
+    def expire_waiting(self, seconds):
+        cutoff = (datetime.now() - timedelta(seconds=seconds)).isoformat()
+        with self._lock, self._connect() as connection:
+            rows = connection.execute("SELECT task_id,file_path FROM detection_tasks WHERE status='queued' AND created_at<?",
+                                      (cutoff,)).fetchall()
+            for row in rows:
+                connection.execute("UPDATE detection_tasks SET status='failed',error=?,error_code='QUEUE_TIMEOUT',retryable=1,updated_at=? WHERE task_id=?",
+                                   ('等待模型服务超过时限，本次任务未完成。', datetime.now().isoformat(), row['task_id']))
+                detection_metrics.finish(connection, row['task_id'], status='failed')
+            return [r['file_path'] for r in rows]
 
     def complete(self, task_id, result):
         with self._lock, self._connect() as connection:
@@ -177,7 +272,7 @@ class DetectionTaskStore:
         with self._lock, self._connect() as connection:
             rows = connection.execute("SELECT file_path FROM detection_tasks WHERE status IN ('completed','failed','cancelled') AND updated_at<?", (cutoff,)).fetchall()
             connection.execute("DELETE FROM detection_tasks WHERE status IN ('completed','failed','cancelled') AND updated_at<?", (cutoff,))
-        return [row['file_path'] for row in rows]
+        return [row['file_path'] for row in rows if row['file_path']]
 
     def orphan_paths(self, upload_dir, cutoff_timestamp):
         # Only UUID-owned uploads; never delete active tasks or user files.
@@ -206,6 +301,11 @@ class DetectionTaskStore:
             response['result'] = json.loads(row['result_json'])
         if row['status'] == 'failed':
             response['error'] = row.get('error') or '检测任务失败'
+            if row.get('error_code'):
+                response['error_code'] = row['error_code']
+            if row.get('retryable') is not None:
+                response['retryable'] = bool(row['retryable'])
+        response['file_size'] = row.get('file_size', 0)
         if row['status'] == 'cancelled':
             response['error'] = row.get('error') or '排队任务已取消'
         if row.get('progress_json') and row['status'] in ('running', 'failed'):

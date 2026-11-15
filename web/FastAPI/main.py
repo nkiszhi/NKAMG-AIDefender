@@ -18,7 +18,8 @@ from starlette.responses import JSONResponse
 from starlette.datastructures import UploadFile as StarletteUploadFile
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.codefender_client import DEFAULT_MODEL_NAMES, ModelServiceBusy, scan_file
+from app.codefender_client import DEFAULT_MODEL_NAMES, ModelServiceBusy, scan_file, _endpoint_pool
+from app import model_runtime
 from app.config import settings
 from app.http_guard import PublicAPIGuard
 from app.file_info import save_upload, UploadStorageFull
@@ -116,7 +117,11 @@ async def _stats_loop() -> None:
 async def lifespan(_app):
     process_lease.acquire()
     try:
-        await asyncio.to_thread(task_store.recover)
+        _endpoint_pool.attach_storage(task_store)
+        interrupted = await asyncio.to_thread(task_store.recover)
+        if interrupted:
+            for base in settings.codefender_api_bases:
+                _endpoint_pool.quarantine(base, model_runtime.node_evidence(base))
         stats_task = asyncio.create_task(_stats_loop())
         worker_tasks = [asyncio.create_task(_detection_worker()) for _ in range(settings.max_concurrent_scans)]
         cleanup_task = asyncio.create_task(_cleanup_loop())
@@ -163,7 +168,8 @@ async def limit_uploads(request: Request, call_next):
 
 
 # Outer user middleware: reject oversized bodies before multipart spooling.
-app.add_middleware(PublicAPIGuard, max_body_bytes=settings.max_upload_size + 1024 * 1024)
+app.add_middleware(PublicAPIGuard, max_body_bytes=settings.max_upload_size + 1024 * 1024,
+                   upload_timeout=settings.api_upload_timeout_seconds)
 
 
 def _response_payload(info: dict, exe_result: dict, detection_mode: str) -> dict:
@@ -242,12 +248,18 @@ _model_health_cache = {'at': float('-inf'), 'data': {}}
 async def _fetch_model_health() -> dict:
     services = await asyncio.gather(*(_fetch_endpoint_health(base) for base in settings.codefender_api_bases))
     ready = [service for service in services if service.get('ready')]
+    allowed, reason = model_runtime.admission_status()
+    recovering = _endpoint_pool.recovering()
     return {
         'connected': any(service.get('connected') for service in services),
         'ready': bool(ready),
         'model_count': max((service.get('model_count', 0) for service in ready), default=0),
         'ready_workers': len(ready),
         'total_workers': len(services),
+        'dispatch_paused': not allowed or bool(recovering),
+        'queue_message': reason or ('模型请求曾异常中断，等待节点恢复或原任务结束' if recovering else ''),
+        'recovering_workers': len(recovering),
+        **task_store.scheduling_status(settings.large_sample_bytes),
         'service': {'workers': services},
     }
 
@@ -259,7 +271,10 @@ async def _fetch_endpoint_health(base) -> dict:
         if response.status_code != 503:
             response.raise_for_status()
         payload = response.json()
-        return {"connected": True, "ready": payload.get("ready") is True, "model_count": payload.get("model_count", 0), "service": payload}
+        usable = not (base in _endpoint_pool.recovering())
+        if settings.model_monitor_path:
+            usable = usable and bool(model_runtime.node_evidence(base).get('ready'))
+        return {"connected": True, "ready": payload.get("ready") is True and usable, "model_count": payload.get("model_count", 0), "service": payload}
     except Exception as error:
         logger.warning("模型服务健康检查失败: %s", error)
         return {"connected": False, "ready": False, "model_count": 0, "detail": "模型服务暂不可用"}
@@ -414,7 +429,12 @@ async def _detection_worker() -> None:
             except OSError:
                 logger.warning('取消任务样本暂未删除，交由定期清理: %s', path, exc_info=True)
         task_wakeup.clear()
-        row = await asyncio.to_thread(task_store.claim_next)
+        allowed, _ = model_runtime.admission_status()
+        # An abandoned HTTP request may still be computing. Drain before any
+        # new dispatch, including a large exclusive task on the other node.
+        safe = allowed and not _endpoint_pool.recovering()
+        row = await asyncio.to_thread(task_store.claim_next, settings.max_concurrent_scans,
+                                      settings.large_sample_bytes) if safe else None
         if not row:
             try:
                 await asyncio.wait_for(task_wakeup.wait(), timeout=1)
@@ -441,6 +461,9 @@ async def _process_detection_task(task_id: str, file_path: Path, row: dict) -> N
             raise FileNotFoundError('上传样本文件已不存在')
         from app.file_info import build_file_info
         info = await asyncio.to_thread(build_file_info, file_path, row['filename'])
+        await asyncio.to_thread(task_store.set_metadata, task_id, info['sha256'], info['file_size'])
+        if await asyncio.to_thread(task_store.memory_failure, info['sha256'], settings.model_revision):
+            raise model_runtime.ModelTaskFailure(model_runtime.MEMORY_MESSAGE, code='MODEL_MEMORY_LIMIT')
         def progress(payload):
             task_store.update_progress(task_id, {'file_info': info, **payload})
         api_request = row.get('request_source') == 'api'
@@ -450,9 +473,23 @@ async def _process_detection_task(task_id: str, file_path: Path, row: dict) -> N
                             'processing_seconds': round(monotonic_time.monotonic() - started, 3)}
         await asyncio.to_thread(task_store.complete, task_id, result)
         logger.info('检测任务完成 task_id=%s processing_seconds=%.3f', task_id, monotonic_time.monotonic() - started)
+    except model_runtime.ModelTaskFailure as error:
+        # The separate Docker observer may lag the socket disconnect briefly.
+        is_oom = error.code == 'MODEL_MEMORY_LIMIT'
+        for _ in range(12 if error.endpoint and settings.model_monitor_path else 0):
+            is_oom = model_runtime.confirmed_oom(error)
+            if is_oom:
+                break
+            await asyncio.sleep(0.5)
+        detail = model_runtime.MEMORY_MESSAGE if is_oom else str(error)
+        code = 'MODEL_MEMORY_LIMIT' if is_oom else error.code
+        if is_oom:
+            await asyncio.to_thread(task_store.remember_memory_failure, task_id, settings.model_revision, detail)
+        await asyncio.to_thread(task_store.set_status, task_id, 'failed', detail, code, False)
+        logger.error('检测任务终止 task_id=%s code=%s', task_id, code)
     except Exception as error:
         logger.exception('检测任务失败 task_id=%s', task_id)
-        await asyncio.to_thread(task_store.set_status, task_id, 'failed', '检测任务失败，请稍后重试或联系管理员')
+        await asyncio.to_thread(task_store.set_status, task_id, 'failed', '检测任务失败，请联系管理员检查；未自动重复检测。', 'DETECTION_FAILED', False)
     finally:
         try:
             await asyncio.to_thread(file_path.unlink, missing_ok=True)
@@ -464,6 +501,7 @@ async def _cleanup_loop() -> None:
     while True:
         try:
             abandoned = await asyncio.to_thread(task_store.cancel_abandoned)
+            abandoned += await asyncio.to_thread(task_store.expire_waiting, settings.max_queue_wait_seconds)
             for path in abandoned:
                 await asyncio.to_thread(Path(path).unlink, missing_ok=True)
             paths = await asyncio.to_thread(task_store.cleanup)
@@ -541,10 +579,14 @@ async def detect(response: Response, file: UploadFile = File(...), x_detection_i
         logger.info('上传样本命中数据库，直接返回且不进入模型队列: task_id=%s', task_id)
         return known_result
 
+    blocked = await _reject_memory_sample(task_id, info, file_path, 'web')
+    if blocked:
+        response.status_code = 202
+        return task_store.public_status(blocked)
     try:
         row = await asyncio.to_thread(task_store.create, task_id, info['filename'], file_path,
                                       settings.max_queued_scans + settings.max_concurrent_scans,
-                                      sha256=info['sha256'])
+                                      sha256=info['sha256'], file_size=info['file_size'])
     except QueueFull:
         file_path.unlink(missing_ok=True)
         raise HTTPException(status_code=429, detail='检测服务繁忙，请稍后重试', headers={'Retry-After': '5'})
@@ -574,7 +616,7 @@ async def detection_task_status(task_id: str) -> dict:
     row = await asyncio.to_thread(task_store.get, task_id)
     if not row:
         raise HTTPException(status_code=404, detail="检测任务不存在或已过期")
-    return task_store.public_status(row)
+    return _public_task_status(row)
 
 
 @app.post('/detect/tasks/{task_id}/leave', status_code=202)
@@ -589,9 +631,35 @@ _api_uploads_inflight = 0
 API_ML_LABELS = ('Generic.ML.Low', 'Generic.ML.Medium', 'Generic.ML.High', 'Benign')
 
 
-def _api_error(task_id, status_code, detail):
-    return JSONResponse({'result': 'Failed', 'detail': detail}, status_code=status_code,
-                        headers={'X-Detection-ID': task_id})
+def _api_error(request_id, status_code, detail, **extra):
+    return JSONResponse({'result': 'Failed', 'detail': detail, **extra}, status_code=status_code,
+                        headers={'X-Detection-ID': request_id})
+
+
+async def _reject_memory_sample(task_id, info, file_path, source):
+    blocked = await asyncio.to_thread(task_store.memory_failure, info['sha256'], settings.model_revision)
+    if not blocked:
+        return None
+    try:
+        return await asyncio.to_thread(task_store.record_rejection, task_id, info, source,
+                                       model_runtime.MEMORY_MESSAGE, 'MODEL_MEMORY_LIMIT')
+    finally:
+        await asyncio.to_thread(file_path.unlink, missing_ok=True)
+
+
+def _public_task_status(row):
+    payload = task_store.public_status(row)
+    if row['status'] == 'queued':
+        allowed, reason = model_runtime.admission_status()
+        if not allowed:
+            payload['queue_message'] = reason
+        elif _endpoint_pool.recovering():
+            payload['queue_message'] = '模型服务异常中断，正在等待恢复；请勿重复上传'
+        elif row.get('file_size', 0) >= settings.large_sample_bytes:
+            payload['queue_message'] = '大样本已排队，等待当前任务结束后独占模型分析'
+        else:
+            payload['queue_message'] = f"正在排队，前方还有 {row.get('tasks_ahead', 0)} 个任务"
+    return payload
 
 
 async def _api_final_result(row, response, wait_seconds):
@@ -613,9 +681,12 @@ async def _api_final_result(row, response, wait_seconds):
             return _api_error(task_id, 502, '模型服务没有返回有效联合判定')
         return {'result': label}
     if row['status'] in ('failed', 'cancelled'):
-        return _api_error(task_id, 502, row.get('error') or '模型检测失败')
+        return _api_error(task_id, 502, row.get('error') or '模型检测失败',
+                          error_code=row.get('error_code') or 'DETECTION_FAILED',
+                          retryable=bool(row.get('retryable')), task_id=task_id)
     response.status_code = 202
-    return {'status': row['status'], 'task_id': task_id, 'result_url': result_url}
+    return {'status': row['status'], 'task_id': task_id, 'result_url': result_url,
+            'queue_message': _public_task_status(row).get('queue_message', '')}
 
 
 @app.post('/api/v1/detect', tags=['单文件联合判定'],
@@ -664,10 +735,13 @@ async def api_detect(request: Request, response: Response,
         result = _payload(info, detection_mode='rejected', verdict=None)
         await asyncio.to_thread(task_store.record_direct_result, task_id, result)
         return _api_error(task_id, 422, info['pe_info'].get('reason') or '不是有效 PE 样本，未调用模型')
+    blocked = await _reject_memory_sample(task_id, info, file_path, 'api')
+    if blocked:
+        return await _api_final_result(blocked, response, 0)
     try:
         row = await asyncio.to_thread(task_store.create, task_id, info['filename'], file_path,
                                      settings.max_queued_scans + settings.max_concurrent_scans,
-                                     sha256=info['sha256'], request_source='api')
+                                     sha256=info['sha256'], request_source='api', file_size=info['file_size'])
     except QueueFull:
         await asyncio.to_thread(file_path.unlink, missing_ok=True)
         return _api_error(task_id, 429, '模型队列已满，请稍后重试')

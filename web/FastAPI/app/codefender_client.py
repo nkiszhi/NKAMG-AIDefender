@@ -16,6 +16,7 @@ import requests
 
 from .config import settings
 from .multipart_upload import MultipartUpload
+from . import model_runtime
 
 
 DEFAULT_MODEL_NAMES = [
@@ -39,12 +40,33 @@ class ModelEndpointPool:
         self._lock = threading.Lock()
         self._active = set()
         self._cursor = 0
+        self._recovering = {}
+        self._storage = None
+
+    def attach_storage(self, store):
+        self._storage = store
+        for row in store.load_cooldowns():
+            self._recovering[row['endpoint']] = {'generation': tuple(json.loads(row['generation_json'])),
+                'until': time.monotonic() + max(0, row['until_epoch'] - time.time())}
 
     def acquire(self, urls, excluded=()):
         with self._lock:
             for offset in range(len(urls)):
                 index = (self._cursor + offset) % len(urls)
                 url = urls[index]
+                recovery = self._recovering.get(url)
+                node = model_runtime.node_evidence(url)
+                if recovery:
+                    changed = bool(node.get('ready') and node.get('id') and
+                                   model_runtime.generation(node) != recovery['generation'])
+                    if changed or time.monotonic() >= recovery['until']:
+                        self._recovering.pop(url, None)
+                        if self._storage:
+                            self._storage.clear_cooldown(url)
+                    else:
+                        continue
+                if getattr(settings, 'model_monitor_path', None) and not node.get('ready'):
+                    continue
                 if url not in self._active and url not in excluded:
                     self._active.add(url)
                     self._cursor = (index + 1) % len(urls)
@@ -55,6 +77,27 @@ class ModelEndpointPool:
         with self._lock:
             self._active.discard(url)
 
+    def quarantine(self, url, evidence):
+        with self._lock:
+            self._recovering[url] = {'generation': model_runtime.generation(evidence),
+                                     'until': time.monotonic() + settings.model_recovery_seconds}
+            if self._storage:
+                self._storage.save_cooldown(url, model_runtime.generation(evidence), time.time() + settings.model_recovery_seconds)
+
+    def recovering(self):
+        with self._lock:
+            for url, state in list(self._recovering.items()):
+                node = model_runtime.node_evidence(url)
+                if (node.get('ready') and node.get('id') and model_runtime.generation(node) != state['generation']) or time.monotonic() >= state['until']:
+                    self._recovering.pop(url, None)
+                    if self._storage:
+                        self._storage.clear_cooldown(url)
+            return list(self._recovering)
+
+    def has_active(self):
+        with self._lock:
+            return bool(self._active)
+
 
 _endpoint_pool = ModelEndpointPool()
 logger = logging.getLogger('aidefender.model_client')
@@ -63,7 +106,7 @@ logger = logging.getLogger('aidefender.model_client')
 def scan_file(file_path: Path, on_progress=None, *, include_de=None) -> Dict[str, Dict[str, Any]]:
     urls = settings.codefender_api_bases
     scan_options = {} if include_de is None else {'include_de': include_de}
-    if len(urls) > 1:
+    if len(urls) > 1 or getattr(settings, 'model_monitor_path', None):
         attempted = set()
         while len(attempted) < len(urls):
             url = _endpoint_pool.acquire(urls, attempted)
@@ -71,6 +114,8 @@ def scan_file(file_path: Path, on_progress=None, *, include_de=None) -> Dict[str
                 break
             attempted.add(url)
             started = time.monotonic()
+            request_started = time.time()
+            evidence = model_runtime.node_evidence(url)
             try:
                 result = (_scan_by_stream(file_path, url, on_progress, **scan_options) if on_progress
                           else _scan_by_upload(file_path, api_base=url, **scan_options))
@@ -80,6 +125,12 @@ def scan_file(file_path: Path, on_progress=None, *, include_de=None) -> Dict[str
                 raise RuntimeError('模型服务检测失败，请检查容器日志和模型服务连接')
             except ModelServiceBusy:
                 continue  # A 429 explicitly means this request was not accepted.
+            except Exception as error:
+                _endpoint_pool.quarantine(url, evidence)
+                raise model_runtime.ModelTaskFailure(
+                    '模型服务异常中断，分析未完成；请勿自动重复上传。',
+                    endpoint=url, started_at=request_started, container_id=evidence.get('id'),
+                ) from error
             finally:
                 _endpoint_pool.release(url)
                 logger.info('模型请求结束 endpoint=%s elapsed_seconds=%.3f', url, time.monotonic() - started)

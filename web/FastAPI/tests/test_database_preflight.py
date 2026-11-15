@@ -73,7 +73,7 @@ class DatabasePreflightTests(unittest.TestCase):
             root = Path(folder)
             sample = root / 'upload.pe'
             sample.write_bytes(b'test')
-            info = dict(filename='sample.exe', sha256='a' * 64, is_pe=True)
+            info = dict(filename='sample.exe', sha256='a' * 64, is_pe=True, file_size=4)
             store = DetectionTaskStore(root / 'tasks.sqlite3', 3600)
             response = Response()
             with patch.object(main, 'task_store', store), \

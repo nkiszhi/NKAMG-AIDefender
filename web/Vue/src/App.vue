@@ -19,9 +19,9 @@
           <button type="submit" :disabled="searching || !hashQuery">{{ searching ? '查询中' : '查询' }}</button>
         </form>
         <div class="status-tags">
-        <span class="service-status" :class="modelService.ready ? 'is-ready' : modelService.connected ? 'is-warning' : 'is-offline'">
+        <span class="service-status" :class="modelService.dispatch_paused || modelService.ready_workers < modelService.total_workers ? 'is-warning' : modelService.ready ? 'is-ready' : modelService.connected ? 'is-warning' : 'is-offline'">
           <i></i>
-          {{ checkingModels ? '正在检查模型服务' : modelService.ready ? `模型服务已连接 · ${modelService.model_count} 个模型` : modelService.connected ? '模型服务未就绪' : '模型服务未连接' }}
+          {{ checkingModels ? '正在检查模型服务' : serviceStatus(modelService) }}
         </span>
         </div>
       </div>
@@ -39,6 +39,11 @@
           <span>单文件不超过 {{ formatFileSize(maxUploadSize) }} · 检测结束后删除样本</span>
         </div>
         <div v-if="loading" class="upload-progress" role="status"><span class="pulse-dot"></span>{{ detectionMessage }}</div>
+        <el-alert v-if="detectionFailure" type="error" :closable="false" show-icon title="分析失败 · Failed" role="alert">
+          <p>{{ detectionFailure.detail }}</p>
+          <p v-if="detectionFailure.code">错误码：{{ detectionFailure.code }}</p>
+          <p>未取得最终联合判定。{{ detectionFailure.retryable === false ? '请勿重复上传此样本；如需复测，请联系管理员。' : '请先检查服务状态。' }}</p>
+        </el-alert>
       </div>
 
       <el-collapse v-model="modelsOpen" class="models-collapse">
@@ -148,7 +153,7 @@
       <div v-if="isModelReport" class="ensemble-verdict" :class="ensembleResult?.result === 'Malicious' ? 'is-malicious' : ensembleResult?.result === 'Benign' ? 'is-benign' : 'is-pending'" role="status">
         <div class="ensemble-verdict-main">
           <span class="ensemble-verdict-title">33 模型联合结果</span>
-          <strong>{{ uploadResult.partial ? '等待联合判定' : (ensembleLabel || '未取得有效结果') }}</strong>
+          <strong>{{ detectionFailure ? '分析失败 · 未取得联合判定' : uploadResult.partial ? '等待联合判定' : (ensembleLabel || '未取得有效结果') }}</strong>
           <span v-if="!uploadResult.partial && ensembleLabel === 'Malicious'" class="ensemble-verdict-note">引擎未返回恶意等级</span>
         </div>
         <div v-if="ensembleResult?.source === 'models'" class="ensemble-verdict-metrics">
@@ -232,7 +237,7 @@
         <div v-else-if="ensembleResult?.source === 'signature'" class="database-hit">Malicious · 命中引擎签名库，已跳过 33 模型检测。</div>
         <template v-else>
         <div class="summary-row">
-          <el-tag size="large" type="info">{{ uploadResult.partial ? '检测中 · 已返回部分结果' : '检测结束' }} · 共 {{ modelCount }} 个模型</el-tag>
+          <el-tag size="large" type="info">{{ detectionFailure ? '分析已中止 · 以下仅为部分结果' : uploadResult.partial ? '检测中 · 已返回部分结果' : '检测结束' }} · 共 {{ modelCount }} 个模型</el-tag>
           <el-tag size="large" type="danger">Malicious: {{ maliciousCount }}</el-tag>
           <el-tag size="large" type="success">Benign: {{ safeCount }}</el-tag>
           <el-tag v-if="incompleteCount" size="large" type="warning">未取得有效结果: {{ incompleteCount }}</el-tag>
@@ -271,6 +276,7 @@ import { Search, UploadFilled } from '@element-plus/icons-vue'
 import { modelPapers } from './modelPapers'
 import { getClientId } from './clientIdentity'
 import DetectionStats from './DetectionStats.vue'
+import { failedModelResults, serviceStatus } from './detectionFailure'
 
 const detectionStatsPanel = ref(null)
 
@@ -286,6 +292,7 @@ const modelsOpen = ref(['modelCatalog', 'sampleLibrary'])
 const loading = ref(false)
 const maxUploadSize = ref(1024 * 1024 * 1024)
 const detectionMessage = ref('正在检测，可刷新页面继续等待')
+const detectionFailure = ref(null)
 const detectionAbort = new AbortController()
 const TASK_KEY = 'aidefender_detection_task'
 const TASK_PHASE_KEY = 'aidefender_detection_phase'
@@ -484,6 +491,7 @@ function parseIni(text) {
 }
 
 function resetResult() {
+  detectionFailure.value = null
   uploadResult.value = null
   showSection.value = 'fileInfo'
   modelsOpen.value = ['modelCatalog', 'sampleLibrary']
@@ -571,7 +579,8 @@ async function uploadFile(file) {
       return
     }
     clearSavedTask()
-    ElMessage.error('检测失败: ' + (error.response?.data?.detail || error.message))
+    showDetectionFailure({ error: error.response?.data?.detail || error.message,
+      error_code: error.response?.data?.error_code, retryable: error.response?.data?.retryable })
   } finally {
     loading.value = false
     void detectionStatsPanel.value?.refresh()
@@ -583,7 +592,12 @@ async function restoreDetectionTask() {
   if (!taskId) return
   try {
     const { data } = await apiService.get(`${apiBaseUrl.value}/detect/tasks/${taskId}`, { timeout: 10000 })
-    if (['completed', 'failed', 'cancelled'].includes(data?.status)) {
+    if (['failed', 'cancelled'].includes(data?.status)) {
+      showDetectionFailure(data)
+      loading.value = false
+      return
+    }
+    if (data?.status === 'completed') {
       clearSavedTask()
       loading.value = false
       resetResult()
@@ -608,6 +622,7 @@ function clearSavedTask() {
 async function pollDetectionTask(taskId) {
   loading.value = true
   let missingCount = 0
+  let connectionErrors = 0
   try {
     while (!detectionAbort.signal.aborted) {
       let response
@@ -616,17 +631,19 @@ async function pollDetectionTask(taskId) {
           timeout: 15000, signal: detectionAbort.signal
         })
         missingCount = 0
+        connectionErrors = 0
       } catch (error) {
         if (detectionAbort.signal.aborted) return
         if (error.response?.status === 404) {
           const uploading = localStorage.getItem(TASK_PHASE_KEY) === 'uploading'
           if (!uploading || ++missingCount >= 12) {
             clearSavedTask()
-            throw new Error(uploading ? '上次上传尚未完成，请重新选择文件' : '检测记录已过期，请重新选择文件')
+            throw new Error(uploading ? '上传是否被接收尚未确认；未自动重复上传，请联系管理员检查。' : '检测记录不存在或已过期；未自动重复上传。')
           }
         } else if (error.response && error.response.status < 500 && error.response.status !== 429) {
           throw error
         }
+        if (++connectionErrors >= 20) throw new Error('连接持续中断，已停止查询。任务可能仍在运行；请稍后刷新查询同一任务，请勿重复上传。')
         detectionMessage.value = '连接暂时中断，正在恢复检测结果…'
         await new Promise(resolve => window.setTimeout(resolve, 3000))
         continue
@@ -639,8 +656,8 @@ async function pollDetectionTask(taskId) {
         return
       }
       if (task.status === 'failed' || task.status === 'cancelled') {
-        clearSavedTask()
-        throw new Error(task.error || '检测任务失败')
+        showDetectionFailure(task)
+        return
       }
       localStorage.setItem(TASK_PHASE_KEY, 'accepted')
       if (task.progress?.models) {
@@ -655,7 +672,7 @@ async function pollDetectionTask(taskId) {
         if (firstProgress) showSection.value = 'modelDetection'
       }
       detectionMessage.value = task.status === 'queued'
-        ? (Number(task.tasks_ahead) > 0 ? `正在排队，前方还有 ${task.tasks_ahead} 个任务` : '任务已接收，即将开始检测')
+        ? (task.queue_message || (Number(task.tasks_ahead) > 0 ? `正在排队，前方还有 ${task.tasks_ahead} 个任务` : '任务已接收，即将开始检测'))
         : '正在检测，可刷新页面继续等待'
       if (task.progress?.stage === 'binaryninja') detectionMessage.value = '正在进行反汇编与图特征分析，已完成的模型结果可先查看'
       if (task.progress?.stage === 'binaryninja_slow') detectionMessage.value = '深度分析已超过 90 秒，仍在继续（本阶段上限 180 秒）；已完成的模型结果可先查看'
@@ -666,19 +683,35 @@ async function pollDetectionTask(taskId) {
     }
   } catch (error) {
     if (detectionAbort.signal.aborted) return
-    ElMessage.error('检测失败: ' + (error.response?.data?.detail || error.message))
+    showDetectionFailure({ error: error.response?.data?.detail || error.message })
   } finally {
     loading.value = false
   }
 }
 
 function setDetectionResult(data) {
+  detectionFailure.value = null
   const normalized = normalizeDetectionResponse(data)
   uploadResult.value = normalized
   showSection.value = normalized.is_pe && !normalized.database_hit ? 'modelDetection' : 'fileInfo'
   modelsOpen.value = []
   void detectionStatsPanel.value?.refresh()
   nextTick(() => resultSection.value?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+}
+
+function showDetectionFailure(task) {
+  detectionFailure.value = { detail: task.error || '检测任务失败', code: task.error_code || '', retryable: task.retryable }
+  if (task.progress?.models) {
+    uploadResult.value = normalizeDetectionResponse({ ...task.progress.file_info, partial: true,
+      exe_result: failedModelResults(task.progress.models) })
+    showSection.value = 'modelDetection'
+  } else if (uploadResult.value?.partial) {
+    const results = Object.fromEntries(Object.entries(uploadResult.value.exe_result || {})
+      .filter(([name]) => name !== '集成结果').map(([name, value]) => [name,
+        ['Malicious', 'Benign'].includes(value.result) ? value : { ...value, probability: null, result: '未完成' }]))
+    uploadResult.value = { ...uploadResult.value, exe_result: results, results }
+  }
+  ElMessage.error(detectionFailure.value.detail)
 }
 
 function topBarWidth(rows, count) {

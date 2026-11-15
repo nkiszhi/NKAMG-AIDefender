@@ -1,4 +1,5 @@
 """Bound anonymous API traffic and request bodies before multipart parsing."""
+import asyncio
 import re
 import time
 from collections import OrderedDict, deque
@@ -11,6 +12,10 @@ class BodyLimitExceeded(MultiPartException):
     pass
 
 
+class UploadDeadlineExceeded(MultiPartException):
+    pass
+
+
 class PublicAPIGuard:
     # Browser IDs provide anonymous fairness, not authentication. Rotating IDs
     # still consumes the shared IP budget. Both kinds share bounded storage.
@@ -19,11 +24,12 @@ class PublicAPIGuard:
     CLIENT_LIMITS = {'upload': 60, 'lookup': 60, 'read': 240}
     IP_LIMITS = {'upload': 60, 'lookup': 300, 'read': 2400}
 
-    def __init__(self, app, max_body_bytes, max_clients=4096):
+    def __init__(self, app, max_body_bytes, max_clients=4096, upload_timeout=900):
         self.app = app
         self.max_body_bytes = max_body_bytes
         self.max_clients = max_clients
         self.clients = OrderedDict()
+        self.upload_timeout = upload_timeout
 
     def allow(self, key, group, limit, now):
         while self.clients and next(iter(self.clients.values()))['seen'] <= now - 60:
@@ -74,11 +80,17 @@ class PublicAPIGuard:
             return await self.reject(scope, receive, send, 400, '请求长度无效')
         if cap is not None and length > cap:
             return await self.reject(scope, receive, send, 413, '请求体超过大小限制')
-        count, exceeded = 0, False
+        count, exceeded, timed_out = 0, False, False
+        deadline = time.monotonic() + self.upload_timeout
 
         async def bounded_receive():
-            nonlocal count, exceeded
-            message = await receive()
+            nonlocal count, exceeded, timed_out
+            try:
+                message = await asyncio.wait_for(receive(), max(0, deadline-time.monotonic())) if upload else await receive()
+            except asyncio.TimeoutError:
+                timed_out = True
+                # Starlette closes all multipart temporary files on this type.
+                raise UploadDeadlineExceeded('Upload deadline exceeded')
             if message['type'] == 'http.request':
                 count += len(message.get('body', b''))
                 if cap is not None and count > cap:
@@ -87,7 +99,7 @@ class PublicAPIGuard:
             return message
 
         async def protected_send(message):
-            if not exceeded:
+            if not exceeded and not timed_out:
                 if message['type'] == 'http.response.start':
                     message = dict(message)
                     message['headers'] = list(message.get('headers', [])) + [
@@ -100,8 +112,13 @@ class PublicAPIGuard:
         try:
             await self.app(scope, bounded_receive, protected_send)
         except Exception:
-            if not exceeded:
+            if not exceeded and not timed_out:
                 raise
+        if timed_out:
+            identifier = headers.get(b'x-detection-id', b'').decode('ascii', errors='ignore')
+            await JSONResponse({'result': 'Failed', 'detail': '上传超时，未进入模型队列，请检查网络连接。',
+                                'error_code': 'UPLOAD_TIMEOUT', 'retryable': True}, status_code=408,
+                               headers={'X-Detection-ID': identifier if re.fullmatch(r'[0-9a-f]{32}', identifier) else ''})(scope, receive, send)
         if exceeded:
             await self.reject(scope, receive, send, 413, '请求体超过大小限制')
 

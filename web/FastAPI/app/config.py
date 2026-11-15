@@ -40,6 +40,15 @@ class Settings:
         self.max_concurrent_scans = max(1, min(2, self._getint("server", "max_concurrent_scans", 1)))
         self.max_queued_scans = max(1, min(100, self._getint("server", "max_queued_scans", 8)))
         self.task_ttl_seconds = self._getint("server", "task_ttl_seconds", 3600)
+        self.large_sample_bytes = max(1, self._getint('server', 'large_sample_bytes', 100 * 1024 * 1024))
+        self.max_queue_wait_seconds = max(60, self._getint('server', 'max_queue_wait_seconds', 1800))
+        monitor = self._get('codefender', 'resource_monitor_path', '').strip()
+        self.model_monitor_path = _as_path(monitor, monitor) if monitor else None
+        self.model_monitor_stale_seconds = max(5, self._getint('codefender', 'resource_monitor_stale_seconds', 15))
+        self.model_min_available_bytes = max(0, self._getint('codefender', 'min_available_memory_bytes', 4 * 1024**3))
+        self.model_revision = self._get('codefender', 'model_revision', 'deployment-v1').strip() or 'deployment-v1'
+        self.model_recovery_seconds = max(30, self._getint('codefender', 'recovery_timeout_seconds', 1200))
+        self.api_upload_timeout_seconds = max(10, self._getint('uploads', 'api_upload_timeout_seconds', 600))
 
         self.upload_dir = _as_path(self._get("paths", "upload_dir", "FastAPI/uploads"), "FastAPI/uploads")
 

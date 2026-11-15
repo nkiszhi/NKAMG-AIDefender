@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
 
 from app.config import settings
+from app.codefender_client import ModelEndpointPool
 from app.codefender_client import DEFAULT_MODEL_NAMES, parse_codefender_response, scan_file
 
 
@@ -23,6 +24,11 @@ def diagnostic_result(label='Generic.ML.Medium'):
 
 
 class DevelopmentAdapterTests(unittest.TestCase):
+    def setUp(self):
+        self.pool_patch = patch('app.codefender_client._endpoint_pool', ModelEndpointPool())
+        self.pool_patch.start()
+        self.addCleanup(self.pool_patch.stop)
+
     def test_forwards_each_engine_label_without_recomputing_tier(self):
         for label in ('Generic.ML.Low', 'Generic.ML.Medium', 'Generic.ML.High', 'Benign'):
             with self.subTest(label=label):
