@@ -228,4 +228,3 @@ class UploadDeadlineTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([m['status'] for m in starts],[408])
         self.assertTrue(opened)
         self.assertTrue(all(h.closed for h in opened))
-

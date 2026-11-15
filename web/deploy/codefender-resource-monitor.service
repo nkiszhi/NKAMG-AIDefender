@@ -1,0 +1,16 @@
+[Unit]
+Description=Codefender read-only model resource observer
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=root
+RuntimeDirectory=codefender-resource-monitor
+RuntimeDirectoryMode=0755
+ExecStart=/usr/bin/python3 -u /usr/local/lib/codefender/model_resource_monitor.py --node http://127.0.0.1:18011=codefender-c3-smda-1 --node http://127.0.0.1:18012=codefender-c3-smda-2 --output /run/codefender-resource-monitor/model-runtime.json
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
