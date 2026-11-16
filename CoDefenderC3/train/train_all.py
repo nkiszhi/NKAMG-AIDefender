@@ -459,7 +459,43 @@ def save_ensemble_preserving(ens, path, extra_state=None, special_models=None):
 #  主流程
 # ═══════════════════════════════════════════════════════════
 
-def main():
+def run_explicit_split(args, dataset, baseline, run_root, run_id, lr):
+    """Opt-in route before legacy model/month loading. No feature extraction/test pass."""
+    try:
+        try:
+            from .data_loader import create_loader
+            from .retrain_run import EnsembleTrainingBackend, run_training
+        except ImportError:
+            from data_loader import create_loader
+            from retrain_run import EnsembleTrainingBackend, run_training
+        names = [n.strip() for n in args.models.split(",") if n.strip()]
+        excluded = {n.strip() for n in args.exclude.split(",") if n.strip()}
+        if not names or len(names) != len(set(names)):
+            raise ValueError("split-aware requires an explicit nonempty unique --models allowlist")
+        if excluded - set(names):
+            raise ValueError("split-aware --exclude must refer to the explicit --models allowlist")
+        names = [n for n in names if n not in excluded]
+        if not names or not args.feature_contract:
+            raise ValueError("split-aware requires selected models and a frozen --feature-contract")
+        if not os.path.isfile(baseline):
+            raise FileNotFoundError("baseline file is missing: " + baseline)
+        loader, _ = create_loader(dataset, split_aware=True, feature_contract=args.feature_contract,
+                                  cache_dir=args.split_cache_dir)
+        backend = EnsembleTrainingBackend(baseline, loader.contract)
+        options = dict(mode=args.mode, device="cpu" if args.device == "auto" else args.device,
+                       epochs=args.epochs, lr=lr, patience=args.patience, seed=args.seed,
+                       weighting=args.weighting,
+                       threshold_grid=[float(t.strip()) for t in args.threshold_grid.split(",") if t.strip()])
+        result = run_training(loader, backend, names, options, run_root, run_id,
+                              resume=args.resume, dry_run=args.dry_run)
+        print(json.dumps(result, ensure_ascii=False, sort_keys=True, allow_nan=False))
+        return 0
+    except Exception as error:
+        print("[X] split-aware stopped: %s: %s" % (type(error).__name__, error))
+        return 2
+
+
+def main(argv=None):
     ap = argparse.ArgumentParser(
         description="数据集上的集成训练 / 微调（带 checkpoint），支持一条龙（先构建后训练）。\n"
                     "两种用法:\n"
@@ -472,6 +508,9 @@ def main():
     ap.add_argument("run_id_pos", nargs="?", default=None,
                     help="run-id（省略时从目录名自动推导，如 data_10k_0917 → run-0917）")
     ap.add_argument("--dataset", default=None, help="数据集目录（旗标写法，与位置参数二选一）")
+    ap.add_argument("--split-aware", action="store_true", help="显式四角色训练分支；禁止读取 test，候选包不用于部署")
+    ap.add_argument("--feature-contract", default=None, help="四角色分支的冻结 feature_contract.json")
+    ap.add_argument("--split-cache-dir", default=None, help="四角色版本化缓存目录；不隐式提取特征")
     ap.add_argument("--baseline", default=None,
                     help="基线模型 (默认 config.MODEL_PATH = CoDefenderC3/ensemble.pkl)")
     ap.add_argument("--mode", choices=["scratch", "finetune"], default="scratch")
@@ -518,7 +557,15 @@ def main():
     ap.add_argument("--in-place", action="store_true",
                     help="训练后覆盖生产模型 config.MODEL_PATH（会先备份）")
     ap.add_argument("--dry-run", action="store_true")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
+    supplied = {str(arg).split("=", 1)[0] for arg in (sys.argv[1:] if argv is None else argv)}
+    split_forbidden = {"--source", "--out", "--per-class", "--mal-ratio", "--months", "--train-months",
+                       "--views", "--allow-partial-de", "--link", "--force", "--in-place",
+                       "--preserve-extra-keys", "--no-preserve-extra-keys"}
+    if args.split_aware and supplied & split_forbidden:
+        ap.error("split-aware forbids legacy build/serialization/in-place flags: " + ", ".join(sorted(supplied & split_forbidden)))
+    if not args.split_aware and (args.feature_contract or args.split_cache_dir):
+        ap.error("feature-contract/split-cache-dir require --split-aware")
 
     t0 = time.time()
 
@@ -584,6 +631,13 @@ def main():
         print("[X] %s 缺少 metadata.json。可用一条龙模式: "
               "python train_all.py --source <裸PE源目录> --out %s" % (dataset, dataset))
         return 1
+    with open(os.path.join(dataset, "metadata.json"), encoding="utf-8") as f:
+        split_marker = json.load(f).get("split_contract")
+    if args.split_aware:
+        return run_explicit_split(args, dataset, baseline, run_dir_root, run_id, lr)
+    if split_marker == "retrain-four-split-v1":
+        print("[X] 四角色数据集须使用 --split-aware；禁止通过旧月份训练入口读取")
+        return 2
     if not os.path.isfile(baseline):
         print("[X] 基线模型不存在: %s" % baseline)
         return 1

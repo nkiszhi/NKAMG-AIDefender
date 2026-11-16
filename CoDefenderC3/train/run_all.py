@@ -72,7 +72,8 @@ def _predict_month(loader, ens, month, cache_dir):
     pf = os.path.join(cache_dir, f"m{month}_preds.npy")
     sf = os.path.join(cache_dir, f"m{month}_scores.npy")
     yf = os.path.join(cache_dir, f"m{month}_y.npy")
-    if os.path.exists(pf) and os.path.exists(sf) and os.path.exists(yf):
+    from train import prediction_cache
+    if prediction_cache.load(cache_dir, month, ens) is not None:
         return pf, sf, yf
 
     result, ym = loader.get_month(month)
@@ -86,10 +87,10 @@ def _predict_month(loader, ens, month, cache_dir):
         vm = loader.all_views(result)  # X matrix or samples list
         del result
 
-    pm, sm = ens.predict_all(vm)
+    pm, sm, states = ens.predict_all(vm, return_status=True)
     del vm; gc.collect()
-    np.save(pf, pm); np.save(sf, sm); np.save(yf, ym)
-    del pm, sm, ym; gc.collect()
+    prediction_cache.publish(cache_dir, month, ens, preds=pm, scores=sm, y=ym, statuses=states)
+    del pm, sm, states, ym; gc.collect()
     return pf, sf, yf
 
 
@@ -325,8 +326,11 @@ def setup_pipeline():
     for m in loader.train_months:
         pf, sf, yf = _predict_month(loader, ens, m, cache_dir)
         if yf:
-            ym = _load_cached(yf); sm = _load_cached(sf)
-            ep, es = ens.ensemble_predict(sm)
+            from train import prediction_cache
+            cached = prediction_cache.load(cache_dir, m, ens)
+            if cached is None: raise ValueError("prediction cache changed before decision")
+            ym, sm, states = cached["y"], cached["scores"], cached["statuses"]
+            ep, es = ens.ensemble_predict(sm, statuses=states)
             print(f"  {MN.get(m,m)}: N={len(ym)}, Acc={_acc(ym,ep):.4f}, AUC={_auc(ym,es):.4f}")
             del ym, sm, ep, es
 
@@ -405,15 +409,18 @@ def run_monthly_eval(loader, ens, sdd, baselines, cal_s, cal_y, cache_dir=None):
         if cache_dir:
             pf, sf, yf = _predict_month(loader, ens, month, cache_dir)
             if not yf: continue
-            pm = _load_cached(pf); sm = _load_cached(sf); ym = _load_cached(yf)
+            from train import prediction_cache
+            cached = prediction_cache.load(cache_dir, month, ens)
+            if cached is None: raise ValueError("prediction cache changed before decision")
+            pm, sm, ym, states = (cached[k] for k in ("preds", "scores", "y", "statuses"))
         else:
             result, ym = loader.get_month(month)
             if len(ym) == 0: continue
             vm = loader.all_views(result)
             if not isinstance(result, (int, np.integer)): del result
-            pm, sm = ens.predict_all(vm)
+            pm, sm, states = ens.predict_all(vm, return_status=True)
             del vm; gc.collect()
-        ep, es = ens.ensemble_predict(sm)
+        ep, es = ens.ensemble_predict(sm, statuses=states)
         a, f_ = _auc(ym, es), _f1(ym, ep)
 
         pm_acc = ens.per_model_eval(None, ym, cached_preds=pm)
@@ -434,7 +441,7 @@ def run_monthly_eval(loader, ens, sdd, baselines, cal_s, cal_y, cache_dir=None):
         sc = sdd.compute_coverage(stdcp["prediction_sets"], ym) * 100
 
         dw = sdd.dsir_weights(det)
-        ep2, es2 = ens.ensemble_predict(sm, dw)
+        ep2, es2 = ens.ensemble_predict(sm, dw, statuses=states)
         a2, f2 = _auc(ym, es2), _f1(ym, ep2)
 
         pl, pli, plr = sdd.generate_pseudo_labels(sm, det.healthy_models)

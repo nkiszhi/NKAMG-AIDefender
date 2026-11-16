@@ -93,6 +93,16 @@ def discover_samples(data_dir):
     """
     samples = []
 
+    # Fail closed until the four-role matrix/trainer path is implemented.
+    # Silently coercing explicit splits to synthetic months leaks held-out test data.
+    contract_path = os.path.join(data_dir, "metadata.json")
+    if os.path.exists(contract_path):
+        with open(contract_path, encoding="utf-8") as f:
+            contract = json.load(f)
+        if contract.get("split_contract") == "retrain-four-split-v1":
+            raise RuntimeError("retrain-four-split-v1 requires an explicit split-aware trainer; "
+                               "legacy month-based PELoader is not permitted")
+
     # 1a. 优先使用 metadata.jsonl
     meta_path = os.path.join(data_dir, "metadata.jsonl")
     if os.path.exists(meta_path):
@@ -102,6 +112,8 @@ def discover_samples(data_dir):
                 if not line.strip():
                     continue
                 rec = json.loads(line.strip())
+                if rec.get("split"):
+                    raise RuntimeError("explicit split metadata cannot use legacy month-based PELoader")
                 p = rec.get("path", rec.get("file", rec.get("sha256", "")))
                 if not os.path.isabs(p):
                     p = os.path.join(data_dir, p)
@@ -122,6 +134,8 @@ def discover_samples(data_dir):
         with open(csv_path, encoding="utf-8") as f:
             reader = csv_mod.DictReader(f)
             for rec in reader:
+                if rec.get("split"):
+                    raise RuntimeError("explicit split metadata cannot use legacy month-based PELoader")
                 p = rec.get("path", rec.get("sha256", ""))
                 if not os.path.isabs(p):
                     p = os.path.join(data_dir, p)
@@ -1562,13 +1576,15 @@ def _ember_views(X, active_ranges):
 #  create_loader: 基于 metadata.json 选择加载器
 # ═══════════════════════════════════════════════════════════
 
-def create_loader(data_dir=None):
+def create_loader(data_dir=None, *, split_aware=False, feature_contract=None, cache_dir=None):
     """
     根据 metadata.json 创建数据加载器。
 
     metadata.json 必须包含 feature_type 字段:
       - "EMBER_FULL", "EMBER_V3", "MEMORY_VOLATILITY" → EmberLoader
-      - "PE_RAW" → PELoader (需要 BinaryNinja)
+      - "PE_RAW" → PELoader (legacy month API)
+      - retrain-four-split-v1 → split_aware=True 才启用 RetrainSplitLoader
+        返回 PE_RAW_SPLIT，无月份别名；feature_contract/cache_dir 仅用于此路径
     
     返回 (loader, feature_type_str)
     """
@@ -1581,6 +1597,17 @@ def create_loader(data_dir=None):
 
     with open(meta_path, encoding="utf-8") as f:
         meta = json.load(f)
+    if meta.get("split_contract") == "retrain-four-split-v1":
+        if not split_aware:
+            raise RuntimeError("四类切分数据集必须显式 split_aware=True；旧月份训练入口禁止读取")
+        try:
+            from .retrain_loader import RetrainSplitLoader
+        except ImportError:
+            from retrain_loader import RetrainSplitLoader
+        loader = RetrainSplitLoader(d, contract=feature_contract, cache_dir=cache_dir)
+        return loader.load(), "PE_RAW_SPLIT"
+    if split_aware:
+        raise ValueError("split_aware=True requires a retrain-four-split-v1 dataset")
     feature_type = meta.get("feature_type", "")
     if not feature_type:
         raise ValueError(f"metadata.json 缺少 feature_type 字段: {meta_path}")

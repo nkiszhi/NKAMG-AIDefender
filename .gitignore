@@ -51,3 +51,6 @@ CoDefenderC3/scan-results/
 
 # Local development dependencies, logs and API test evidence
 .dev/
+
+# Generated multi-million-row retrain audit/selection artifacts (local only)
+outputs/retrain-implementation-2026-11-13/

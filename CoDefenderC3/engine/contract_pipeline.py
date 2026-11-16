@@ -23,6 +23,11 @@ def _prepare_sample(core, pe_path, ens, expected, include_de):
     if not core._is_valid_pe(pe_path):
         raise ValueError("invalid or damaged PE file")
     started = time.monotonic()
+    if getattr(ens, "_input_contract", None) is not None:
+        # No audited frozen-extractor adapter: never fabricate provenance.
+        core._extract_views_for_single_sample(
+            pe_path, list(ens.view_groups), include_de, expected, input_contract=ens._input_contract)
+        raise RuntimeError("audited contract-bound runtime extractor unavailable")
     features = core._get_extractor().extract_fast(pe_path)
     malgraph_sample = None
     analysis_error = None

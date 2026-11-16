@@ -75,6 +75,8 @@ def isolated_analysis(path, timeout=180, on_slow=None):
 
 
 def run_staged(ns, path, filename, size, ens, expected, include_de, on_progress=None):
+    if getattr(ens, "_input_contract", None) is not None:
+        raise RuntimeError("audited contract-bound staged extractor unavailable")
     groups = ens.view_groups
     all_names = [name for names in groups.values() for name in names]
     slow_names = set()

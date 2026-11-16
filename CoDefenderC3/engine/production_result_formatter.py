@@ -68,12 +68,9 @@ def format_scan_result(evidence: dict, identifiers: dict, pack_info: dict, model
     drift_values = drift_evidence[0] if drift_evidence.ndim == 2 else drift_evidence
     drift_evidence_dict = _evidence_to_level_dict(drift_values, level_names)
 
-    # 生产档命名 (阶段 A): 只改命名, 聚合口径不变。
-    #   score <= 0.500 → "Benign"
-    #   score > 0.500 → "Generic.ML.Low" / "Generic.ML.Medium" / "Generic.ML.High"
-    # score 与 pred 同源 (pred == int(score > 0.5)), 故分档与 IsMalicious 自洽。
-    # main Web 的二分类命名留在 web_result_formatter.py；开发入口同样使用 ML 分档。
-    virus_name = name_for_ml(score)
+    # The name follows the policy prediction, not an independent .5 cutoff.
+    # Historical Low/Medium/High tiers are display-only, not newly calibrated.
+    virus_name = name_for_ml(score, is_malicious=pred == 1)
 
     # ---- 组装 ScanResult ----
     scan_result = {

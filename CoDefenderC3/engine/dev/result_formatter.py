@@ -69,7 +69,7 @@ def format_scan_result(evidence: dict, identifiers: dict, pack_info: dict, model
     drift_evidence_dict = _evidence_to_level_dict(drift_values, level_names)
 
     # 两个开发接口复用生产命名；评分、判定和漂移状态保持原样。
-    virus_name = name_for_ml(score)
+    virus_name = name_for_ml(score, is_malicious=pred == 1)
 
     # ---- 组装 ScanResult ----
     scan_result = {

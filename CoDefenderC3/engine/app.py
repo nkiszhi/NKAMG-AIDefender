@@ -621,6 +621,9 @@ def _coerce_row_dim(row: np.ndarray, expected_dim: Optional[int]) -> Tuple[np.nd
 
 def _expected_dim_for_model(ens: MultiModelEnsemble, model_name: str) -> Optional[int]:
     # noqa: SLF001 - reading ensemble internal attributes
+    contract = getattr(ens, "_input_contract", None)
+    if contract is not None:
+        return contract.feature_contract.view_dimension(contract.spec(model_name)["view"])
     model = ens._models.get(model_name)
     mtype = ens._model_types.get(model_name, "unknown")
 
@@ -676,6 +679,9 @@ def _infer_expected_view_dims(ens: MultiModelEnsemble) -> Dict[str, int]:
          都不是图像视图的输入维度，会把 V8_color 截成 25088 → reshape 失败。
       ③ 其余视角（EMBER 切片）→ 才从模型内部推断。
     """
+    contract = getattr(ens, "_input_contract", None)
+    if contract is not None:
+        return {v: contract.feature_contract.view_dimension(v) for v in ens.view_groups}
     dims: Dict[str, int] = {}
 
     for vname, model_names in ens.view_groups.items():
@@ -729,7 +735,12 @@ def _extract_views_for_single_sample(
     include_de: bool,
     expected_view_dims: Optional[Dict[str, int]] = None,
     extracted_features=None,
+    input_contract=None,
 ) -> Tuple[Dict[str, np.ndarray], Dict[str, Dict[str, Any]]]:
+    if input_contract is not None:
+        views = input_contract.transform_features(extracted_features, required_views)
+        return views, {v: {"status": "ok", "source": "contract_bound_features",
+                          "input_fingerprint": input_contract.fingerprint} for v in views}
     ext = _get_extractor()
     feats = {}
     view_meta: Dict[str, Dict[str, Any]] = {}
@@ -939,138 +950,15 @@ def _predict_per_model(
     malgraph_sample=None,
     on_result=None,
 ) -> List[Dict[str, Any]]:
-    results: List[Dict[str, Any]] = []
-
-    for vname, model_names in ens.view_groups.items():
-        x_view = views.get(vname)
-        for mname in model_names:
-            if selected_models is not None and mname not in selected_models:
-                continue
-            model = ens._models.get(mname)  # noqa: SLF001 - existing internal structure
-            mtype = ens._model_types.get(mname, "unknown")  # noqa: SLF001
-
-            item: Dict[str, Any] = {
-                "model": mname,
-                "view": vname,
-                "engine": mtype,
-            }
-
-            if mtype == "special":
-                if mname == "MalGraph":
-                    if not include_de:
-                        item["status"] = "skipped"
-                        item["reason"] = "MalGraph requires D/E features; set include_de=true"
-                        results.append(item)
-                        if on_result:
-                            on_result(dict(item))
-                        continue
-                    if not pe_path:
-                        item["status"] = "error"
-                        item["reason"] = "missing pe_path for MalGraph inference"
-                        results.append(item)
-                        if on_result:
-                            on_result(dict(item))
-                        continue
-                    try:
-                        pred, score, mg_meta = _predict_malgraph_single(pe_path, sample=malgraph_sample)
-                        item["status"] = "ok"
-                        item["score"] = score
-                        item["prediction"] = pred
-                        item["malgraph_meta"] = mg_meta
-                    except Exception as e:
-                        item["status"] = "unavailable"
-                        item["reason"] = str(e)
-                    results.append(item)
-                    if on_result:
-                        on_result(dict(item))
-                    continue
-                item["status"] = "skipped"
-                item["reason"] = "special_pipeline_not_supported"
-                results.append(item)
-                if on_result:
-                    on_result(dict(item))
-                continue
-
-            if x_view is None:
-                item["status"] = "skipped"
-                meta = (view_meta or {}).get(vname, {})
-                miss_reason = meta.get("reason", "missing_view_feature")
-                item["reason"] = f"missing_view_feature:{miss_reason}"
-                results.append(item)
-                if on_result:
-                    on_result(dict(item))
-                continue
-
-            if model is None:
-                item["status"] = "unavailable"
-                item["reason"] = "model_not_loaded"
-                results.append(item)
-                if on_result:
-                    on_result(dict(item))
-                continue
-
-            x_model = x_view
-            # 原始字节 / 图像类视角：视图长度才是权威输入，不能按「第一个
-            # nn.Linear 的 in_features」截断——
-            #   MalConv      fc1.in_features=128（其实是卷积核数）→ 截成 128 < kernel 500 → 卷积报错
-            #   InceptionV3  AuxLogits.fc1.in_features=768（辅助头）→ 截成 768 → reshape 27×27 失败
-            #   IMCFN        classifier.0.in_features=25088 → 截成 25088 → reshape 91×91×3 失败
-            # 这三类模型的输入长度由视图本身决定（V1_byte=RAW_LEN，V8_*=图像特征），
-            # 模型内部自己做布局/缩放。
-            expected_model_dim = None
-            if not (vname == "V1_byte" or vname.startswith("V8_")):
-                expected_model_dim = _expected_dim_for_model(ens, mname)
-            if expected_model_dim is not None:
-                adj_row, dim_note = _coerce_row_dim(
-                    np.asarray(x_view).reshape(-1),
-                    expected_model_dim,
-                )
-                x_model = adj_row.reshape(1, -1)
-                if dim_note:
-                    item["input_adjust"] = dim_note
-
-            try:
-                if mtype == "numpy":
-                    x_np = np.asarray(x_model, dtype=np.float32)
-                    proba = model.predict_proba(x_np)
-                    score = float(proba[0, 1])
-                    pred = int(score > 0.5)
-                elif mtype == "pytorch":
-                    if torch is None:
-                        raise RuntimeError("torch is not available")
-                    x_dtype = torch.long if _input_dtype(mname) == "long" else torch.float32
-                    x_t = torch.tensor(x_model, dtype=x_dtype)
-
-                    try:
-                        device = next(model.parameters()).device
-                    except StopIteration:
-                        device = torch.device("cpu")
-
-                    model.eval()
-                    with torch.no_grad():
-                        out = model(x_t.to(device))
-                        if isinstance(out, tuple):
-                            out = out[0]
-                        if out.shape[-1] == 1:
-                            score = float(out.squeeze(-1).detach().cpu().numpy()[0])
-                        else:
-                            score = float(torch.softmax(out, dim=1)[:, 1].detach().cpu().numpy()[0])
-                        pred = int(score > 0.5)
-                else:
-                    raise RuntimeError(f"unsupported engine: {mtype}")
-
-                item["status"] = "ok"
-                item["score"] = score
-                item["prediction"] = pred
-            except Exception as e:
-                item["status"] = "error"
-                item["reason"] = str(e)
-
-            results.append(item)
-            if on_result:
-                on_result(dict(item))
-
-    return results
+    # The same real-row inference/status adapter serves single and batch scans.
+    from engine import prediction_policy
+    callbacks = (lambda idx,item: on_result(dict(item))) if on_result else None
+    values = prediction_policy._predict_per_model_batch(
+        sys.modules[__name__], ens, {0:(views,view_meta or {})}, [pe_path], include_de,
+        malgraph_samples={0:malgraph_sample} if malgraph_sample is not None else None,
+        on_result=callbacks, selected_models=selected_models,
+    )
+    return values[0]
 
 
 
@@ -2535,105 +2423,17 @@ def _scan_single_pe(
         views, view_meta = _extract_views_for_single_sample(
             pe_path=pe_path, required_views=list(ens.view_groups.keys()),
             include_de=include_de, expected_view_dims=expected_view_dims,
+            **({"input_contract": ens._input_contract} if getattr(ens, "_input_contract", None) is not None else {}),
         )
         per_model = _predict_per_model(
             ens, views, view_meta=view_meta, pe_path=pe_path, include_de=include_de,
         )
     else:
         per_model = per_model_override
-    # ── Build (1, K) matrices from flat per_model list ──
-    by_name = {r["model"]: r for r in per_model}
-    ok_results = [by_name[name] for name in ens._model_names
-                  if name in by_name and by_name[name].get("status") == "ok"]
-    if not ok_results:
-        raise RuntimeError("no_valid_model_predictions")
-    if not np.isfinite([r["score"] for r in ok_results]).all():
-        raise ValueError("non_finite_model_scores")
-    K = len(ok_results)
-    model_names = [r["model"] for r in ok_results]
-    scores_arr = np.array(
-        [r["score"] for r in ok_results], dtype=np.float32,
-    ).reshape(1, K) if K > 0 else np.zeros((1, 1), dtype=np.float32)
-    preds_arr = np.array(
-        [r["prediction"] for r in ok_results], dtype=np.int64,
-    ).reshape(1, K) if K > 0 else np.zeros((1, 1), dtype=int)
+    from engine.prediction_policy import _format_model_result
+    return _format_model_result(sys.modules[__name__], pe_path, file_name, file_size,
+                                ens, per_model, format_scan_result)
 
-    # ── Ensemble prediction (weighted average, aligns with run_all.py) ──
-    ens_model_set = set(ens._model_names)
-    ens_ok = [r for r in ok_results if r["model"] in ens_model_set]
-    if ens_ok:
-        ok_scores = np.array([r["score"] for r in ens_ok], dtype=np.float32)
-        ens_score_arr = np.array([ok_scores.mean()], dtype=np.float32)
-        ens_pred_arr = np.array([int(ens_score_arr[0] > 0.5)], dtype=int)
-    else:
-        ens_pred_arr = np.array([0], dtype=int)
-        ens_score_arr = np.array([0.0], dtype=np.float32)
-
-    # ── File identifiers + packer detection ──
-    identifiers = compute_identifiers(pe_path)
-    identifiers["FileName"] = file_name
-    identifiers["FileSize"] = file_size
-    from engine.packer_detector import detect_packer
-    pack_info = detect_packer(pe_path)
-
-    # ── SDD drift evidence ──
-    try:
-        if model_names != list(ens._model_names):
-            raise ValueError("partial_model_matrix")
-        sdd = _get_sdd_engine()
-        drift_ev = sdd.score_samples(scores_arr)
-        drift_evidence = drift_ev.get("drift_evidence", np.zeros(3))
-        sample_drift_type = drift_ev.get("sample_drift_type", "normal")
-        anomaly_score = drift_ev.get("anomaly_score", 0.0)
-        is_drift_candidate = drift_ev.get("is_drift_candidate", False)
-    except Exception:
-        drift_evidence = np.zeros(3)
-        sample_drift_type = "normal"
-        anomaly_score = 0.0
-        is_drift_candidate = False
-
-    # ── Model voting stats ──
-    total_models = len(per_model)
-    ok_count = len(ok_results)
-    skipped_count = sum(1 for r in per_model if r.get("status") == "skipped")
-    error_count = total_models - ok_count - skipped_count
-    malicious_votes = sum(1 for r in ok_results if r.get("prediction") == 1)
-    benign_votes = ok_count - malicious_votes
-    agreement_rate = malicious_votes / ok_count if ok_count > 0 else 0.0
-    ok_scores = [r["score"] for r in ok_results if "score" in r]
-
-    model_stats = {
-        "TotalModels": total_models,
-        "OkModels": ok_count,
-        "SkippedModels": skipped_count,
-        "ErrorModels": error_count,
-        "MaliciousVotes": malicious_votes,
-        "BenignVotes": benign_votes,
-        "AgreementRate": round(agreement_rate, 4),
-        "EnsembleScore": round(float(ens_score_arr[0]), 6) if K > 0 else 0.0,
-        "EnsemblePred": int(ens_pred_arr[0]) if K > 0 else 0,
-        "ScoreRange": [round(min(ok_scores), 4), round(max(ok_scores), 4)] if ok_scores else [0.0, 0.0],
-    }
-
-    # ── Build evidence dict for format_scan_result ──
-    evidence = {
-        "predictions": ens_pred_arr,
-        "scores": ens_score_arr,
-        "per_model_scores": scores_arr,
-        "per_model_preds": preds_arr,
-        "drift_evidence": drift_evidence,
-        "sample_drift_type": sample_drift_type,
-        "anomaly_score": anomaly_score,
-        "is_drift_candidate": is_drift_candidate,
-        "model_stats": model_stats,
-    }
-
-    return format_scan_result(
-        evidence=evidence,
-        identifiers=identifiers,
-        pack_info=pack_info,
-        model_names=model_names,
-    )
 
 # 7. 同步包装器：使用 _tmp_upload 安全创建临时文件
 def _scan_single_pe_wrapper(
@@ -2867,144 +2667,14 @@ def _format_batch_results(
     return results
 
 
-async def _batch_scan_samples(
-    pe_paths: List[str],
-    ens: MultiModelEnsemble,
-    expected_view_dims: Dict[str, int],
-    include_de: bool = False,
-) -> List[Dict[str, Any]]:
-    """
-    Batch process multiple PE samples with parallel feature extraction and batch inference.
-    
-    Args:
-        pe_paths: List of PE file paths to process
-        ens: MultiModelEnsemble instance
-        expected_view_dims: Dict mapping view names to expected dimensions
-        include_de: Whether to extract D/E features (BinaryNinja disassembly/graph)
-    
-    Returns:
-        List of formatted result dictionaries (one per sample)
-    """
-    loop = asyncio.get_event_loop()
-    
-    # Step 1: Parallel feature extraction
-    sample_views = await loop.run_in_executor(
-        None,
-        _extract_views_for_batch,
-        pe_paths,
-        list(ens.view_groups.keys()),
-        include_de,
-        expected_view_dims,
-    )
-    
-    # Handle completely failed samples
-    valid_indices = sorted(sample_views.keys())
-    if not valid_indices:
-        # All samples failed - return error results
-        return [{
-            "FileName": os.path.basename(fpath),
-            "FilePath": fpath,
-            "Status": -1,
-            "StatusLabel": "Error",
-            "IsMalicious": False,
-            "Error": "feature_extraction_failed",
-        } for fpath in pe_paths]
-    
-    # Step 2: Build batch view matrices
-    batch_views, per_sample_meta = _build_batch_views(
-        sample_views,
-        list(ens.view_groups.keys()),
-    )
-    
-    try:
-        per_model_predictions, per_model_scores = await loop.run_in_executor(
-            None,
-            ens.predict_all,
-            batch_views,
-        )
-        
-        # Step 4: Ensemble prediction (B3/B-fix 掩码聚合)
-        # 排除三类无效槽位，避免 0.5 常量把集成分数拉向 0.5：
-        #   a) 模型对象缺失 / special / skip（valid_model_mask 口径）
-        #   b) 本轮视角整批缺席的模型（如 include_de=false 时的 D/E 模型，
-        #      predict_all 从未给它们赋分，_scores 里是 0.5 初值）
-        valid_model_of_view = {}
-        for vname, mnames in ens.view_groups.items():
-            for mname in mnames:
-                valid_model_of_view[mname] = vname
-        available_views = set(batch_views.keys())
+async def _batch_scan_samples(pe_paths, ens, expected_view_dims, include_de=False):
+    """Compatibility wrapper over the same status-aware real-row HTTP pipeline."""
+    from engine.contract_pipeline import scan_paths
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(
+        None, lambda: scan_paths(sys.modules[__name__], pe_paths, ens,
+                                 expected_view_dims, include_de, format_scan_result))
 
-        valid_k: List[int] = []
-        excluded: Dict[str, str] = {}
-        for k, mname in enumerate(ens._model_names):
-            # 先看类型再对象（special 槽位 load() 后对象为 None，但语义是 special）
-            if ens._model_types.get(mname) in ("special", "skip"):
-                excluded[mname] = "special_pipeline"
-                continue
-            if ens._models.get(mname) is None:
-                excluded[mname] = "model_not_loaded"
-                continue
-            vname = valid_model_of_view.get(mname)
-            if vname is not None and vname not in available_views:
-                excluded[mname] = f"view_unavailable:{vname}"
-                continue
-            valid_k.append(k)
-
-        if valid_k:
-            valid_scores = per_model_scores[:, valid_k]       # (N, K_valid)
-            batch_scores = valid_scores.mean(axis=1)           # 等权平均
-            batch_predictions = (batch_scores > 0.5).astype(int)
-            if excluded:
-                print(f"  [集成掩码] 本次批量排除 {len(excluded)} 个模型: "
-                      f"{ {m: r for m, r in list(excluded.items())[:8]} }"
-                      + (" ..." if len(excluded) > 8 else ""))
-        else:
-            N_batch = per_model_scores.shape[0]
-            batch_predictions = np.zeros(N_batch, dtype=int)
-            batch_scores = np.full(N_batch, 0.5, dtype=np.float32)
-
-        # Step 5: Format results
-        results = _format_batch_results(
-            pe_paths=pe_paths,
-            batch_predictions=batch_predictions,
-            batch_scores=batch_scores,
-            per_model_predictions=per_model_predictions,
-            per_model_scores=per_model_scores,
-            model_names=ens._model_names,
-            per_sample_meta=per_sample_meta,
-            valid_indices=valid_indices,
-        )
-        
-        # Add back failed samples
-        all_results: List[Dict[str, Any]] = []
-        result_idx = 0
-        for i, fpath in enumerate(pe_paths):
-            if i in valid_indices:
-                all_results.append(results[result_idx])
-                result_idx += 1
-            else:
-                all_results.append({
-                    "FileName": os.path.basename(fpath),
-                    "FilePath": fpath,
-                    "Status": -1,
-                    "StatusLabel": "Error",
-                    "IsMalicious": False,
-                    "Error": "feature_extraction_failed",
-                })
-        
-        return all_results
-        
-    except Exception as e:
-        # Batch inference failed - return errors for all samples
-        logging.error("Batch inference failed: %s", e)
-        return [{
-            "FileName": os.path.basename(fpath),
-            "FilePath": fpath,
-            "Status": -1,
-            "StatusLabel": "Error",
-            "IsMalicious": False,
-            "Error": f"batch_inference_failed: {e}",
-        } for fpath in pe_paths]
 
 
 async def _predict_directory_unprotected(
