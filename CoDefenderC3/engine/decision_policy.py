@@ -121,7 +121,7 @@ class DecisionPolicy:
             logits = cal["slope"] * (np.log(clipped) - np.log1p(-clipped)) + cal["intercept"]
         return np.exp(-np.logaddexp(0, -logits))
 
-    def evaluate(self, scores, *, model_names, statuses=None, sample_ids=None):
+    def evaluate(self, scores, *, model_names, statuses=None, reasons=None, sample_ids=None):
         columns = names(model_names)
         values = array(scores)
         states = array(statuses)
@@ -129,6 +129,15 @@ class DecisionPolicy:
                 or values.dtype.kind not in "iuf" or states.shape != values.shape
                 or states.dtype.kind not in "US" or not set(states.reshape(-1).tolist()).issubset(STATUSES)):
             raise PolicyError("aligned nonempty score matrix and explicit model statuses required")
+        # Explanations are optional; an empty entry falls back to the status word
+        # so callers that only track statuses keep the previous response shape.
+        notes = None
+        if reasons is not None:
+            raw_notes = np.asarray(reasons, dtype=object)
+            if raw_notes.shape != values.shape or any(
+                    not isinstance(note, str) for note in raw_notes.reshape(-1).tolist()):
+                raise PolicyError("row-aligned string exclusion reasons required")
+            notes = raw_notes.tolist()
         count = len(values)
         if sample_ids is None:
             ids = tuple(str(i) for i in range(count))
@@ -142,7 +151,7 @@ class DecisionPolicy:
         values = values.astype(np.float64)
         selected_values = np.zeros((count, len(self.model_names)), np.float64)
         available = np.zeros_like(selected_values, dtype=bool)
-        reasons = {n:["missing_model_column"]*count for n in self.model_names}
+        explanations = {n:["missing_model_column"]*count for n in self.model_names}
         for j, name in enumerate(self.model_names):
             if name not in lookup:
                 continue
@@ -153,7 +162,10 @@ class DecisionPolicy:
                 raise PolicyError("invalid probability marked ok: " + name)
             selected_values[ok,j] = real
             available[:,j] = ok
-            reasons[name] = states[:,k].tolist()
+            explanations[name] = [
+                str((notes[it][k] if notes is not None else "") or states[it,k])
+                for it in range(count)
+            ]
         weights = available * self._weights[None,:]
         totals = weights.sum(axis=1)
         doc = self.document
@@ -171,7 +183,7 @@ class DecisionPolicy:
         pred[usable] = apply_threshold(calibrated[usable], doc["threshold"])
         rows = []
         for i, sid in enumerate(ids):
-            excluded = {n:reasons[n][i] for j,n in enumerate(self.model_names) if not available[i,j]}
+            excluded = {n:explanations[n][i] for j,n in enumerate(self.model_names) if not available[i,j]}
             excluded.update({n:"not_in_policy_allowlist" for n in columns if n not in self.model_names})
             observed = [n for j,n in enumerate(self.model_names) if available[i,j]]
             contributing = [n for j,n in enumerate(self.model_names) if normalized[i,j] > 0]
@@ -255,15 +267,20 @@ def decide_records(ensemble, records):
         by_name[item["model"]] = item
     scores = np.full((1,len(columns)),np.nan,np.float64)
     states = np.full((1,len(columns)),"missing",dtype="U16")
+    notes = [[""]*len(columns)]
     for k,name in enumerate(columns):
         item = by_name.get(name)
         if item is not None:
             states[0,k] = item["status"]
+            # Keep the real explanation, not just the status word, so the Web and
+            # development responses explain why a model was excluded.
+            reason = item.get("reason")
+            notes[0][k] = reason if isinstance(reason,str) else ""
             if item["status"]=="ok":
                 value = item.get("score")
                 if not finite_number(value):
                     raise PolicyError("nonfinite/missing model probability")
                 scores[0,k] = value
     policy = for_ensemble(ensemble)
-    result = policy.evaluate(scores,model_names=list(columns),statuses=states).require_decidable()
+    result = policy.evaluate(scores,model_names=list(columns),statuses=states,reasons=notes).require_decidable()
     return policy,result

@@ -16,8 +16,8 @@ sys.dont_write_bytecode = True
 def main():
     with tempfile.TemporaryDirectory(prefix="codefender-web-tests-") as directory:
         mirror = Path(directory)
-        shutil.copytree(ROOT / "web", mirror / "web", ignore=shutil.ignore_patterns("__pycache__", "node_modules", "uploads", "*.db", "*.sqlite"))
-        shutil.copytree(ROOT / "CoDefenderC3", mirror / "CoDefenderC3", ignore=shutil.ignore_patterns("__pycache__", ".cache", ".venv", "venv", ".feature_cache", "*.pt", "*.pkl", "test-records", "*.log"))
+        shutil.copytree(ROOT / "web", mirror / "web", ignore=shutil.ignore_patterns("__pycache__", "node_modules", "uploads", "*.db", "*.sqlite", ".pytest_cache", "*.pyc"))
+        shutil.copytree(ROOT / "CoDefenderC3", mirror / "CoDefenderC3", ignore=shutil.ignore_patterns("__pycache__", ".cache", ".venv", "venv", ".feature_cache", "*.pt", "*.pkl", "test-records", "*.log", ".pytest_cache", "*.pyc"))
         # Two original Web tests read historical source via git show. A pointer
         # supplies read-only access to history, without copying/modifying .git.
         git_dir = subprocess.check_output(

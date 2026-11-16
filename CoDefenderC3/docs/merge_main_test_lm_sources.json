@@ -11,6 +11,10 @@
     "CoDefenderC3/models/MalGraph_2022": "7f80450e41ba9c08babeb218712d2c9eb9e1c474",
     "CoDefenderC3/feature_extraction/smda_extract.py": "0b39872da985479dac21376af6622a608670ec00"
   },
+  "mainline_ref": "origin/main",
+  "mainline_tracked": [
+    "web"
+  ],
   "protected_app_functions": [
     "_load_malgraph_params",
     "_resolve_malgraph_ckpt_path",
@@ -28,6 +32,12 @@
     "_predict_per_model",
     "_scan_uploaded_sync"
   ],
+  "protected_app_function_revisions": {
+    "_infer_expected_view_dims": "f38a2b9 delegates view dimensions to models/input_contract.py; legacy inference stays as fallback",
+    "_expected_dim_for_model": "f38a2b9 consults the bound input contract before inferring a dimension from model layers",
+    "_extract_views_for_single_sample": "f38a2b9 lets a bound input contract transform features instead of the legacy per-view builder",
+    "_predict_per_model": "f38a2b9 removes the duplicated loop and delegates to prediction_policy._predict_per_model_batch, the single adapter"
+  },
   "policy_source": "test_lm engine/dev/app.py: _infer_model_scores, _predict_per_model_batch, _format_model_result",
   "exceptions": [
     "main MalGraph and view-first dimensions override test_lm",
@@ -42,7 +52,9 @@
     "candidate cache uses content/version/config/schema identities, locks, atomic validated writes, isolated namespaces",
     "main public engine.result_formatter stays binary-compatible; test_lm production formatter relocated to production_result_formatter.py",
     "candidate training reuses validated per-sample caches only; monthly matrices rebuilt and missing views never silently dropped",
-    "production/development ports use 18001/18002 to avoid existing Web worker host ports 8001/8002"
+    "production/development ports use 18001/18002 to avoid existing Web worker host ports 8001/8002",
+    "web is main-owned: the gate compares it with mainline_ref instead of the 2026-11-10 blob, so later main Web fixes (129ef12/0115349/80aa070/e82f9e7/12c4b6a) do not fail the merge contract",
+    "ExcludedModels reports the recorded exclusion reason (falling back to the status word), matching the a5d77ac contract tests"
   ],
   "unverified": [
     "full ensemble/checkpoint inference",
