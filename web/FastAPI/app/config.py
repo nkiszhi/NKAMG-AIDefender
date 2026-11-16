@@ -49,6 +49,7 @@ class Settings:
         self.model_revision = self._get('codefender', 'model_revision', 'deployment-v1').strip() or 'deployment-v1'
         self.model_recovery_seconds = max(30, self._getint('codefender', 'recovery_timeout_seconds', 1200))
         self.api_upload_timeout_seconds = max(10, self._getint('uploads', 'api_upload_timeout_seconds', 600))
+        self.api_upload_idle_timeout_seconds = max(5, self._getint('uploads', 'api_upload_idle_timeout_seconds', 60))
 
         self.upload_dir = _as_path(self._get("paths", "upload_dir", "FastAPI/uploads"), "FastAPI/uploads")
 

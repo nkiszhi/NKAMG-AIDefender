@@ -21,7 +21,8 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.codefender_client import DEFAULT_MODEL_NAMES, ModelServiceBusy, scan_file, _endpoint_pool
 from app import model_runtime
 from app.config import settings
-from app.http_guard import PublicAPIGuard
+from app.http_guard import PublicAPIGuard, BrowserUploadLimit
+from app.upload_form import single_file_form
 from app.file_info import save_upload, UploadStorageFull
 from app.sample_repository import SampleRepository, identify_hash
 from app.stats_repository import StatsRepository
@@ -150,26 +151,13 @@ app.add_middleware(
 )
 
 
-_uploads_inflight = 0
-
-
-@app.middleware('http')
-async def limit_uploads(request: Request, call_next):
-    global _uploads_inflight
-    if request.method != 'POST' or request.url.path != '/detect':
-        return await call_next(request)
-    if _uploads_inflight >= 2:
-        return JSONResponse(status_code=429, content={'detail': '检测服务繁忙，请稍后重试'}, headers={'Retry-After': '5'})
-    _uploads_inflight += 1
-    try:
-        return await call_next(request)
-    finally:
-        _uploads_inflight -= 1
+app.add_middleware(BrowserUploadLimit)
 
 
 # Outer user middleware: reject oversized bodies before multipart spooling.
 app.add_middleware(PublicAPIGuard, max_body_bytes=settings.max_upload_size + 1024 * 1024,
-                   upload_timeout=settings.api_upload_timeout_seconds)
+                   upload_timeout=settings.api_upload_timeout_seconds,
+                   upload_idle_timeout=settings.api_upload_idle_timeout_seconds)
 
 
 def _response_payload(info: dict, exe_result: dict, detection_mode: str) -> dict:
@@ -711,25 +699,46 @@ async def api_detect(request: Request, response: Response,
             return _api_error(task_id, 409, '请求标识已用于网页任务，请使用新的标识')
         return await _api_final_result(existing, response, wait_seconds)
     if _api_uploads_inflight >= 2:
-        return _api_error(task_id, 429, '上传服务繁忙，请稍后重试')
+        logger.warning('API 上传名额已满 task_id=%s inflight=%s', task_id, _api_uploads_inflight)
+        response = _api_error(task_id, 429, '上传服务繁忙，请稍后重试')
+        response.headers['Retry-After'] = '60'
+        return response
     _api_uploads_inflight += 1
+    upload_started = monotonic_time.monotonic()
+    upload_outcome = 'receiving'
+    logger.info('API 上传开始 task_id=%s inflight=%s', task_id, _api_uploads_inflight)
     file_path = None
     try:
         # Parse ourselves so multiple file parts (even with different names) are rejected.
-        async with request.form(max_files=1, max_fields=0) as form:
+        async with single_file_form(request) as form:
             items = list(form.multi_items())
             if len(items) != 1 or items[0][0] != 'file' or not isinstance(items[0][1], StarletteUploadFile):
                 return _api_error(task_id, 422, '每次必须且只能上传一个 file 文件')
             file_path, info = await save_upload(items[0][1], unlimited=True)
+            upload_outcome = 'stored'
     except UploadStorageFull as error:
         return _api_error(task_id, 507, str(error))
     except StarletteHTTPException as error:
         return _api_error(task_id, error.status_code, str(error.detail))
+    except asyncio.CancelledError:
+        upload_outcome = 'cancelled'
+        raise
     except Exception:
+        phase = request.scope.get('state', {}).get('upload_receive', {}).get('phase')
+        if phase in ('idle_timeout', 'total_timeout', 'disconnected', 'body_limit'):
+            upload_outcome = phase
+            # The outer guard sends the final 408/413, or suppresses writes to a
+            # disconnected client. Do not turn expected cleanup into a traceback.
+            return _api_error(task_id, 408 if 'timeout' in phase else 400, '上传未完成，未进入模型队列')
+        upload_outcome = 'error'
         logger.exception('API 样本上传失败 task_id=%s', task_id)
         return _api_error(task_id, 500, '样本上传失败')
     finally:
         _api_uploads_inflight -= 1
+        progress = request.scope.get('state', {}).get('upload_receive', {})
+        logger.info('API 上传释放名额 task_id=%s outcome=%s phase=%s received_bytes=%s inflight=%s elapsed_seconds=%.3f',
+                    task_id, upload_outcome, progress.get('phase', 'unknown'), progress.get('received_bytes', 0),
+                    _api_uploads_inflight, monotonic_time.monotonic()-upload_started)
     if not info['is_pe']:
         await asyncio.to_thread(file_path.unlink, missing_ok=True)
         result = _payload(info, detection_mode='rejected', verdict=None)

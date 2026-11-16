@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
+import { configureUploadProxy } from './uploadProxy.js'
 
 const proxy = {
   '/api-backend': {
@@ -7,6 +8,7 @@ const proxy = {
     changeOrigin: true,
     timeout: 660000,
     proxyTimeout: 660000,
+    configure: configureUploadProxy,
     rewrite: path => path.replace(/^\/api-backend/, '')
   }
 }
