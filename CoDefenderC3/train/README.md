@@ -23,7 +23,6 @@
 | `data_loader.py`、`dataset_utils.py`、`ember_vectorizer.py` | 数据发现、特征缓存和视图拼装 |
 | `ir_candidate.py` | 显式候选 IR 接线，非默认路径 |
 | `_probe_de_coverage.py` | D/E 覆盖诊断 |
-| `_fix_de_gap.py`、`_drain_bndb_to_de.py` | BN 专用修复；不适用于 SMDA 缓存 |
 
 旧设计稿中的 `train_incremental.py`、`ingest_new_samples.py`、`train_malgraph.py` 等并非当前可用的通用 CLI；不要从历史文档复制这些命令。
 
@@ -108,11 +107,10 @@ python train/verify_trained_ensemble.py --baseline ensemble.pkl \
 
 ```bash
 python train/_probe_de_coverage.py /data/pe-dataset
-python train/_fix_de_gap.py /data/pe-dataset --dry-run
 python train/build_flat_dataset_meta.py --data-dir /data/existing-dataset --dry-run
 ```
 
-先诊断失败日志、样本路径、实际 NPZ 和月度缓存。不要为“重新跑一遍”批量删除源样本/整个缓存；调整标签、月份或特征口径后旧月度缓存可能失效。平铺元数据工具的 `--purge-per-month` 会归档旧目录，只有确认目标后使用。
+BN 专用探针与补救脚本已移除；通用 D/E 覆盖率诊断保留。先诊断失败日志、样本路径、实际 NPZ 和月度缓存。不要为“重新跑一遍”批量删除源样本/整个缓存；调整标签、月份或特征口径后旧月度缓存可能失效。平铺元数据工具的 `--purge-per-month` 会归档旧目录，只有确认目标后使用。
 
 ## 5. 发布与长期计划
 

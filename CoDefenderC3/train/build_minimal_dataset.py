@@ -746,17 +746,15 @@ def main(argv=None):
             print("      选择其一：")
             if n_hard:
                 print("        a) 有 %d 个样本在 bndb_fail/de_fail 里（_find_need_de 永久排除，"
-                      "重跑不会重试）→ 先清日志再重跑：" % n_hard)
-                print("             python CoDefenderC3/train/_fix_de_gap.py \"%s\"" % out)
-                print("           （自动：备份清日志 → 单样本补充 bndb → 提 D/E → 只移除救回的行）")
+                      "重跑不会重试）：" % n_hard)
+                print("           先核对样本、后端和失败原因；修复根因并备份失败日志后，")
+                print("           仅移除已确认需要重试的失败记录，再重跑构建；不要删除源样本或整个缓存。")
             else:
                 print("        a) 无永久失败样本 → **直接重跑本命令即可**：")
                 print("             阶段1 会用放宽超时（单文件 600s）+ 低并发（min(N_WORKERS,4)）补救，")
                 print("             已缓存的 bndb/npz 全部跳过，只补缺口。")
             print("           排查/预演（秒级，不写盘）：")
             print("             python CoDefenderC3/train/_probe_de_coverage.py \"%s\"" % out)
-            print("           兜底一键修复：")
-            print("             python CoDefenderC3/train/_fix_de_gap.py \"%s\"" % out)
             print("        b) python %s --source \"%s\" --views fast ...   # 退回 11 视角（样本不丢，"
                   "9 个 BN 模型冻结继承）" % (os.path.basename(__file__), src))
             print("        c) 加 --allow-partial-de 强制继续：缺 D/E 的样本会被归档到 <数据集>/.dropped-*/")

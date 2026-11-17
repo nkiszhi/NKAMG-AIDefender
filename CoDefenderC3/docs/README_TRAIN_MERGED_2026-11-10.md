@@ -57,8 +57,8 @@
 **全零**特征；`smda_extract.de_features_are_empty()` 会把它判为抽取失败并抛错，
 避免"全零特征"被当成有效样本写进数据集。
 
-**注意**：`_fix_de_gap.py` / `_drain_bndb_to_de.py` 是 **BN 专用**的修复脚本；
-SMDA 路径的 D/E 缺口直接重跑构建命令即可自愈（`_find_need_de` 会重新挑出缺 D/E 的样本）。
+**更新（2026-11-17）**：BN 专用探针与补救脚本已移除，下面不再列出相关命令。
+SMDA 软超时可在重跑构建时重试；已记入永久失败日志的样本需先排查根因，并在备份、核对失败记录后再安排重试。
 ## 1. 为什么是这些文件搬进来、那些留在根
 
 判断标准只有一条：**是否被推理服务（`engine/`）依赖**。
@@ -112,14 +112,6 @@ python CoDefenderC3/train/<script>.py ...
 | `_cmp_ensemble.py` | 比对两份 pkl 的**数值指纹**（形状 / dtype / 内容 md5），判断能否互换做基线。设备标签不同但 md5 全同 → 数值等价 |
 | `_probe_link_place.py` | 验证 `place_sample()` 的硬链接语义与回退：同盘同 inode / 幂等 / 原子替换 / 跨卷回退 copy2 / 无残留临时名（7 组断言，exit 0 = 全通过） |
 | `_probe_de_coverage.py` | 统计数据集的 D/E 覆盖率并**归类缺口**（秒级、不写盘）：缺口分为「慢样本（重跑自愈）/ 永久失败（需清日志）/ 其他」三类 |
-| `_probe_bndb_fail.py` | 诊断**单个**样本为何生不出 bndb（单样本 batch_size=1 重试），给出后续对策 |
-| `_probe_bndb_slow_retry.py` | 回归验证 bndb 阶段的「慢样本可重试」机制：超时→bndb_slow（非永久）/ 硬失败→bndb_fail / 计数到上限转永久 / 并发与超时参数生效 / `de_done` 覆盖写修复（14 组断言）。加 `--with-bn` 追加真实 BN 超时用例 |
-| `_fix_de_gap.py` | **修复** D/E 缺口（写盘）：备份并清失败日志 → 宽松超时重生成 bndb → 提 D/E 写回 npz → 只移除已救回的行。`--dry-run` 只报告 |
-| `_probe_bn_available.py` | 三层验证本机 BinaryNinja：解释器/导入 → 许可（product/serial/expires）→ 真实 PE 反汇编（函数/基本块/指令/call_sites）。**用 `bnpython3.exe` 跑** |
-| `_probe_bn_license.py` / `_probe_bn_license2.py` | 直接查 BN 核心许可位；`2` 对比 `BNInitPlugins()` **前后** `BNIsLicenseValidated()` 的变化（**之前恒 False，易误判许可无效**） |
-| `_probe_bn_de_e2e.py` | 验证项目自身能否产出 D/E 视角：打印每个视角的 shape/dtype（本版本 = D01-D07 + E03 + E04，共 9 个） |
-| `_probe_bn_pipeline_path.py` | 验证训练真正走的**子进程**路径：`generate_bndbs_batch`（PE→bndb）+ `extract_de_from_bndb_batch`（bndb→D/E） |
-| `_probe_bn_perfile.py` | 逐样本单 worker（`n_workers=1, batch_size=1`）隔离 BN 崩溃，用来区分「样本问题」与「并发/超时问题」 |
 
 ```bash
 PYTHONIOENCODING=utf-8 python -u CoDefenderC3/train/_probe_ensemble.py [pkl路径]
@@ -127,20 +119,10 @@ PYTHONIOENCODING=utf-8 python -u CoDefenderC3/train/_verify_ensemble_load.py [pk
 PYTHONIOENCODING=utf-8 python -u CoDefenderC3/train/_probe_device.py [pkl路径]
 PYTHONIOENCODING=utf-8 python -u CoDefenderC3/train/_cmp_ensemble.py <pklA> <pklB>
 PYTHONIOENCODING=utf-8 python -u CoDefenderC3/train/_probe_link_place.py
-PYTHONIOENCODING=utf-8 python -u CoDefenderC3/train/_probe_bndb_slow_retry.py
-PYTHONIOENCODING=utf-8 python -u CoDefenderC3/train/_probe_bndb_slow_retry.py --with-bn   # 追加真实 BN 超时用例
 
-# D/E 覆盖率门禁：先诊断，再修复（修复会写盘，先 --dry-run）
+# D/E 覆盖率门禁：只读诊断，按日志核对失败原因
 PYTHONIOENCODING=utf-8 python -u CoDefenderC3/train/_probe_de_coverage.py "<数据集目录>"
-PYTHONIOENCODING=utf-8 python -u CoDefenderC3/train/_fix_de_gap.py "<数据集目录>" --dry-run
-PYTHONIOENCODING=utf-8 python -u CoDefenderC3/train/_fix_de_gap.py "<数据集目录>"
 
-# BinaryNinja 可用性（前两条必须用 BN 自带解释器，bnpython3 环境无 numpy）
-"C:\Program Files\Vector35\BinaryNinja\bnpython3.exe" CoDefenderC3/train/_probe_bn_available.py
-"C:\Program Files\Vector35\BinaryNinja\bnpython3.exe" CoDefenderC3/train/_probe_bn_license2.py
-PYTHONIOENCODING=utf-8 python -u CoDefenderC3/train/_probe_bn_de_e2e.py
-PYTHONIOENCODING=utf-8 python -u CoDefenderC3/train/_probe_bn_pipeline_path.py
-PYTHONIOENCODING=utf-8 python -u CoDefenderC3/train/_probe_bn_perfile.py
 ```
 
 > **D/E 覆盖率不到 100% 时不要急着换 `--views fast` 或 `--allow-partial-de`**（都等于丢/冻结样本）。
@@ -149,7 +131,7 @@ PYTHONIOENCODING=utf-8 python -u CoDefenderC3/train/_probe_bn_perfile.py
 > | 缺口类别 | 日志 | 处理 |
 > |---|---|---|
 > | **慢样本** | `bndb_slow.log`（`路径\t次数`） | **直接重跑本命令即可** —— 阶段1 会用放宽超时 + 低并发自动补救 |
-> | **永久失败** | `bndb_fail.log` / `de_fail.log` | `_find_need_de()` 永久排除，**只重跑无效** → 先 `_fix_de_gap.py` 清日志再重跑 |
+> | **永久失败** | `bndb_fail.log` / `de_fail.log` | `_find_need_de()` 永久排除，**只重跑无效** → 先排查根因，备份并核对失败日志后仅调整待重试记录，再重跑 |
 > | 其他（无 bndb / 无 npz / npz 无 D） | 无 | 看具体原因，多为缓存丢失，重跑一般自愈 |
 
 > **上线到纯 CPU 容器前，先跑 `_probe_device.py`。** 见下文 §5「pkl 设备标签」。
@@ -368,7 +350,7 @@ PYTHONIOENCODING=utf-8 python -u CoDefenderC3/train/_probe_device.py <pkl路径>
 | `load()` 报 `Attempting to deserialize object on CUDA device 0` | 基线 pkl 是 CUDA 标签版，而 `load()` 无 `map_location` | 换 cpu 版基线；先用 `_probe_device.py` 探 |
 | 加了 `--link` 却打印"回退复制 N" | 源与 `<数据集目录>` 不在同一卷（WinError 17），或共享目录不支持硬链接 | 正常降级、无需处理；想真省空间就把数据集放到与源同盘 |
 | 修改数据集里的样本，源目录文件也变了 | `--link` 硬链接与源文件是同一 inode | 本管线只读样本；需要改动时先 `cp` 出副本，或构建时不要加 `--link` |
-| **D/E 覆盖率 98~99%，重跑却毫无进展** | 剩余样本被写进 `bndb_fail/de_fail`，`_find_need_de()` 永久排除 | 看 `_probe_de_coverage.py` 的归类：慢样本直接重跑；永久失败先 `_fix_de_gap.py` 清日志 |
+| **D/E 覆盖率 98~99%，重跑却毫无进展** | 剩余样本被写进 `bndb_fail/de_fail`，`_find_need_de()` 永久排除 | 看 `_probe_de_coverage.py` 的归类：慢样本直接重跑；永久失败先排查根因，备份并核对失败记录后再重试 |
 | 慢样本每次重跑都白等（吃满超时） | 病态样本（单段巨 `.text`）BN 分析耗时远超普通样本 | 调 `CODEFENDER_BNDB_TIMEOUT_RETRY`；确认长期无解就等它累计到 `MAX_SLOW_RETRY` 转永久失败 |
 | 清了 `.cache/bndb` 后样本仍不重生成 bndb | 旧版用 `p not in bndb_done` 过滤 → 日志说"已完成"，文件却没了 | 已修复（改为只看文件在不在）；旧数据集可直接重跑 |
 | `de_done.log` 行数忽多忽少（0~1 ↔ 实际值） | 全量扫描分支用 `"w"` 覆盖写 `done_paths`，而扫描跳过了已在日志里的样本 | 已修复（与既有 `done` 取并集 + 原子写）；样本数 ≤100 时尤其明显 |

@@ -47,11 +47,10 @@ curl -X POST "http://127.0.0.1:18002/predict-single?include_de=true" -F "file=@s
 
 ```bash
 python train/_probe_de_coverage.py /data/dataset
-python train/_fix_de_gap.py /data/dataset --dry-run
 python train/benchmark_bn_optimization.py
 ```
 
-`_fix_de_gap.py`、`_drain_bndb_to_de.py` 是 BN 专用修复工具，不用于 SMDA 缓存。前者不加 `--dry-run` 会改文件；只有确认目标路径、备份和原因后才运行写操作。
+BN 专用探针与补救脚本已移除。D/E 缺口仍可用通用覆盖率工具定位；永久失败应先排查根因，备份并核对失败日志后，仅调整需要重试的记录再重跑构建。不要批量删除样本或整个缓存。
 
 `apply_bn_optimizations.py` 是旧 BN 实验辅助脚本，不是标准启动前置步骤；运行前阅读代码，不能把它生成的参数视为生产默认或当前性能验收。
 
