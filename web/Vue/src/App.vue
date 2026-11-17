@@ -33,7 +33,7 @@
         <div class="upload-orbit" aria-hidden="true"><el-icon class="upload-icon"><UploadFilled /></el-icon></div>
         <div class="eyebrow">STATIC FILE ANALYSIS</div>
         <div class="upload-title">上传样本，开始安全分析</div>
-        <div class="upload-subtitle">支持拖拽或选择文件。系统会先校验 PE 结构，再交给多模型引擎分析。</div>
+        <div class="upload-subtitle">选择或拖入 PE 文件，查看检测结果。</div>
         <div class="upload-actions">
           <el-button type="primary" :loading="loading" @click="selectFile">选择待检文件</el-button>
           <span>单文件不超过 {{ formatFileSize(maxUploadSize) }} · 检测结束后删除样本</span>
@@ -205,8 +205,9 @@
           <el-descriptions-item label="检测时间">{{ uploadResult.detection_time || '-' }}</el-descriptions-item>
         </el-descriptions>
 
-        <h3 v-if="uploadResult.is_pe" class="subhead">PE结构信息</h3>
-        <el-descriptions v-if="uploadResult.is_pe" :column="2" border>
+        <p v-if="uploadResult.file_uploaded === false" class="database-hit">已命中样本库，原文件未上传。以下为已有记录。</p>
+        <h3 v-if="uploadResult.is_pe && uploadResult.pe_structure_checked !== false" class="subhead">PE结构信息</h3>
+        <el-descriptions v-if="uploadResult.is_pe && uploadResult.pe_structure_checked !== false" :column="2" border>
           <el-descriptions-item label="PE格式">{{ peInfo.format || '-' }}</el-descriptions-item>
           <el-descriptions-item label="架构">{{ peInfo.architecture || '-' }}</el-descriptions-item>
           <el-descriptions-item label="Machine">{{ peInfo.machine || '-' }}</el-descriptions-item>
@@ -219,8 +220,8 @@
           <el-descriptions-item label="SizeOfHeaders">{{ formatFileSize(peInfo.size_of_headers) }}</el-descriptions-item>
         </el-descriptions>
 
-        <h3 v-if="uploadResult.is_pe" class="subhead">节表</h3>
-        <el-table v-if="uploadResult.is_pe" :data="peInfo.sections || []" border stripe>
+        <h3 v-if="uploadResult.is_pe && uploadResult.pe_structure_checked !== false" class="subhead">节表</h3>
+        <el-table v-if="uploadResult.is_pe && uploadResult.pe_structure_checked !== false" :data="peInfo.sections || []" border stripe>
           <el-table-column prop="name" label="名称" min-width="110" />
           <el-table-column prop="virtual_address" label="VirtualAddress" min-width="140" />
           <el-table-column prop="virtual_size" label="VirtualSize" min-width="120" />
@@ -277,6 +278,8 @@ import { modelPapers } from './modelPapers'
 import { getClientId } from './clientIdentity'
 import DetectionStats from './DetectionStats.vue'
 import { failedModelResults, serviceStatus } from './detectionFailure'
+import { hashFile } from './hashFile.js'
+import { submitWithPreflight } from './uploadPreflight.js'
 
 const detectionStatsPanel = ref(null)
 
@@ -547,20 +550,22 @@ async function uploadFile(file) {
   resetResult()
   modelsOpen.value = []
   loading.value = true
-  const formData = new FormData()
-  formData.append('file', file)
   const randomBytes = new Uint8Array(16)
   window.crypto.getRandomValues(randomBytes)
   const requestId = Array.from(randomBytes, byte => byte.toString(16).padStart(2, '0')).join('')
   // Save the request ID before uploading: refreshing after server acceptance
   // but before the POST response arrives can still recover the existing task.
   localStorage.setItem(TASK_KEY, requestId)
-  localStorage.setItem(TASK_PHASE_KEY, 'uploading')
-  detectionMessage.value = '正在上传样本并查询样本库，未命中时将进入模型检测队列'
+  localStorage.setItem(TASK_PHASE_KEY, 'preparing')
   try {
-    const response = await apiService.post(`${apiBaseUrl.value}/detect`, formData, {
-      headers: { 'X-Detection-ID': requestId },
-      signal: detectionAbort.signal
+    const response = await submitWithPreflight({ file, api: apiService, baseUrl: apiBaseUrl.value,
+      requestId, hashFile, signal: detectionAbort.signal,
+      onPhase: (phase, percent) => {
+        localStorage.setItem(TASK_PHASE_KEY, phase)
+        detectionMessage.value = phase === 'preparing' ? `正在读取文件${percent == null ? '' : ` · ${percent}%`}`
+          : phase === 'preflight' ? '正在查询样本库…'
+            : '正在上传并准备检测…'
+      }
     })
     if (response.data?.task_id) {
       localStorage.setItem(TASK_KEY, response.data.task_id)
@@ -573,7 +578,7 @@ async function uploadFile(file) {
     }
   } catch (error) {
     if (detectionAbort.signal.aborted) return
-    if (!error.response) {
+    if (!error.response && localStorage.getItem(TASK_PHASE_KEY) === 'uploading') {
       // A network failure does not prove the server rejected the upload.
       await pollDetectionTask(requestId)
       return

@@ -84,7 +84,7 @@ class PublicAPIGuard:
         path = scope.get('path', '').rstrip('/')
         api_upload = scope['method'] == 'POST' and path == '/api/v1/detect'
         upload = scope['method'] == 'POST' and (path == '/detect' or api_upload)
-        lookup = path.startswith('/samples/') or path == '/sample-search'
+        lookup = path.startswith('/samples/') or path in ('/sample-search', '/detect/preflight')
         group = 'upload' if upload else 'lookup' if lookup else 'read'
         peer = (scope.get('client') or ('unknown', 0))[0]
         now = time.monotonic()

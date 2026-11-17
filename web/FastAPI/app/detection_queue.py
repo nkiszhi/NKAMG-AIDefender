@@ -250,6 +250,31 @@ class DetectionTaskStore:
         with self._lock, self._connect() as connection:
             detection_metrics.finish(connection, task_id, result)
 
+    def record_preflight_hit(self, task_id, result):
+        """Persist a hash-only hit so retries/reloads share one completed request."""
+        with self._lock, self._connect() as connection:
+            connection.execute('BEGIN IMMEDIATE')
+            existing = connection.execute('SELECT * FROM detection_tasks WHERE task_id=?', (task_id,)).fetchone()
+            if existing:
+                if existing['sha256'] != result['sha256']:
+                    raise ValueError('Request ID belongs to another SHA256')
+                return dict(existing)
+            if connection.execute('SELECT 1 FROM detection_metrics WHERE task_id=?', (task_id,)).fetchone():
+                raise ExpiredRequest()
+            now = datetime.now().isoformat()
+            connection.execute('''INSERT INTO detection_tasks
+                (task_id,status,filename,file_path,result_json,created_at,updated_at,
+                 request_source,sha256,file_size,client_seen_at)
+                VALUES (?,'completed',?,'',?,?,?,'web',?,?,?)''',
+                (task_id,result['filename'],json.dumps(result,ensure_ascii=False),now,now,
+                 result['sha256'],result['file_size'],now))
+            detection_metrics.finish(connection, task_id, result)
+            return dict(connection.execute('SELECT * FROM detection_tasks WHERE task_id=?', (task_id,)).fetchone())
+
+    def request_was_recorded(self, task_id):
+        with self._lock, self._connect() as connection:
+            return connection.execute('SELECT 1 FROM detection_metrics WHERE task_id=?', (task_id,)).fetchone() is not None
+
     def detection_summary(self):
         with self._lock, self._connect() as connection:
             return detection_metrics.summary(connection)

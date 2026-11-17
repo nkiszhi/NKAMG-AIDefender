@@ -10,7 +10,9 @@ import time as monotonic_time
 from contextlib import asynccontextmanager
 from datetime import datetime, time, timedelta
 from pathlib import Path
+from typing import Annotated
 from zoneinfo import ZoneInfo
+from pydantic import BaseModel, Field
 
 from fastapi import FastAPI, File, Header, HTTPException, Query, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -506,14 +508,67 @@ async def _cleanup_loop() -> None:
         await asyncio.sleep(5)
 
 
+class UploadPreflight(BaseModel):
+    sha256: str = Field(min_length=64, max_length=64, pattern=r'^[a-fA-F0-9]{64}$')
+    filename: str = Field(min_length=1, max_length=255)
+    file_size: int = Field(strict=True, ge=0)
+
+
+@app.post('/detect/preflight')
+async def upload_preflight(body: UploadPreflight, x_detection_id: str = Header(default='')) -> dict:
+    """A miss is only a precheck, never a second query/detection counter."""
+    if not re.fullmatch(r'[a-f0-9]{32}', x_detection_id):
+        raise HTTPException(status_code=400, detail='检测请求标识无效')
+    sha256 = body.sha256.lower()
+    if body.file_size > settings.max_upload_size:
+        raise HTTPException(status_code=413, detail='文件超过网页上传大小限制')
+    existing = await asyncio.to_thread(task_store.get, x_detection_id)
+    if existing:
+        if existing.get('sha256') != sha256:
+            raise HTTPException(status_code=409, detail='此请求标识已用于另一个文件')
+        return {**task_store.public_status(existing), 'upload_required': False}
+    if await asyncio.to_thread(task_store.request_was_recorded, x_detection_id):
+        raise HTTPException(status_code=409, detail='此请求已结束且报告已过期，请重新选择文件')
+    try:
+        record = await asyncio.to_thread(sample_repository.find_malicious, sha256)
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail='样本库暂不可用，尚未上传原文件，请稍后重试') from error
+    if not record:
+        return {'upload_required': True, 'request_id': x_detection_id, 'sha256': sha256}
+    public_record = SampleRepository.public_fields(record)
+    result = {
+        'success': True, 'hash_search': True, 'hash_type': 'sha256', 'query_hash': sha256,
+        'sha256': sha256, 'filename': body.filename, 'original_filename': body.filename,
+        'file_size': body.file_size, 'is_pe': True, 'pe_structure_checked': False,
+        'file_uploaded': False, 'database_hit': True, 'model_skipped': True,
+        'detection_mode': 'sample_database', 'detection_status': 'malicious',
+        'verdict': 'Malicious', 'reason': 'SHA256命中恶意样本库，原文件未上传',
+        'sample_record': public_record, 'exe_result': {}, 'results': {},
+        'detection_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+    }
+    try:
+        row = await asyncio.to_thread(task_store.record_preflight_hit, x_detection_id, result)
+    except (ValueError, ExpiredRequest) as error:
+        raise HTTPException(status_code=409, detail='此请求标识已使用，请重新选择文件') from error
+    return {**task_store.public_status(row), 'upload_required': False}
+
+
 @app.post("/detect")
-async def detect(response: Response, file: UploadFile = File(...), x_detection_id: str = Header(default='')) -> dict:
+async def detect(response: Response, file: UploadFile = File(...), x_detection_id: str = Header(default=''),
+                 x_expected_sha256: Annotated[str, Header()] = '') -> dict:
     if x_detection_id and not re.fullmatch(r'[a-f0-9]{32}', x_detection_id):
         raise HTTPException(status_code=400, detail='检测请求标识无效')
     task_id = x_detection_id or uuid.uuid4().hex
+    if x_expected_sha256 and not re.fullmatch(r'[a-fA-F0-9]{64}', x_expected_sha256):
+        raise HTTPException(status_code=400, detail='SHA256格式无效')
+    expected_sha256 = x_expected_sha256.lower()
     existing = await asyncio.to_thread(task_store.get, task_id)
     if existing:
+        if expected_sha256 and existing.get('sha256') != expected_sha256:
+            raise HTTPException(status_code=409, detail='此请求标识已用于另一个文件')
         return task_store.public_status(existing)
+    if expected_sha256 and await asyncio.to_thread(task_store.request_was_recorded, task_id):
+        raise HTTPException(status_code=409, detail='此请求已结束且报告已过期，请重新选择文件')
     try:
         file_path, info = await save_upload(file)
     except ValueError as error:
@@ -537,6 +592,9 @@ async def detect(response: Response, file: UploadFile = File(...), x_detection_i
         logger.exception("保存上传文件失败")
         raise HTTPException(status_code=500, detail="保存上传文件失败，请联系管理员") from error
 
+    if expected_sha256 and info['sha256'] != expected_sha256:
+        await asyncio.to_thread(file_path.unlink, missing_ok=True)
+        raise HTTPException(status_code=409, detail='上传文件SHA256与本机预查不一致，未提交模型')
     logger.info("开始检测上传文件: filename=%s sha256=%s", info["filename"], info["sha256"])
     if not info["is_pe"]:
         file_path.unlink(missing_ok=True)
