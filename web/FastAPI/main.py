@@ -713,9 +713,11 @@ def _public_task_status(row):
     return payload
 
 
-async def _api_final_result(row, response, wait_seconds):
+async def _api_final_result(row, response, wait_seconds, *, include_details=False):
     task_id = row['task_id']
     result_url = f'/api/v1/detect/tasks/{task_id}'
+    if include_details:
+        result_url += '?include_details=true'
     response.headers['X-Detection-ID'] = task_id
     response.headers['Location'] = result_url
     deadline = monotonic_time.monotonic() + wait_seconds
@@ -730,6 +732,13 @@ async def _api_final_result(row, response, wait_seconds):
         label = ensemble.get('display_result') or ensemble.get('result')
         if label not in API_ML_LABELS:
             return _api_error(task_id, 502, '模型服务没有返回有效联合判定')
+        if include_details:
+            # Opt-in batch collection shares the normal queue and model admission.
+            # No local/remote database is written by this response projection.
+            models = {name: value for name, value in (result.get('exe_result') or {}).items()
+                      if name in DEFAULT_MODEL_NAMES and isinstance(value, dict)}
+            return {'result': label, 'sha256': result.get('sha256'),
+                    'model_results': models, 'codefender_result': ensemble}
         return {'result': label}
     if row['status'] in ('failed', 'cancelled'):
         return _api_error(task_id, 502, row.get('error') or '模型检测失败',
@@ -751,7 +760,8 @@ async def _api_final_result(row, response, wait_seconds):
                   'file': {'type': 'string', 'format': 'binary'}}, 'additionalProperties': False}}}}})
 async def api_detect(request: Request, response: Response,
                      x_detection_id: str = Header(default=''),
-                     wait_seconds: int = Query(default=600, ge=0, le=3600)):
+                     wait_seconds: int = Query(default=600, ge=0, le=3600),
+                     include_details: Annotated[bool, Query(description='显式返回本次检测的逐模型与联合结果；默认协议保持不变')] = False):
     global _api_uploads_inflight
     if x_detection_id and not re.fullmatch(r'[a-f0-9]{32}', x_detection_id):
         return _api_error('', 400, '检测请求标识无效')
@@ -760,7 +770,7 @@ async def api_detect(request: Request, response: Response,
     if existing:
         if existing.get('request_source') != 'api':
             return _api_error(task_id, 409, '请求标识已用于网页任务，请使用新的标识')
-        return await _api_final_result(existing, response, wait_seconds)
+        return await _api_final_result(existing, response, wait_seconds, include_details=include_details)
     if _api_uploads_inflight >= 2:
         logger.warning('API 上传名额已满 task_id=%s inflight=%s', task_id, _api_uploads_inflight)
         response = _api_error(task_id, 429, '上传服务繁忙，请稍后重试')
@@ -809,7 +819,7 @@ async def api_detect(request: Request, response: Response,
         return _api_error(task_id, 422, info['pe_info'].get('reason') or '不是有效 PE 样本，未调用模型')
     blocked = await _reject_memory_sample(task_id, info, file_path, 'api')
     if blocked:
-        return await _api_final_result(blocked, response, 0)
+        return await _api_final_result(blocked, response, 0, include_details=include_details)
     try:
         row = await asyncio.to_thread(task_store.create, task_id, info['filename'], file_path,
                                      settings.max_queued_scans + settings.max_concurrent_scans,
@@ -828,18 +838,19 @@ async def api_detect(request: Request, response: Response,
     if row.get('request_source') != 'api':
         return _api_error(task_id, 409, '请求标识已用于网页任务，请使用新的标识')
     task_wakeup.set()
-    return await _api_final_result(row, response, wait_seconds)
+    return await _api_final_result(row, response, wait_seconds, include_details=include_details)
 
 
 @app.get('/api/v1/detect/tasks/{task_id}', tags=['单文件联合判定'], summary='查询最终联合判定，不重复检测或计数')
 async def api_detection_result(task_id: str, response: Response,
-                               wait_seconds: int = Query(default=0, ge=0, le=3600)):
+                               wait_seconds: int = Query(default=0, ge=0, le=3600),
+                               include_details: Annotated[bool, Query()] = False):
     if not re.fullmatch(r'[a-f0-9]{32}', task_id):
         return _api_error('', 400, '检测请求标识无效')
     row = await asyncio.to_thread(task_store.get, task_id)
     if not row or row.get('request_source') != 'api':
         return _api_error(task_id, 404, 'API 检测任务不存在或结果已过期')
-    return await _api_final_result(row, response, wait_seconds)
+    return await _api_final_result(row, response, wait_seconds, include_details=include_details)
 
 
 if __name__ == "__main__":
