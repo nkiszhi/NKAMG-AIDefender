@@ -139,7 +139,7 @@
             <el-tag v-else-if="uploadResult.database_hit" type="danger">Malicious · 命中 NKAMG 样本库</el-tag>
             <el-tag v-else-if="uploadResult.is_pe && uploadResult.detection_mode === 'models'" type="info">样本库：未命中</el-tag>
             <el-tag v-if="!isModelReport && ensembleResult && ['Malicious', 'Benign'].includes(ensembleResult.result)" :type="ensembleResult.result === 'Malicious' ? 'danger' : 'success'">
-              {{ ensembleLabel }}
+              {{ uploadResult.database_hit ? `CoDefender：${ensembleLabel}` : ensembleLabel }}
             </el-tag>
           </div>
         </div>
@@ -150,11 +150,11 @@
         </el-radio-group>
       </div>
 
-      <div v-if="isModelReport" class="ensemble-verdict" :class="ensembleResult?.result === 'Malicious' ? 'is-malicious' : ensembleResult?.result === 'Benign' ? 'is-benign' : 'is-pending'" role="status">
+      <div v-if="isModelReport || storedReport" class="ensemble-verdict" :class="ensembleResult?.result === 'Malicious' ? 'is-malicious' : ensembleResult?.result === 'Benign' ? 'is-benign' : 'is-pending'" role="status">
         <div class="ensemble-verdict-main">
-          <span class="ensemble-verdict-title">CoDefender结果</span>
-          <strong>{{ detectionFailure ? '分析失败 · 未取得CoDefender结果' : uploadResult.partial ? '等待CoDefender结果' : (ensembleLabel || '未取得有效结果') }}</strong>
-          <span v-if="!uploadResult.partial && ensembleLabel === 'Malicious'" class="ensemble-verdict-note">引擎未返回恶意等级</span>
+          <span class="ensemble-verdict-title">{{ storedReport ? 'CoDefender库内结果' : 'CoDefender结果' }}</span>
+          <strong>{{ storedReport ? (ensembleLabel || (ensembleResult ? '未取得有效CoDefender结果' : 'CoDefender结果尚未补充')) : detectionFailure ? '分析失败 · 未取得CoDefender结果' : uploadResult.partial ? '等待CoDefender结果' : (ensembleLabel || '未取得有效结果') }}</strong>
+          <span v-if="!storedReport && !uploadResult.partial && ensembleLabel === 'Malicious'" class="ensemble-verdict-note">引擎未返回恶意等级</span>
         </div>
         <div v-if="ensembleResult?.source === 'models'" class="ensemble-verdict-metrics">
           <span>参与联合判定 <b>{{ ensembleResult.ok_models }} / {{ ensembleResult.total_models }}</b></span>
@@ -175,8 +175,7 @@
           <div>文件头：<span class="mono">{{ uploadResult.file_header || '-' }}</span></div>
         </div>
         <div v-else-if="uploadResult.database_hit" class="database-hit">
-          <strong>已命中样本库，跳过 33 模型检测</strong>
-          <span v-if="uploadResult.sample_record?.source_db">来源：{{ uploadResult.sample_record.source_db }}.{{ uploadResult.sample_record.source_table }}</span>
+          <strong>判断恶意 · 恶意库命中</strong>
         </div>
         <el-descriptions :column="1" border>
           <el-descriptions-item v-if="!uploadResult.hash_search || uploadResult.pe_info_source === 'local'" label="文件名">{{ uploadResult.filename || '-' }}</el-descriptions-item>
@@ -217,18 +216,20 @@
       </div>
 
       <div v-show="showSection === 'modelDetection'" class="panel">
-        <div v-if="uploadResult.hash_search" class="database-hit" :class="`hash-result-${uploadResult.verdict.toLowerCase()}`">SHA256查询：{{ uploadResult.database_hit ? '判断恶意 · 恶意库命中' : '查询未命中，不代表安全' }}。本次未调用 AI 检测引擎。</div>
-        <div v-else-if="!uploadResult.is_pe" class="detection-warning">本文件不是 PE，未提交 33 模型检测。</div>
-        <div v-else-if="uploadResult.database_hit" class="database-hit">已命中 NKAMG 样本库，已跳过 33 模型检测。</div>
+        <div v-if="uploadResult.database_hit && !storedReport" class="database-hit">判断恶意 · 恶意库命中。模型结果尚未补充。</div>
+        <div v-else-if="uploadResult.hash_search && !storedReport" class="database-hit">SHA256查询未命中，不代表安全。</div>
+        <div v-else-if="!storedReport && !uploadResult.is_pe" class="detection-warning">本文件不是 PE，未提交 33 模型检测。</div>
         <div v-else-if="ensembleResult?.source === 'signature'" class="database-hit">Malicious · 命中引擎签名库，已跳过 33 模型检测。</div>
         <template v-else>
         <div class="summary-row">
-          <el-tag size="large" type="info">{{ detectionFailure ? '分析已中止 · 以下仅为部分结果' : uploadResult.partial ? '检测中 · 已返回部分结果' : '检测结束' }} · 共 {{ modelCount }} 个模型</el-tag>
+          <el-tag size="large" type="info">{{ storedReport ? '库内已保存结果' : detectionFailure ? '分析已中止 · 以下仅为部分结果' : uploadResult.partial ? '检测中 · 已返回部分结果' : '检测结束' }} · 共 {{ modelCount }} 个模型</el-tag>
+          <el-tag v-if="storedReport && uploadResult.stored_model_report.missing_model_count" size="large" type="info">尚未补充 {{ uploadResult.stored_model_report.missing_model_count }} 项</el-tag>
           <el-tag size="large" type="danger">Malicious: {{ maliciousCount }}</el-tag>
           <el-tag size="large" type="success">Benign: {{ safeCount }}</el-tag>
           <el-tag v-if="incompleteCount" size="large" type="warning">未取得有效结果: {{ incompleteCount }}</el-tag>
         </div>
-        <el-table :data="modelRows" border stripe class="model-table">
+        <div v-if="storedReport && !modelRows.length" class="database-hit">逐模型结果尚未补充。</div>
+        <el-table v-if="!storedReport || modelRows.length" :data="modelRows" border stripe class="model-table">
           <el-table-column type="index" label="序号" width="70" />
           <el-table-column prop="model" label="检测模型" min-width="180" />
           <el-table-column label="恶意概率" min-width="180">
@@ -266,6 +267,7 @@ import { failedModelResults, serviceStatus } from './detectionFailure'
 import { hashFile } from './hashFile.js'
 import { submitWithPreflight } from './uploadPreflight.js'
 import { mergeLocalFileInfo } from './localPeInfo.js'
+import { hasStoredModelReport, initialReportSection } from './storedModelReport.js'
 
 const detectionStatsPanel = ref(null)
 
@@ -364,6 +366,7 @@ const ensembleResult = computed(() => {
 })
 
 const isModelReport = computed(() => Boolean(uploadResult.value?.is_pe && !uploadResult.value.hash_search && !uploadResult.value.database_hit && ensembleResult.value?.source !== 'signature'))
+const storedReport = computed(() => hasStoredModelReport(uploadResult.value))
 const ensembleLabel = computed(() => {
   const label = ensembleResult.value?.display_result || ensembleResult.value?.result
   return ['Generic.ML.Low', 'Generic.ML.Medium', 'Generic.ML.High', 'Malicious', 'Benign'].includes(label) ? label : ''
@@ -684,7 +687,7 @@ function setDetectionResult(data) {
   detectionFailure.value = null
   const normalized = normalizeDetectionResponse(data)
   uploadResult.value = normalized
-  showSection.value = normalized.is_pe && !normalized.database_hit ? 'modelDetection' : 'fileInfo'
+  showSection.value = initialReportSection(normalized)
   modelsOpen.value = []
   void detectionStatsPanel.value?.refresh()
   nextTick(() => resultSection.value?.scrollIntoView({ behavior: 'smooth', block: 'start' }))

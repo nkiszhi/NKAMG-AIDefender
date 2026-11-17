@@ -81,12 +81,19 @@ class Settings:
         self.mysql_port = self._getint("mysql", "port", 3306)
         self.mysql_user = self._get("mysql", "user", "").strip()
         self.mysql_passwd = self._get("mysql", "passwd", "")
+        # Switch explicitly only after source membership and replication acceptance.
+        self.pe_lookup_db = self._get('mysql', 'pe_lookup_db', 'malicious_pe').strip()
+        if self.pe_lookup_db not in ('malicious_pe', 'AIDefender_PE'):
+            raise ValueError('mysql.pe_lookup_db 必须为 malicious_pe 或 AIDefender_PE')
         self.malicious_dbs = self._get_list(
             "mysql", "malicious_dbs", ["malicious_elf", "malicious_pe", "malicious_others"]
         )
         self.benign_dbs = self._get_list("mysql", "benign_dbs", ["benign_elf", "benign_pe", "benign_others"])
         self.mysql_stats_db = self._get("mysql", "db_stats", "sample_stats").strip()
         self.mysql_domain_db = self._get("mysql", "db_domain", "domain").strip()
+        self.domain_stats_mode = self._get('mysql', 'domain_stats_mode', 'legacy').strip()
+        if self.domain_stats_mode not in ('legacy', 'snapshot'):
+            raise ValueError('mysql.domain_stats_mode 必须为 legacy 或 snapshot')
 
     def _get(self, section: str, option: str, default: str) -> str:
         env_name = f"CODEFENDER_{section}_{option}".upper()

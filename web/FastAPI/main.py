@@ -27,6 +27,7 @@ from app.http_guard import PublicAPIGuard, BrowserUploadLimit
 from app.upload_form import single_file_form
 from app.file_info import save_upload, UploadStorageFull
 from app.sample_repository import SampleRepository, identify_hash
+from app.stored_results import saved_model_payload
 from app.stats_repository import StatsRepository
 from app.detection_queue import DetectionTaskStore, ProcessLease, QueueFull, ExpiredRequest
 
@@ -310,6 +311,7 @@ async def sample_by_sha256(sha256: str) -> dict:
         "md5": identity.get("MD5", ""),
         "sha256": sha256.lower(),
         "sample_record": public_record,
+        **saved_model_payload(record, DEFAULT_MODEL_NAMES),
         "detection_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }
 
@@ -322,6 +324,8 @@ async def search_sample_hash(value: str) -> dict:
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     normalized = value.lower() if kind == 'sha256' else value.upper() if kind == 'tlsh' else value
+    if kind != 'sha256' and sample_repository.sha256_only:
+        raise HTTPException(status_code=422, detail='当前样本库仅支持SHA256精确查询')
     query_id = await asyncio.to_thread(task_store.begin_hash_query, kind, normalized)
     try:
         record = await asyncio.to_thread(sample_repository.find_by_hash, normalized)
@@ -344,6 +348,7 @@ async def search_sample_hash(value: str) -> dict:
         'sha256': identity.get('SHA256', normalized if kind == 'sha256' else ''),
         'md5': identity.get('MD5', ''), 'file_size': identity.get('文件大小', 0),
         'sample_record': public_record,
+        **saved_model_payload(record, DEFAULT_MODEL_NAMES),
         'detection_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
     }
 
@@ -370,8 +375,7 @@ async def _lookup_uploaded_sample(info: dict):
             database_error=None,
             model_skipped=True,
             sample_record=public_record,
-            exe_result={},
-            results={},
+            **({'exe_result': {}, 'results': {}} | saved_model_payload(sample_record, DEFAULT_MODEL_NAMES)),
         ), None
     return None, database_error
 
@@ -544,6 +548,7 @@ async def upload_preflight(body: UploadPreflight, x_detection_id: str = Header(d
         'detection_mode': 'sample_database', 'detection_status': 'malicious',
         'verdict': 'Malicious', 'reason': '命中恶意样本库',
         'sample_record': public_record, 'exe_result': {}, 'results': {},
+        **saved_model_payload(record, DEFAULT_MODEL_NAMES),
         'detection_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
     }
     try:

@@ -1,4 +1,5 @@
 import logging
+import json
 from datetime import datetime
 from typing import Any
 
@@ -80,6 +81,22 @@ class StatsRepository:
         return data
 
     def _domain_stats(self, cur) -> dict[str, Any]:
+        if getattr(self.settings, 'domain_stats_mode', 'legacy') == 'snapshot':
+            cur.execute("SELECT schema_version,payload FROM web_display_snapshot WHERE snapshot_key='url_dashboard'")
+            row = cur.fetchone()
+            if not row or row['schema_version'] != 1:
+                raise RuntimeError('URL展示快照尚不可用')
+            raw = row['payload']
+            data = json.loads(raw) if isinstance(raw, (str, bytes, bytearray)) else raw
+            if not isinstance(data, dict) or not isinstance(data.get('total'), int) or isinstance(data['total'], bool) or data['total'] < 0:
+                raise RuntimeError('URL展示快照格式异常')
+            for key in ('monthly', 'source', 'category'):
+                if not isinstance(data.get(key), list) or len(data[key]) > (12 if key == 'monthly' else 10):
+                    raise RuntimeError('URL展示快照分组异常')
+                for item in data[key]:
+                    if not isinstance(item, dict) or not isinstance(item.get('name'), str) or not isinstance(item.get('count'), int) or isinstance(item['count'], bool) or item['count'] < 0:
+                        raise RuntimeError('URL展示快照计数异常')
+            return data
         data = {"total": 0, "monthly": [], "source": [], "category": []}
         try:
             cur.execute("SELECT COALESCE(SUM(record_count),0) AS value FROM domain_stats")

@@ -30,9 +30,18 @@ class SampleRepository:
 
     @property
     def query_databases(self):
-        # First rollout stays on the existing PE library until the new schema
-        # is replicated and accepted. ELF/others are outside this site's scope.
+        selected = getattr(self.settings, 'pe_lookup_db', 'malicious_pe')
+        if selected == 'AIDefender_PE':
+            return [selected]
+        if selected != 'malicious_pe':
+            raise ValueError('Unexpected PE lookup database')
+        # No automatic old-library fallback: a miss in the approved new library
+        # is a miss, not an opportunity to re-include KAV_TI from the old table.
         return ['malicious_pe'] if 'malicious_pe' in getattr(self.settings, 'malicious_dbs', []) else []
+
+    @property
+    def sha256_only(self):
+        return getattr(self.settings, 'pe_lookup_db', 'malicious_pe') == 'AIDefender_PE'
 
     @property
     def configured(self) -> bool:
@@ -93,6 +102,8 @@ class SampleRepository:
         kind = identify_hash(value)
         if kind == 'sha256':
             return self.find_malicious(value)
+        if self.sha256_only:
+            raise ValueError('当前样本库仅支持SHA256精确查询')
         if not self.configured:
             return None
         for database in self.query_databases:
