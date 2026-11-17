@@ -37,7 +37,7 @@ def finish_hash_query(connection, query_id, outcome, sample_sha256=None):
     if outcome not in ('hit', 'miss', 'failed'):
         raise ValueError('Unsupported query outcome')
     connection.execute('''UPDATE hash_query_metrics SET outcome=?, sample_sha256=?, verdict=CASE
-        WHEN ?='miss' THEN 'benign'
+        WHEN ?='miss' THEN NULL
         WHEN ?='hit' AND hash_type='sha256' THEN 'malicious'
         WHEN ?='hit' AND hash_type IN ('tlsh','ssdeep') THEN 'suspicious'
         ELSE NULL END WHERE id=? AND outcome='pending' ''',
@@ -106,23 +106,30 @@ def summary(connection):
     query_verdicts = {row['verdict']: row['n'] for row in connection.execute('''
         SELECT verdict,COUNT(*) AS n FROM hash_query_metrics
         WHERE queried_at>=? AND outcome IN ('hit','miss') GROUP BY verdict''', (started_at,))}
-    # Old rows did not store the hash type: retain their counts without inventing a hit verdict.
-    legacy_misses = connection.execute('''SELECT COUNT(*) FROM hash_query_metrics
-        WHERE queried_at>=? AND outcome='miss' AND verdict IS NULL''', (started_at,)).fetchone()[0]
     uploads = sum(counts.values())
     query_total = sum(queries.values())
-    malicious = verdicts.get('malicious', 0) + query_verdicts.get('malicious', 0)
-    benign = verdicts.get('benign', 0) + query_verdicts.get('benign', 0) + legacy_misses
+    # Public overview groups are a partition of requests, not extra counters.
+    # Keep historical verdicts intact: every recorded library hit belongs to
+    # the malicious group, including prior similarity/unknown-type hits.
+    malicious = verdicts.get('malicious', 0) + verdicts.get('suspicious', 0) + queries.get('hit', 0)
+    benign = verdicts.get('benign', 0)
     suspicious = verdicts.get('suspicious', 0) + query_verdicts.get('suspicious', 0)
-    not_detected = benign + counts.get('unsupported', 0)
-    classified = malicious + not_detected + suspicious
+    active_uploads = sum(counts.get(status, 0) for status in ('pending', 'queued', 'running', 'preparing'))
+    in_progress = active_uploads + queries.get('pending', 0)
+    received = uploads + query_total
+    # This bucket includes ended failures/unknown verdicts. It does NOT assert
+    # that those requests returned a successful Benign model result.
+    not_detected = received - malicious - in_progress
+    classified = malicious + not_detected
     return {
         'available': True, 'started_at': started_at, 'updated_at': now_iso(),
-        'received_total': uploads + query_total, 'upload_total': uploads,
+        'statistics_version': 2,
+        'received_total': received, 'upload_total': uploads,
         'completed_total': counts.get('completed', 0),
         'malicious_total': malicious, 'benign_total': benign,
         'not_detected_total': not_detected, 'suspicious_total': suspicious,
-        'classified_total': classified, 'other_total': uploads + query_total - classified,
+        'classified_total': classified, 'other_total': in_progress,
+        'in_progress_total': in_progress,
         'inconclusive_total': verdicts.get('inconclusive', 0),
         'database_total': modes.get('sample_database', 0) + queries.get('hit', 0), 'model_total': modes.get('models', 0),
         'failed_total': counts.get('failed', 0), 'cancelled_total': counts.get('cancelled', 0),

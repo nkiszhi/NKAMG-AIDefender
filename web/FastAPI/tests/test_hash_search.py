@@ -61,12 +61,22 @@ class HashSearchTests(unittest.TestCase):
             self.assertEqual(stats['query_failed_total'], 1)
             self.assertEqual(stats['received_total'], 5)
             self.assertEqual(stats['upload_total'], 0)
-            self.assertEqual(stats['malicious_total'], 1)
+            self.assertEqual(stats['malicious_total'], 3)
             self.assertEqual(stats['suspicious_total'], 2)
-            self.assertEqual(stats['not_detected_total'], 1)
-            self.assertEqual(stats['classified_total'], 4)
+            self.assertEqual(stats['not_detected_total'], 2)
+            self.assertEqual(stats['classified_total'], 5)
             self.assertEqual(stats['database_total'], 3)
             self.assertEqual(stats['unique_completed_samples'], 1)
+
+    def test_repository_never_queries_elf_or_others_in_pe_rollout(self):
+        repo = SampleRepository(SimpleNamespace(mysql_host='test', mysql_user='test',
+            malicious_dbs=['malicious_elf', 'malicious_pe', 'malicious_others']))
+        with patch.object(repo, '_query', return_value=None) as lookup:
+            self.assertIsNone(repo.find_malicious(SHA))
+        lookup.assert_called_once_with('malicious_pe', 'sample_aa', SHA)
+        with patch.object(repo, '_query_fingerprint', return_value=None) as lookup:
+            self.assertIsNone(repo.find_by_hash(SSDEEP))
+        lookup.assert_called_once_with('malicious_pe', 'ssdeep', SSDEEP)
 
     def test_fingerprint_sql_binds_values_and_checks_all_valid_shards(self):
         import sys
@@ -88,3 +98,18 @@ class HashSearchTests(unittest.TestCase):
         self.assertEqual(queries[1].args[1], (SSDEEP,))
         self.assertNotIn(SSDEEP, queries[1].args[0])
         connection.close.assert_called_once()
+
+    def test_sha_query_keeps_primary_key_column_unwrapped(self):
+        import sys
+        settings = SimpleNamespace(mysql_host='test', mysql_port=3306, mysql_user='test',
+                                   mysql_passwd='', malicious_dbs=['malicious_pe'])
+        repo = SampleRepository(settings)
+        mysql = MagicMock()
+        cursor = mysql.connect.return_value.cursor.return_value.__enter__.return_value
+        cursor.fetchone.return_value = {'sha256': SHA}
+        with patch.dict(sys.modules, {'pymysql': mysql}):
+            self.assertEqual(repo.find_malicious(SHA)['sha256'], SHA)
+        sql, params = cursor.execute.call_args.args
+        self.assertIn('WHERE sha256 = %s', sql)
+        self.assertNotIn('TRIM(', sql)
+        self.assertEqual(params, (SHA,))

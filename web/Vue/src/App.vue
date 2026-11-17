@@ -15,7 +15,7 @@
       <div class="header-tools">
         <form class="hash-search" @submit.prevent="searchSample">
           <el-icon aria-hidden="true"><Search /></el-icon>
-          <input v-model.trim="hashQuery" type="search" maxlength="160" spellcheck="false" placeholder="搜索 SHA256 / TLSH / SSDeep" aria-label="搜索 SHA256 / TLSH / SSDeep" />
+          <input v-model.trim="hashQuery" type="search" maxlength="64" spellcheck="false" placeholder="输入64位SHA256查询" aria-label="SHA256精确查询" />
           <button type="submit" :disabled="searching || !hashQuery">{{ searching ? '查询中' : '查询' }}</button>
         </form>
         <div class="status-tags">
@@ -135,7 +135,7 @@
             <el-tag v-if="!uploadResult.hash_search" :type="uploadResult.is_pe ? 'success' : 'warning'">
               {{ uploadResult.is_pe ? 'PE结构：有效' : '检测失败：非 PE 文件' }}
             </el-tag>
-            <el-tag v-if="uploadResult.hash_search" :type="uploadResult.verdict === 'Malicious' ? 'danger' : uploadResult.verdict === 'Suspicious' ? 'warning' : 'success'">{{ uploadResult.verdict }} · {{ uploadResult.hash_type.toUpperCase() }} {{ uploadResult.database_hit ? '匹配' : '未匹配' }}</el-tag>
+            <el-tag v-if="uploadResult.hash_search" :type="uploadResult.database_hit ? 'danger' : 'info'">{{ uploadResult.database_hit ? '判断恶意 · 恶意库命中' : '查询未命中 · 不代表安全' }}</el-tag>
             <el-tag v-else-if="uploadResult.database_hit" type="danger">Malicious · 命中 NKAMG 样本库</el-tag>
             <el-tag v-else-if="uploadResult.is_pe && uploadResult.detection_mode === 'models'" type="info">样本库：未命中</el-tag>
             <el-tag v-if="!isModelReport && ensembleResult && ['Malicious', 'Benign'].includes(ensembleResult.result)" :type="ensembleResult.result === 'Malicious' ? 'danger' : 'success'">
@@ -152,8 +152,8 @@
 
       <div v-if="isModelReport" class="ensemble-verdict" :class="ensembleResult?.result === 'Malicious' ? 'is-malicious' : ensembleResult?.result === 'Benign' ? 'is-benign' : 'is-pending'" role="status">
         <div class="ensemble-verdict-main">
-          <span class="ensemble-verdict-title">33 模型联合结果</span>
-          <strong>{{ detectionFailure ? '分析失败 · 未取得联合判定' : uploadResult.partial ? '等待联合判定' : (ensembleLabel || '未取得有效结果') }}</strong>
+          <span class="ensemble-verdict-title">CoDefender结果</span>
+          <strong>{{ detectionFailure ? '分析失败 · 未取得CoDefender结果' : uploadResult.partial ? '等待CoDefender结果' : (ensembleLabel || '未取得有效结果') }}</strong>
           <span v-if="!uploadResult.partial && ensembleLabel === 'Malicious'" class="ensemble-verdict-note">引擎未返回恶意等级</span>
         </div>
         <div v-if="ensembleResult?.source === 'models'" class="ensemble-verdict-metrics">
@@ -165,7 +165,7 @@
 
       <div v-show="showSection === 'fileInfo'" class="panel">
         <div v-if="uploadResult.hash_search" class="database-hit" :class="`hash-result-${uploadResult.verdict.toLowerCase()}`">
-          <strong>{{ uploadResult.verdict }} · {{ uploadResult.reason }}</strong>
+          <strong>{{ uploadResult.database_hit ? '判断恶意' : '查询未命中，不代表安全' }} · {{ uploadResult.reason }}</strong>
           <span class="mono break-text">{{ uploadResult.hash_type.toUpperCase() }}：{{ uploadResult.query_hash }}</span>
         </div>
         <div v-else-if="!uploadResult.is_pe" class="detection-warning">
@@ -231,7 +231,7 @@
       </div>
 
       <div v-show="showSection === 'modelDetection'" class="panel">
-        <div v-if="uploadResult.hash_search" class="database-hit" :class="`hash-result-${uploadResult.verdict.toLowerCase()}`">指纹检索结果：{{ uploadResult.verdict }}。本次未调用 AI 检测引擎。</div>
+        <div v-if="uploadResult.hash_search" class="database-hit" :class="`hash-result-${uploadResult.verdict.toLowerCase()}`">SHA256查询：{{ uploadResult.database_hit ? '判断恶意 · 恶意库命中' : '查询未命中，不代表安全' }}。本次未调用 AI 检测引擎。</div>
         <div v-else-if="!uploadResult.is_pe" class="detection-warning">本文件不是 PE，未提交 33 模型检测。</div>
         <div v-else-if="uploadResult.database_hit" class="database-hit">已命中 NKAMG 样本库，已跳过 33 模型检测。</div>
         <div v-else-if="ensembleResult?.source === 'signature'" class="database-hit">Malicious · 命中引擎签名库，已跳过 33 模型检测。</div>
@@ -499,16 +499,16 @@ function resetResult() {
 }
 
 async function searchSample() {
-  if (!hashQuery.value || hashQuery.value.length > 160) {
-    ElMessage.warning('请输入 SHA256、TLSH 或 SSDeep 指纹')
+  if (!/^[0-9a-fA-F]{64}$/.test(hashQuery.value)) {
+    ElMessage.warning('请输入64位十六进制SHA256')
     return
   }
   searching.value = true
   modelsOpen.value = []
   try {
-    const response = await apiService.get(`${apiBaseUrl.value}/sample-search`, { params: { value: hashQuery.value }, timeout: 120000 })
+    const response = await apiService.get(`${apiBaseUrl.value}/sample-search`, { params: { value: hashQuery.value.toLowerCase() }, timeout: 15000 })
     setDetectionResult(response.data)
-    ElMessage.success(response.data.database_hit ? '已找到指纹匹配记录' : '指纹查询完成，未匹配到记录')
+    ElMessage.success(response.data.database_hit ? '恶意样本库命中' : 'SHA256查询未命中，不代表安全')
   } catch (error) {
     ElMessage.error(error.response?.data?.detail || '样本库查询失败')
   } finally {

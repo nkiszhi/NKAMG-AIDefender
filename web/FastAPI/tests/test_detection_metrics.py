@@ -54,8 +54,9 @@ class DetectionMetricsTests(unittest.TestCase):
             self.assertEqual(stats[key], 1)
         self.assertEqual(stats['completed_total'], 0)
         self.assertEqual(stats['benign_total'], 0)
-        self.assertEqual(stats['not_detected_total'], 1)
-        self.assertEqual(stats['other_total'], 3)
+        self.assertEqual(stats['not_detected_total'], 3)
+        self.assertEqual(stats['other_total'], 1)
+        self.assertEqual(stats['in_progress_total'], 1)
         self.assertEqual(stats['received_total'], stats['malicious_total'] + stats['not_detected_total'] + stats['other_total'])
 
     def test_live_epoch_resets_once_and_preserves_history(self):
@@ -82,9 +83,9 @@ class DetectionMetricsTests(unittest.TestCase):
         stats = DetectionTaskStore(self.path, 60).detection_summary()
         self.assertEqual(stats['started_at'], empty['started_at'])
         self.assertEqual(stats['received_total'], 6)
-        self.assertEqual(stats['malicious_total'], 1)
-        self.assertEqual(stats['not_detected_total'], 3)
-        self.assertEqual(stats['other_total'], 2)
+        self.assertEqual(stats['malicious_total'], 2)
+        self.assertEqual(stats['not_detected_total'], 4)
+        self.assertEqual(stats['other_total'], 0)
         self.assertEqual(stats['query_total'], 3)
         self.assertEqual(stats['query_total'], sum(stats[key] for key in ('query_hit_total', 'query_miss_total', 'query_failed_total')))
         self.assertEqual(stats['received_total'], stats['malicious_total'] + stats['not_detected_total'] + stats['other_total'])
@@ -113,7 +114,7 @@ class DetectionMetricsTests(unittest.TestCase):
         self.assertEqual(stats['received_total'], 3)
         self.assertEqual(stats['upload_total'], 0)
         self.assertEqual(stats['malicious_total'], 1)
-        self.assertEqual(stats['not_detected_total'], 1)
+        self.assertEqual(stats['not_detected_total'], 2)
         self.assertEqual(stats['query_total'], 3)
         for key in ('query_hit_total', 'query_miss_total', 'query_failed_total'):
             self.assertEqual(stats[key], 1)
@@ -156,14 +157,15 @@ class DetectionMetricsTests(unittest.TestCase):
         self.store.begin_hash_query('sha256', 'f' * 64)
         stats = DetectionTaskStore(self.path, 60).detection_summary()
         expected = {'received_total': 12, 'upload_total': 5, 'query_total': 7,
-                    'malicious_total': 2, 'not_detected_total': 4, 'suspicious_total': 2,
-                    'classified_total': 8, 'other_total': 4, 'database_total': 3,
+                    'malicious_total': 4, 'not_detected_total': 6, 'suspicious_total': 2,
+                    'classified_total': 10, 'other_total': 2, 'in_progress_total': 2, 'database_total': 3,
                     'query_hit_total': 3, 'query_miss_total': 2, 'query_failed_total': 1,
                     'query_pending_total': 1, 'unique_completed_samples': 4}
         for key, value in expected.items():
             self.assertEqual(stats[key], value, key)
         self.assertEqual(stats['received_total'], stats['upload_total'] + stats['query_total'])
-        self.assertEqual(stats['classified_total'], sum(stats[key] for key in ('malicious_total', 'not_detected_total', 'suspicious_total')))
+        self.assertEqual(stats['received_total'], sum(stats[key] for key in ('malicious_total', 'not_detected_total', 'in_progress_total')))
+        self.assertEqual(stats['benign_total'], 1)
 
     def test_query_is_recorded_before_lookup_and_finishes_only_once(self):
         def lookup(value):
@@ -200,10 +202,25 @@ class DetectionMetricsTests(unittest.TestCase):
         stats = DetectionTaskStore(self.path, 60).detection_summary()
         self.assertEqual(stats['received_total'], 2)
         self.assertEqual(stats['database_total'], 1)
-        self.assertEqual(stats['malicious_total'], 0)
+        self.assertEqual(stats['malicious_total'], 1)
         self.assertEqual(stats['suspicious_total'], 0)
         self.assertEqual(stats['not_detected_total'], 1)
-        self.assertEqual(stats['other_total'], 1)
+        self.assertEqual(stats['other_total'], 0)
+
+    def test_overview_does_not_rewrite_failed_or_missing_as_benign(self):
+        self.store.create('failed-detail', 'x', self.path, 10, 'a' * 64)
+        self.store.set_status('failed-detail', 'failed', error='fixture-failure')
+        self.store.record_hash_query('miss', 'sha256', 'b' * 64)
+        self.store.record_hash_query('failed', 'sha256', 'c' * 64)
+        stats = self.store.detection_summary()
+        self.assertEqual(stats['not_detected_total'], 3)
+        self.assertEqual(stats['in_progress_total'], 0)
+        self.assertEqual(stats['benign_total'], 0)
+        self.assertEqual(self.store.get('failed-detail')['status'], 'failed')
+        with self.store._connect() as connection:
+            query = connection.execute("SELECT outcome,verdict FROM hash_query_metrics WHERE outcome='miss'").fetchone()
+        self.assertEqual(query['outcome'], 'miss')
+        self.assertIsNone(query['verdict'])
 
 
 if __name__ == '__main__':

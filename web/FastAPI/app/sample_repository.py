@@ -29,10 +29,16 @@ class SampleRepository:
         self.settings = settings
 
     @property
+    def query_databases(self):
+        # First rollout stays on the existing PE library until the new schema
+        # is replicated and accepted. ELF/others are outside this site's scope.
+        return ['malicious_pe'] if 'malicious_pe' in getattr(self.settings, 'malicious_dbs', []) else []
+
+    @property
     def configured(self) -> bool:
         return bool(getattr(self.settings, "mysql_host", "")
                     and getattr(self.settings, "mysql_user", "")
-                    and getattr(self.settings, "malicious_dbs", []))
+                    and self.query_databases)
 
     @staticmethod
     def table_name(sha256: str) -> str:
@@ -48,7 +54,7 @@ class SampleRepository:
             logger.info("MySQL未配置，跳过样本库查询")
             return None
         table = self.table_name(sha256)
-        for database in self.settings.malicious_dbs:
+        for database in self.query_databases:
             if not DB_RE.match(database):
                 continue
             try:
@@ -78,7 +84,7 @@ class SampleRepository:
         )
         try:
             with connection.cursor() as cursor:
-                cursor.execute(f"SELECT * FROM {table} WHERE TRIM(sha256) = %s LIMIT 1", (sha256,))
+                cursor.execute(f"SELECT * FROM `{table}` WHERE sha256 = %s LIMIT 1", (sha256,))
                 return cursor.fetchone()
         finally:
             connection.close()
@@ -89,7 +95,7 @@ class SampleRepository:
             return self.find_malicious(value)
         if not self.configured:
             return None
-        for database in self.settings.malicious_dbs:
+        for database in self.query_databases:
             if not DB_RE.fullmatch(database):
                 continue
             try:
