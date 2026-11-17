@@ -132,7 +132,7 @@
           <button class="back-button" type="button" @click="resetResult">返回工作台</button>
           <h2>检测报告如下</h2>
           <div class="tags">
-            <el-tag v-if="!uploadResult.hash_search" :type="uploadResult.is_pe ? 'success' : 'warning'">
+            <el-tag v-if="!uploadResult.hash_search || uploadResult.pe_info_source === 'local'" :type="uploadResult.is_pe ? 'success' : 'warning'">
               {{ uploadResult.is_pe ? 'PE结构：有效' : '检测失败：非 PE 文件' }}
             </el-tag>
             <el-tag v-if="uploadResult.hash_search" :type="uploadResult.database_hit ? 'danger' : 'info'">{{ uploadResult.database_hit ? '判断恶意 · 恶意库命中' : '查询未命中 · 不代表安全' }}</el-tag>
@@ -165,7 +165,7 @@
 
       <div v-show="showSection === 'fileInfo'" class="panel">
         <div v-if="uploadResult.hash_search" class="database-hit" :class="`hash-result-${uploadResult.verdict.toLowerCase()}`">
-          <strong>{{ uploadResult.database_hit ? '判断恶意' : '查询未命中，不代表安全' }} · {{ uploadResult.reason }}</strong>
+          <strong>{{ uploadResult.database_hit ? '判断恶意 · 恶意库命中' : `查询未命中，不代表安全 · ${uploadResult.reason}` }}</strong>
           <span class="mono break-text">{{ uploadResult.hash_type.toUpperCase() }}：{{ uploadResult.query_hash }}</span>
         </div>
         <div v-else-if="!uploadResult.is_pe" class="detection-warning">
@@ -178,34 +178,19 @@
           <strong>已命中样本库，跳过 33 模型检测</strong>
           <span v-if="uploadResult.sample_record?.source_db">来源：{{ uploadResult.sample_record.source_db }}.{{ uploadResult.sample_record.source_table }}</span>
         </div>
-        <template v-if="uploadResult.database_hit && uploadResult.sample_record">
-          <h3 class="subhead">样本基础信息</h3>
-          <el-descriptions :column="2" border class="sample-description">
-            <el-descriptions-item v-for="(value, key) in sampleBaseFields" :key="key" :label="key">{{ key === '文件大小' ? formatFileSize(value) : value }}</el-descriptions-item>
-          </el-descriptions>
-          <h3 class="subhead">样本标签</h3>
-          <el-descriptions :column="2" border>
-            <el-descriptions-item v-for="(value, key) in uploadResult.sample_record.labels" :key="key" :label="key">{{ value || '-' }}</el-descriptions-item>
-          </el-descriptions>
-          <h3 class="subhead">样本指纹</h3>
-          <el-descriptions :column="1" border>
-            <el-descriptions-item v-for="(value, key) in uploadResult.sample_record.hashes" :key="key" :label="key"><span class="mono break-text">{{ value }}</span></el-descriptions-item>
-          </el-descriptions>
-        </template>
         <el-descriptions :column="1" border>
-          <el-descriptions-item v-if="!uploadResult.database_hit" label="文件名">{{ uploadResult.filename || '-' }}</el-descriptions-item>
-          <el-descriptions-item v-if="!uploadResult.database_hit" label="SHA256">
+          <el-descriptions-item v-if="!uploadResult.hash_search || uploadResult.pe_info_source === 'local'" label="文件名">{{ uploadResult.filename || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="SHA256">
             <span class="mono break-text">{{ uploadResult.sha256 || '-' }}</span>
           </el-descriptions-item>
-          <el-descriptions-item v-if="!uploadResult.database_hit" label="MD5">
+          <el-descriptions-item v-if="!uploadResult.hash_search || uploadResult.pe_info_source === 'local'" label="MD5">
             <span class="mono break-text">{{ uploadResult.md5 || uploadResult.query_result?.MD5 || '-' }}</span>
           </el-descriptions-item>
-          <el-descriptions-item v-if="!uploadResult.database_hit" label="文件大小">{{ formatFileSize(uploadResult.file_size) }}</el-descriptions-item>
-          <el-descriptions-item v-if="!uploadResult.database_hit" label="文件类型">{{ uploadResult.file_type || '-' }}</el-descriptions-item>
+          <el-descriptions-item v-if="!uploadResult.hash_search || uploadResult.pe_info_source === 'local'" label="文件大小">{{ formatFileSize(uploadResult.file_size) }}</el-descriptions-item>
+          <el-descriptions-item v-if="!uploadResult.hash_search || uploadResult.pe_info_source === 'local'" label="文件类型">{{ uploadResult.file_type || '-' }}</el-descriptions-item>
           <el-descriptions-item label="检测时间">{{ uploadResult.detection_time || '-' }}</el-descriptions-item>
         </el-descriptions>
 
-        <p v-if="uploadResult.file_uploaded === false" class="database-hit">已命中样本库，原文件未上传。以下为已有记录。</p>
         <h3 v-if="uploadResult.is_pe && uploadResult.pe_structure_checked !== false" class="subhead">PE结构信息</h3>
         <el-descriptions v-if="uploadResult.is_pe && uploadResult.pe_structure_checked !== false" :column="2" border>
           <el-descriptions-item label="PE格式">{{ peInfo.format || '-' }}</el-descriptions-item>
@@ -280,6 +265,7 @@ import DetectionStats from './DetectionStats.vue'
 import { failedModelResults, serviceStatus } from './detectionFailure'
 import { hashFile } from './hashFile.js'
 import { submitWithPreflight } from './uploadPreflight.js'
+import { mergeLocalFileInfo } from './localPeInfo.js'
 
 const detectionStatsPanel = ref(null)
 
@@ -300,6 +286,7 @@ const detectionAbort = new AbortController()
 const TASK_KEY = 'aidefender_detection_task'
 const TASK_PHASE_KEY = 'aidefender_detection_phase'
 const uploadResult = ref(null)
+const localFileInfo = ref(null)
 const apiBaseUrl = ref('/api-backend')
 const modelService = ref({ connected: false, ready: false, model_count: 0 })
 const checkingModels = ref(true)
@@ -332,10 +319,6 @@ const sectionOptions = [
 ]
 
 const peInfo = computed(() => uploadResult.value?.pe_info || {})
-const sampleBaseFields = computed(() => ({
-  ...(uploadResult.value?.sample_record?.identity || {}),
-  ...(uploadResult.value?.sample_record?.hashes || {})
-}))
 
 const sampleTotal = computed(() => Number(stats.value.samples?.malicious_total || 0) + Number(stats.value.samples?.benign_total || 0))
 
@@ -494,6 +477,7 @@ function parseIni(text) {
 }
 
 function resetResult() {
+  localFileInfo.value = null
   detectionFailure.value = null
   uploadResult.value = null
   showSection.value = 'fileInfo'
@@ -502,6 +486,7 @@ function resetResult() {
 }
 
 async function searchSample() {
+  localFileInfo.value = null
   if (!/^[0-9a-fA-F]{64}$/.test(hashQuery.value)) {
     ElMessage.warning('请输入64位十六进制SHA256')
     return
@@ -560,6 +545,7 @@ async function uploadFile(file) {
   try {
     const response = await submitWithPreflight({ file, api: apiService, baseUrl: apiBaseUrl.value,
       requestId, hashFile, signal: detectionAbort.signal,
+      onFileInfo: info => { localFileInfo.value = info },
       onPhase: (phase, percent) => {
         localStorage.setItem(TASK_PHASE_KEY, phase)
         detectionMessage.value = phase === 'preparing' ? `正在读取文件${percent == null ? '' : ` · ${percent}%`}`
@@ -783,7 +769,8 @@ function modelDescription(item) {
     || `基于 ${item.view || '多视角特征'} 提取的 ${item.features || '项目特征'} 进行独立判别，为综合结果提供补充证据。`
 }
 
-function normalizeDetectionResponse(data) {
+function normalizeDetectionResponse(input) {
+  const data = mergeLocalFileInfo(input, localFileInfo.value)
   const queryResult = data.query_result || {}
   return {
     ...data,

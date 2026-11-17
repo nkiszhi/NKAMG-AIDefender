@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { File } from 'node:buffer'
-import { hashBlob } from '../src/fileHashCore.js'
+import { hashBlob, fileFingerprints } from '../src/fileHashCore.js'
 import { submitWithPreflight } from '../src/uploadPreflight.js'
 
 const sha256 = 'a'.repeat(64)
@@ -14,6 +14,9 @@ test('hashes empty and multi-chunk binary blobs identically to Node crypto', asy
   for (const bytes of [Buffer.alloc(0), Buffer.from('abc'), Buffer.alloc(5*1024*1024+33, 0xa5)]) {
     const expected = createHash('sha256').update(bytes).digest('hex')
     assert.equal(await hashBlob(new Blob([bytes])), expected)
+    const fingerprints = await fileFingerprints(new Blob([bytes]))
+    assert.equal(fingerprints.sha256, expected)
+    assert.equal(fingerprints.md5, createHash('md5').update(bytes).digest('hex'))
   }
 })
 

@@ -532,7 +532,7 @@ async def upload_preflight(body: UploadPreflight, x_detection_id: str = Header(d
     try:
         record = await asyncio.to_thread(sample_repository.find_malicious, sha256)
     except RuntimeError as error:
-        raise HTTPException(status_code=503, detail='样本库暂不可用，尚未上传原文件，请稍后重试') from error
+        raise HTTPException(status_code=503, detail='样本库暂不可用，请稍后重试') from error
     if not record:
         return {'upload_required': True, 'request_id': x_detection_id, 'sha256': sha256}
     public_record = SampleRepository.public_fields(record)
@@ -542,7 +542,7 @@ async def upload_preflight(body: UploadPreflight, x_detection_id: str = Header(d
         'file_size': body.file_size, 'is_pe': True, 'pe_structure_checked': False,
         'file_uploaded': False, 'database_hit': True, 'model_skipped': True,
         'detection_mode': 'sample_database', 'detection_status': 'malicious',
-        'verdict': 'Malicious', 'reason': 'SHA256命中恶意样本库，原文件未上传',
+        'verdict': 'Malicious', 'reason': '命中恶意样本库',
         'sample_record': public_record, 'exe_result': {}, 'results': {},
         'detection_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
     }
