@@ -161,9 +161,11 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if not args.key.is_file():
         parser.error(f"SSH key does not exist: {args.key}")
+    handlers = [logging.StreamHandler()]
     if args.destination.is_dir():
-        logging.basicConfig(filename=args.destination / "pull_samples.log", level=logging.INFO,
-                            format="%(asctime)s %(levelname)s %(message)s", encoding="utf-8")
+        handlers.insert(0, logging.FileHandler(args.destination / "pull_samples.log", encoding="utf-8"))
+    logging.basicConfig(handlers=handlers, level=logging.INFO,
+                        format="%(asctime)s %(levelname)s %(message)s")
     try:
         count = pull_once(args.host, args.user, args.remote_root, args.destination, args.key)
     except Exception:
