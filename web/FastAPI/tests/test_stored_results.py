@@ -19,7 +19,8 @@ SHA = 'a' * 64
 
 
 def record(**values):
-    return {'_source_db': 'AIDefender_PE', 'sha256': SHA, 'detection_status': 'pending', **values}
+    return {'_source_db': 'AIDefender_PE', 'sha256': SHA, 'source': 'malicious_pe',
+            'detection_status': 'pending', **values}
 
 
 def payload(**values):

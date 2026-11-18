@@ -32,7 +32,7 @@ class BrowserPreflightTests(unittest.TestCase):
             main.UploadPreflight(sha256=sha, filename='sample.exe', file_size=4), task_id))
 
     def test_hit_has_no_upload_or_model_and_retry_counts_once(self):
-        with patch.object(main.sample_repository, 'find_malicious', return_value={'sha256': SHA}) as find, \
+        with patch.object(main.sample_repository, 'find_malicious', return_value={'sha256': SHA, 'source': 'malicious_pe'}) as find, \
              patch.object(main, 'save_upload') as save, patch.object(main, 'scan_file') as scan:
             result = self.preflight()
             repeat = self.preflight(sha=SHA.upper())

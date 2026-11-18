@@ -22,21 +22,22 @@ class HashSearchTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 identify_hash(value)
 
-    def test_repository_uses_aidpe_shard_and_sha256_only(self):
+    def test_repository_uses_aidpe_shard_and_rejects_non_sha256_queries(self):
         repo = SampleRepository(SimpleNamespace(mysql_host='test', mysql_user='test', aidpe_db='AIDefender_PE'))
         with patch.object(repo, 'find_malicious', return_value={'sha256': SHA}) as sha:
             self.assertEqual(repo.find_by_hash(SHA)['sha256'], SHA)
             sha.assert_called_once_with(SHA)
         for value, kind in [(TLSH, 'tlsh'), (SSDEEP, 'ssdeep')]:
             with patch.object(repo, '_query_fingerprint', return_value={'sha256': SHA}) as lookup:
-                self.assertIsNone(repo.find_by_hash(value))
+                with self.assertRaises(ValueError):
+                    repo.find_by_hash(value)
                 lookup.assert_not_called()
 
     def test_query_verdicts_and_counters_without_model_execution(self):
         with tempfile.TemporaryDirectory() as folder:
             store = DetectionTaskStore(Path(folder) / 'stats.sqlite3', 60)
             with patch.object(main, 'task_store', store), patch.object(main, 'scan_file') as scan:
-                for value, label in [(SHA, 'Malicious'), (TLSH, 'Unknown'), (SSDEEP, 'Unknown')]:
+                for value, label in [(SHA, 'Malicious')]:
                     record = {'sha256': SHA, 'source': 'malicious_pe', 'detection_status': 'completed',
                               'codefender_result': {'result': 'Benign'}} if value == SHA else None
                     with patch.object(main.sample_repository, 'find_by_hash', return_value=record) as lookup:
@@ -44,29 +45,27 @@ class HashSearchTests(unittest.TestCase):
                     self.assertEqual(result['verdict'], label)
                     self.assertEqual(result['database_hit'], value == SHA)
                     self.assertTrue(result['model_skipped'])
-                    expected = value.upper() if value == TLSH else value
-                    lookup.assert_called_once_with(expected)
                 with patch.object(main.sample_repository, 'find_by_hash', return_value=None):
                     self.assertEqual(asyncio.run(main.search_sample_hash(SHA))['verdict'], 'Unknown')
                 with patch.object(main.sample_repository, 'find_by_hash', side_effect=RuntimeError('offline')):
                     with self.assertRaises(main.HTTPException) as caught:
-                        asyncio.run(main.search_sample_hash(SSDEEP))
+                        asyncio.run(main.search_sample_hash(SHA))
                     self.assertEqual(caught.exception.status_code, 503)
                 with self.assertRaises(main.HTTPException) as caught:
                     asyncio.run(main.search_sample_hash('invalid'))
                 self.assertEqual(caught.exception.status_code, 422)
                 scan.assert_not_called()
             stats = store.detection_summary()
-            self.assertEqual(stats['query_total'], 5)
+            self.assertEqual(stats['query_total'], 3)
             self.assertEqual(stats['query_hit_total'], 1)
-            self.assertEqual(stats['query_miss_total'], 3)
+            self.assertEqual(stats['query_miss_total'], 1)
             self.assertEqual(stats['query_failed_total'], 1)
-            self.assertEqual(stats['received_total'], 5)
+            self.assertEqual(stats['received_total'], 3)
             self.assertEqual(stats['upload_total'], 0)
             self.assertEqual(stats['malicious_total'], 1)
             self.assertEqual(stats['suspicious_total'], 0)
-            self.assertEqual(stats['not_detected_total'], 4)
-            self.assertEqual(stats['classified_total'], 5)
+            self.assertEqual(stats['not_detected_total'], 2)
+            self.assertEqual(stats['classified_total'], 3)
             self.assertEqual(stats['database_total'], 1)
             self.assertEqual(stats['unique_completed_samples'], 1)
 
@@ -77,7 +76,8 @@ class HashSearchTests(unittest.TestCase):
             self.assertIsNone(repo.find_malicious(SHA))
         lookup.assert_called_once_with('AIDefender_PE', 'sample_aa', SHA)
         with patch.object(repo, '_query_fingerprint', return_value=None) as lookup:
-            self.assertIsNone(repo.find_by_hash(SSDEEP))
+            with self.assertRaises(ValueError):
+                repo.find_by_hash(SSDEEP)
         lookup.assert_not_called()
 
     def test_web_upload_hash_rows_use_model_verdict_not_database_membership(self):

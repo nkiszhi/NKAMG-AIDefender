@@ -35,7 +35,18 @@ def _ensemble_payload(result):
     return ensemble if isinstance(ensemble, dict) else None
 
 
+def sha256_file(path):
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def _sample_category(result):
+    category = (result or {}).get("sample_category")
+    if category in ("模型判断恶意", "模型判断非恶意", "检查失败"):
+        return category
     ensemble = _ensemble_payload(result or {})
     label = (ensemble or {}).get("display_result") or (ensemble or {}).get("result")
     if label == "Benign":
@@ -50,11 +61,7 @@ def archive_detected_sample(file_path, sample_root, sha256, result=None):
     source = Path(file_path)
     if not source.is_file() or not SHA256_RE.fullmatch((sha256 or "").lower()):
         raise ValueError("Uploaded sample or SHA256 is invalid")
-    digest = hashlib.sha256()
-    with source.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    if digest.hexdigest() != sha256.lower():
+    if sha256_file(source) != sha256.lower():
         raise ValueError("Uploaded sample SHA256 mismatch")
     root = Path(sample_root).resolve()
     folder = _sample_category(result)
@@ -62,11 +69,7 @@ def archive_detected_sample(file_path, sample_root, sha256, result=None):
     destination_dir.mkdir(parents=True, exist_ok=True)
     destination = destination_dir / f"{sha256.lower()}.sample"
     if destination.exists():
-        existing_digest = hashlib.sha256()
-        with destination.open("rb") as stream:
-            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-                existing_digest.update(chunk)
-        existing = existing_digest.hexdigest()
+        existing = sha256_file(destination)
         if existing != sha256.lower():
             raise FileExistsError("Archive destination already contains different content")
         source.unlink(missing_ok=True)
@@ -79,8 +82,8 @@ def archive_detected_sample(file_path, sample_root, sha256, result=None):
             shutil.copyfileobj(incoming, outgoing, 1024 * 1024)
             outgoing.flush()
             os.fsync(outgoing.fileno())
-        source.unlink()
     os.replace(temp, destination)
+    source.unlink(missing_ok=True)
     return destination
 
 
@@ -104,7 +107,66 @@ class ResultOutbox:
                 updated_at TEXT NOT NULL
             )""")
             connection.execute("CREATE INDEX IF NOT EXISTS aidpe_outbox_due ON aidpe_result_outbox(state,next_attempt)")
+            connection.execute("""CREATE TABLE IF NOT EXISTS aidpe_sample_archive_queue (
+                sha256 TEXT PRIMARY KEY,
+                source_path TEXT NOT NULL,
+                category TEXT NOT NULL,
+                attempts INTEGER NOT NULL DEFAULT 0,
+                next_attempt REAL NOT NULL DEFAULT 0,
+                last_error TEXT,
+                updated_at TEXT NOT NULL
+            )""")
+            connection.execute("CREATE INDEX IF NOT EXISTS aidpe_archive_due ON aidpe_sample_archive_queue(next_attempt)")
             connection.commit()
+
+    def enqueue_sample_archive(self, source_path, sha256, result):
+        sha256 = str(sha256 or "").lower()
+        if not SHA256_RE.fullmatch(sha256):
+            return False
+        source = Path(source_path).resolve()
+        category = _sample_category(result)
+        with closing(sqlite3.connect(self.path, timeout=10)) as connection:
+            connection.execute("""INSERT INTO aidpe_sample_archive_queue
+                (sha256,source_path,category,attempts,next_attempt,last_error,updated_at)
+                VALUES(?,?,?,0,0,NULL,?) ON CONFLICT(sha256) DO UPDATE SET
+                source_path=excluded.source_path,category=excluded.category,next_attempt=0,
+                last_error=NULL,updated_at=excluded.updated_at""",
+                (sha256, str(source), category, datetime.now(timezone.utc).isoformat()))
+            connection.commit()
+        return True
+
+    def claim_sample_archives(self, limit=16):
+        now = time.time()
+        with closing(sqlite3.connect(self.path, timeout=10)) as connection:
+            connection.row_factory = sqlite3.Row
+            connection.execute("BEGIN IMMEDIATE")
+            rows = connection.execute("SELECT * FROM aidpe_sample_archive_queue WHERE next_attempt<=? "
+                                      "ORDER BY next_attempt LIMIT ?", (now, limit)).fetchall()
+            connection.execute("UPDATE aidpe_sample_archive_queue SET next_attempt=? WHERE sha256 IN "
+                               "(SELECT sha256 FROM aidpe_sample_archive_queue WHERE next_attempt<=? "
+                               "ORDER BY next_attempt LIMIT ?)", (now + 30, now, limit))
+            connection.commit()
+            return [dict(row) for row in rows]
+
+    def complete_sample_archive(self, sha256):
+        with closing(sqlite3.connect(self.path, timeout=10)) as connection:
+            connection.execute("DELETE FROM aidpe_sample_archive_queue WHERE sha256=?", (sha256,))
+            connection.commit()
+
+    def retry_sample_archive(self, sha256, error):
+        with closing(sqlite3.connect(self.path, timeout=10)) as connection:
+            row = connection.execute("SELECT attempts FROM aidpe_sample_archive_queue WHERE sha256=?", (sha256,)).fetchone()
+            if row:
+                delay = min(300, 30 * (2 ** min(row[0], 4)))
+                connection.execute("UPDATE aidpe_sample_archive_queue SET attempts=attempts+1,next_attempt=? "
+                                   " ,last_error=?,updated_at=? WHERE sha256=?",
+                                   (time.time() + delay, error[:240], datetime.now(timezone.utc).isoformat(), sha256))
+            connection.commit()
+
+    def pending_sample_archive_paths(self):
+        with closing(sqlite3.connect(self.path, timeout=10)) as connection:
+            rows = connection.execute("SELECT source_path FROM aidpe_sample_archive_queue").fetchall()
+        return {str(Path(row[0]).resolve()) for row in rows}
 
     def enqueue(self, result, model_version):
         sha256 = str(result.get("sha256") or "").lower()
@@ -206,7 +268,11 @@ class PrimaryResultWriter:
         placeholders = ",".join(["%s"] * len(names))
         updates = []
         for name in DEFAULT_MODEL_NAMES + ["codefender_result"]:
-            updates.append(f"`{name}`=COALESCE(VALUES(`{name}`),`{name}`)")
+            updates.append(
+                f"`{name}`=IF(VALUES(`detection_status`)='completed' AND "
+                f"NOT (`model_version` <=> VALUES(`model_version`)),VALUES(`{name}`),"
+                f"COALESCE(VALUES(`{name}`),`{name}`))"
+            )
         updates.extend([
             "`source`=IF(`source`='malicious_pe','malicious_pe',VALUES(`source`))",
             "`model_version`=IF(VALUES(`detection_status`)='completed' OR (`detection_status`='pending' AND VALUES(`detection_status`)='failed'),VALUES(`model_version`),`model_version`)",

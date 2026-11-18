@@ -70,6 +70,15 @@ class ConfigLoadingTests(unittest.TestCase):
         self.assertEqual(config.getint("server", "port"), 6123)
         self.assertEqual(config.get("codefender", "api_base"), "http://127.0.0.1:8001")
 
+    def test_primary_aidpe_writer_does_not_depend_on_legacy_pe_lookup_setting(self):
+        config = configparser.ConfigParser()
+        config.read_dict({'mysql': {'aidpe_primary_host': '127.0.0.1'}})
+        with patch('app.config._load_config', return_value=config):
+            settings = Settings()
+        self.assertEqual(settings.pe_lookup_db, 'malicious_pe')
+        self.assertEqual(settings.aidpe_db, 'AIDefender_PE')
+        self.assertEqual(settings.aidpe_primary_host, '127.0.0.1')
+
 
 if __name__ == "__main__":
     unittest.main()

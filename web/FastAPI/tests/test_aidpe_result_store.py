@@ -43,6 +43,19 @@ class ResultOutboxTests(unittest.TestCase):
             self.assertFalse(outbox.enqueue({"sha256": "invalid", "is_pe": True}, "rev"))
             self.assertEqual(outbox.due_count(), 0)
 
+    def test_pending_sample_archive_paths_remain_protected_until_complete(self):
+        with tempfile.TemporaryDirectory() as folder:
+            outbox = ResultOutbox(Path(folder) / "outbox.sqlite3")
+            source = Path(folder) / "upload.part"
+            source.write_bytes(b"sample")
+            self.assertTrue(outbox.enqueue_sample_archive(source, SHA, None))
+            self.assertEqual(outbox.pending_sample_archive_paths(), {str(source.resolve())})
+            entry = outbox.claim_sample_archives()[0]
+            self.assertEqual(entry["category"], "检查失败")
+            outbox.complete_sample_archive(SHA)
+            self.assertEqual(outbox.pending_sample_archive_paths(), set())
+            self.assertTrue(source.exists())
+
 
 class PrimaryWriterTests(unittest.TestCase):
     def test_upserts_to_sha_shard_without_downgrading_malicious_source(self):
@@ -64,6 +77,7 @@ class PrimaryWriterTests(unittest.TestCase):
         sql, values = cursor.execute.call_args.args
         self.assertIn("`AIDefender_PE`.`sample_aa`", sql)
         self.assertIn("IF(`source`='malicious_pe','malicious_pe',VALUES(`source`))", sql)
+        self.assertIn("NOT (`model_version` <=> VALUES(`model_version`))", sql)
         self.assertEqual(values[0], SHA)
         self.assertEqual(json.loads(values[1]), {"result": "Benign"})
         self.assertEqual(tuple(values[-3:]), ("web_upload", "r1", "2026-11-18 10:00:00"))

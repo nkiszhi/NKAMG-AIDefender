@@ -28,7 +28,7 @@ from app.upload_form import single_file_form
 from app.file_info import save_upload, UploadStorageFull
 from app.sample_repository import SampleRepository, identify_hash
 from app.stored_results import saved_model_payload
-from app.aidpe_result_store import ResultOutbox, PrimaryResultWriter, archive_detected_sample
+from app.aidpe_result_store import ResultOutbox, PrimaryResultWriter, archive_detected_sample, sha256_file
 from app.stats_repository import StatsRepository
 from app.detection_queue import DetectionTaskStore, ProcessLease, QueueFull, ExpiredRequest
 
@@ -522,7 +522,7 @@ async def _process_detection_task(task_id: str, file_path: Path, row: dict) -> N
         result['timing'] = {'queue_seconds': round(queued_seconds, 3),
                             'processing_seconds': round(monotonic_time.monotonic() - started, 3)}
         await asyncio.to_thread(task_store.complete, task_id, result)
-        if result.get('detection_mode') == 'models' and result.get('is_pe'):
+        if result.get('detection_mode') == 'models' and result.get('is_pe') and not result.get('model_skipped'):
             await asyncio.to_thread(aidpe_outbox.enqueue, result, settings.model_revision)
         logger.info('检测任务完成 task_id=%s processing_seconds=%.3f', task_id, monotonic_time.monotonic() - started)
     except model_runtime.ModelTaskFailure as error:
@@ -554,12 +554,26 @@ async def _process_detection_task(task_id: str, file_path: Path, row: dict) -> N
                 logger.exception('检测失败结果未能写入持久台账 task_id=%s', task_id)
     finally:
         if row.get('request_source') == 'web' and row.get('sha256') and file_path.is_file():
-            try:
-                await asyncio.to_thread(archive_detected_sample, file_path, settings.aidpe_sample_root,
-                                        row['sha256'], locals().get('result'))
-                logger.info('网页上传样本已核验并进入短期归档 task_id=%s sha256=%s', task_id, row['sha256'])
-            except Exception:
-                logger.exception('网页上传样本归档失败，暂留原文件 task_id=%s sha256=%s', task_id, row['sha256'])
+            result = locals().get('result') or {}
+            if result.get('record_found') and result.get('model_skipped'):
+                try:
+                    await asyncio.to_thread(file_path.unlink, missing_ok=True)
+                except OSError:
+                    logger.warning('已存在的样本上传临时文件未能清理 task_id=%s', task_id, exc_info=True)
+            else:
+                try:
+                    await asyncio.to_thread(archive_detected_sample, file_path, settings.aidpe_sample_root,
+                                            row['sha256'], result)
+                    logger.info('网页上传样本已核验并进入短期归档 task_id=%s sha256=%s', task_id, row['sha256'])
+                except Exception as error:
+                    try:
+                        await asyncio.to_thread(aidpe_outbox.enqueue_sample_archive, file_path,
+                                                row['sha256'], result)
+                    except Exception:
+                        logger.exception('网页上传样本归档失败且待归档台账写入失败 task_id=%s sha256=%s',
+                                         task_id, row['sha256'])
+                    logger.warning('网页上传样本归档失败，原文件进入保护队列 task_id=%s sha256=%s error=%s',
+                                   task_id, row['sha256'], type(error).__name__)
         else:
             try:
                 await asyncio.to_thread(file_path.unlink, missing_ok=True)
@@ -570,22 +584,47 @@ async def _process_detection_task(task_id: str, file_path: Path, row: dict) -> N
 async def _cleanup_loop() -> None:
     while True:
         try:
+            await _retry_sample_archives()
             abandoned = await asyncio.to_thread(task_store.cancel_abandoned)
             abandoned += await asyncio.to_thread(task_store.expire_waiting, settings.max_queue_wait_seconds)
+            pending_archives = await asyncio.to_thread(aidpe_outbox.pending_sample_archive_paths)
             for path in abandoned:
-                await asyncio.to_thread(Path(path).unlink, missing_ok=True)
+                if str(Path(path).resolve()) not in pending_archives:
+                    await asyncio.to_thread(Path(path).unlink, missing_ok=True)
             paths = await asyncio.to_thread(task_store.cleanup)
             for path in paths:
-                await asyncio.to_thread(Path(path).unlink, missing_ok=True)
+                if str(Path(path).resolve()) not in pending_archives:
+                    await asyncio.to_thread(Path(path).unlink, missing_ok=True)
             if settings.upload_dir.exists():
                 orphan_paths = await asyncio.to_thread(
                     task_store.orphan_paths, settings.upload_dir,
                     monotonic_time.time() - settings.orphan_ttl_seconds)
                 for path in orphan_paths:
-                    await asyncio.to_thread(path.unlink, missing_ok=True)
+                    if str(path.resolve()) not in pending_archives:
+                        await asyncio.to_thread(path.unlink, missing_ok=True)
         except Exception:
             logger.exception('过期任务清理失败')
         await asyncio.sleep(5)
+
+
+async def _retry_sample_archives() -> None:
+    entries = await asyncio.to_thread(aidpe_outbox.claim_sample_archives)
+    for entry in entries:
+        source = Path(entry["source_path"])
+        destination = settings.aidpe_sample_root / entry["category"] / f"{entry['sha256']}.sample"
+        try:
+            if source.is_file():
+                await asyncio.to_thread(archive_detected_sample, source, settings.aidpe_sample_root,
+                                        entry["sha256"], {"sample_category": entry["category"]})
+            elif destination.is_file() and await asyncio.to_thread(sha256_file, destination) == entry["sha256"]:
+                pass
+            else:
+                raise FileNotFoundError("Pending sample archive source is missing")
+            await asyncio.to_thread(aidpe_outbox.complete_sample_archive, entry["sha256"])
+        except Exception as error:
+            await asyncio.to_thread(aidpe_outbox.retry_sample_archive, entry["sha256"], type(error).__name__)
+            logger.warning("web sample remains protected in upload storage sha256=%s error=%s",
+                           entry["sha256"], type(error).__name__)
 
 
 class UploadPreflight(BaseModel):

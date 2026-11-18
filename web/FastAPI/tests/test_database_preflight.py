@@ -58,6 +58,26 @@ class DatabasePreflightTests(unittest.TestCase):
         self.assertTrue(result['model_skipped'])
         self.assertEqual(result['detection_mode'], 'sample_database')
 
+    def test_database_record_appearing_after_preflight_does_not_archive_duplicate_upload(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            sample = root / 'upload.pe'
+            sample.write_bytes(b'test')
+            row = {'request_source': 'web', 'filename': 'sample.exe',
+                   'created_at': '2026-11-18T12:00:00', 'sha256': 'a' * 64}
+            known = {'sha256': 'a' * 64, 'is_pe': True, 'record_found': True,
+                     'model_skipped': True, 'detection_mode': 'models',
+                     'exe_result': {'MalConv': {'result': 'Malicious'}}}
+            with patch.object(main, 'task_store') as store, \
+                 patch.object(main, '_run_detection', return_value=known), \
+                 patch.object(main, 'aidpe_outbox') as outbox, \
+                 patch.object(main.settings, 'aidpe_sample_root', root / 'archive'):
+                store.memory_failure.return_value = False
+                asyncio.run(main._process_detection_task('a' * 32, sample, row))
+            self.assertFalse(sample.exists())
+            self.assertFalse((root / 'archive').exists())
+            outbox.enqueue.assert_not_called()
+
     def test_unknown_upload_still_obeys_model_queue_capacity(self):
         with tempfile.TemporaryDirectory() as folder:
             result, _ = self.run_upload(folder)

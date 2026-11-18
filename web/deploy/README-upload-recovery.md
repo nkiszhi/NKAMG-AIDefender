@@ -1,5 +1,19 @@
 # Web 上传中断恢复与部署（2026-11-16）
 
+## TXY结果回写与工位样本收件
+
+`pull_web_upload_samples.py`在工位运行，不在TXY运行。确认工位SSH密钥、TXY可信主机密钥、OpenSSH客户端、Python和H盘均可用后，注册每15分钟任务：
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Register-WebUploadSamplePullTask.ps1
+```
+
+任务只读取TXY三个许可分类目录下的`*.sample`文件。它先下载到临时文件，核对大小和SHA256，再原子移动到H盘对应分类目录，并持久写入回执；之后才请求TXY删除对应SHA文件。H盘、SSH、路径、大小、哈希或回执检查失败时，TXY副本会保留。`pull_samples.log`与`transfer_receipts.jsonl`保存在Git仓库之外的H盘。
+
+Web检测结果通过持久SQLite台账排队，仅在配置独立主库写账号后写27主库。后端等TXY副本读回字段一致才标记完成。TXY本地样本归档失败会单独重试；待归档台账中的文件不会被Web过期清理删除。
+
+默认路径对应当前TXY仓库和H盘目录。注册任务前，先核对TXY私有`web/config.ini`里的`paths.aidpe_sample_root`；不要把私有配置复制进Git。
+
 ## 为什么修改
 
 txy 在文件尚未收完时占用 API 上传名额。部分客户端出现 10053/10054 后，服务器仍等待文件数据，直到 600 秒总超时才释放名额；两个名额占满期间返回“上传服务繁忙”429。日志证明了未完整上传和延迟超时，但还不能判定最初连接中断来自客户端、网络设备还是服务器转发。
