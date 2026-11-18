@@ -283,9 +283,9 @@ class DetectionTaskStore:
         with self._lock, self._connect() as connection:
             return detection_metrics.begin_hash_query(connection, hash_type, value)
 
-    def finish_hash_query(self, query_id, outcome, sample_sha256=None):
+    def finish_hash_query(self, query_id, outcome, sample_sha256=None, verdict=None):
         with self._lock, self._connect() as connection:
-            detection_metrics.finish_hash_query(connection, query_id, outcome, sample_sha256)
+            detection_metrics.finish_hash_query(connection, query_id, outcome, sample_sha256, verdict)
 
     def record_hash_query(self, outcome, hash_type=None, value=None, sample_sha256=None):
         with self._lock, self._connect() as connection:

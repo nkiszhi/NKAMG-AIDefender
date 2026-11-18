@@ -102,7 +102,7 @@ class DetectionMetricsTests(unittest.TestCase):
 
     def test_queries_increase_cumulative_total_without_inventing_uploads(self):
         with patch.object(main, 'task_store', self.store):
-            with patch.object(main.sample_repository, 'find_malicious', return_value={'sha256': 'a' * 64}):
+            with patch.object(main.sample_repository, 'find_malicious', return_value={'sha256': 'a' * 64, 'source': 'malicious_pe'}):
                 asyncio.run(main.sample_by_sha256('a' * 64))
             with patch.object(main.sample_repository, 'find_malicious', return_value=None):
                 with self.assertRaises(main.HTTPException):
@@ -158,7 +158,7 @@ class DetectionMetricsTests(unittest.TestCase):
         stats = DetectionTaskStore(self.path, 60).detection_summary()
         expected = {'received_total': 12, 'upload_total': 5, 'query_total': 7,
                     'malicious_total': 4, 'not_detected_total': 6, 'suspicious_total': 2,
-                    'classified_total': 10, 'other_total': 2, 'in_progress_total': 2, 'database_total': 3,
+                    'classified_total': 10, 'other_total': 2, 'in_progress_total': 2, 'database_total': 1,
                     'query_hit_total': 3, 'query_miss_total': 2, 'query_failed_total': 1,
                     'query_pending_total': 1, 'unique_completed_samples': 4}
         for key, value in expected.items():
@@ -172,23 +172,23 @@ class DetectionMetricsTests(unittest.TestCase):
             stats = self.store.detection_summary()
             self.assertEqual(stats['received_total'], 1)
             self.assertEqual(stats['query_pending_total'], 1)
-            return {'sha256': 'a' * 64}
+            return {'sha256': 'a' * 64, 'source': 'malicious_pe', 'detection_status': 'completed'}
         with patch.object(main, 'task_store', self.store), \
              patch.object(main.sample_repository, 'find_by_hash', side_effect=lookup):
-            result = asyncio.run(main.search_sample_hash('T1' + 'A' * 70))
-        self.assertEqual(result['verdict'], 'Suspicious')
+            result = asyncio.run(main.search_sample_hash('A' * 64))
+        self.assertEqual(result['verdict'], 'Malicious')
         with self.store._connect() as connection:
             rows = connection.execute('SELECT * FROM hash_query_metrics').fetchall()
         self.assertEqual(len(rows), 1)
         row = rows[0]
-        self.assertEqual(row['hash_type'], 'tlsh')
-        self.assertEqual(row['query_hash'], 'T1' + 'A' * 70)
-        self.assertEqual(row['verdict'], 'suspicious')
+        self.assertEqual(row['hash_type'], 'sha256')
+        self.assertEqual(row['query_hash'], 'a' * 64)
+        self.assertEqual(row['verdict'], 'malicious_library')
         self.assertEqual(row['sample_sha256'], 'a' * 64)
         self.store.finish_hash_query(row['id'], 'miss')
         stats = DetectionTaskStore(self.path, 60).detection_summary()
         self.assertEqual(stats['received_total'], 1)
-        self.assertEqual(stats['suspicious_total'], 1)
+        self.assertEqual(stats['malicious_total'], 1)
         self.assertEqual(stats['query_pending_total'], 0)
         self.assertEqual(stats['not_detected_total'], 0)
 

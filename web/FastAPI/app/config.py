@@ -94,6 +94,23 @@ class Settings:
         self.domain_stats_mode = self._get('mysql', 'domain_stats_mode', 'legacy').strip()
         if self.domain_stats_mode not in ('legacy', 'snapshot'):
             raise ValueError('mysql.domain_stats_mode 必须为 legacy 或 snapshot')
+        self.aidpe_db = self._get("mysql", "aidpe_db", "AIDefender_PE").strip()
+        if self.aidpe_db != "AIDefender_PE":
+            raise ValueError("mysql.aidpe_db 必须为 AIDefender_PE")
+        self.aidpe_primary_host = self._get("mysql", "aidpe_primary_host", "").strip()
+        self.aidpe_primary_port = self._getint("mysql", "aidpe_primary_port", 13306)
+        self.aidpe_primary_user = self._get("mysql", "aidpe_primary_user", "").strip()
+        self.aidpe_primary_passwd = self._get("mysql", "aidpe_primary_passwd", "")
+        if self.aidpe_primary_host and self.pe_lookup_db != self.aidpe_db:
+            raise ValueError("配置主库写入时，mysql.pe_lookup_db 必须指向 AIDefender_PE")
+        self.aidpe_outbox_path = _as_path(
+            self._get("paths", "aidpe_outbox_path", "FastAPI/data/aidpe_result_outbox.sqlite3"),
+            "FastAPI/data/aidpe_result_outbox.sqlite3",
+        )
+        self.aidpe_sample_root = _as_path(
+            self._get("paths", "aidpe_sample_root", "FastAPI/web_upload_samples"),
+            "FastAPI/web_upload_samples",
+        )
 
     def _get(self, section: str, option: str, default: str) -> str:
         env_name = f"CODEFENDER_{section}_{option}".upper()

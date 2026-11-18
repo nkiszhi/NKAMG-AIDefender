@@ -12,13 +12,13 @@ from app.detection_queue import DetectionTaskStore
 
 class DatabasePreflightTests(unittest.TestCase):
     def test_sha_lookup_does_not_access_model_queue(self):
-        with patch.object(main.sample_repository, 'find_malicious', return_value={'sha256': 'a' * 64}), \
+        with patch.object(main.sample_repository, 'find_malicious', return_value={'sha256': 'a' * 64, 'source': 'malicious_pe'}), \
              patch.object(main, 'task_store') as store, \
              patch.object(main, 'scan_file') as scan:
             result = asyncio.run(main.sample_by_sha256('a' * 64))
         self.assertTrue(result['database_hit'])
         store.begin_hash_query.assert_called_once_with('sha256', 'a' * 64)
-        store.finish_hash_query.assert_called_once_with(store.begin_hash_query.return_value, 'hit', 'a' * 64)
+        store.finish_hash_query.assert_called_once_with(store.begin_hash_query.return_value, 'hit', 'a' * 64, 'malicious_library')
         store.get.assert_not_called()
         store.create.assert_not_called()
         store.claim_next.assert_not_called()
@@ -52,7 +52,7 @@ class DatabasePreflightTests(unittest.TestCase):
 
     def test_known_upload_returns_even_when_model_queue_is_full(self):
         with tempfile.TemporaryDirectory() as folder:
-            result, response = self.run_upload(folder, record={'sha256': 'a' * 64, 'name': 'known.exe'})
+            result, response = self.run_upload(folder, record={'sha256': 'a' * 64, 'source': 'malicious_pe', 'name': 'known.exe'})
         self.assertEqual(response.status_code, 200)
         self.assertTrue(result['database_hit'])
         self.assertTrue(result['model_skipped'])

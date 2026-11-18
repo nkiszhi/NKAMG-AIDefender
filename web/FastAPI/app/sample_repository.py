@@ -1,6 +1,9 @@
 import logging
+import json
 import re
 from typing import Any, Dict, Optional
+
+from .codefender_client import DEFAULT_MODEL_NAMES
 
 logger = logging.getLogger("aidefender.sample_repository")
 SHA256_RE = re.compile(r"^[0-9a-fA-F]{64}$")
@@ -30,18 +33,12 @@ class SampleRepository:
 
     @property
     def query_databases(self):
-        selected = getattr(self.settings, 'pe_lookup_db', 'malicious_pe')
-        if selected == 'AIDefender_PE':
-            return [selected]
-        if selected != 'malicious_pe':
-            raise ValueError('Unexpected PE lookup database')
-        # No automatic old-library fallback: a miss in the approved new library
-        # is a miss, not an opportunity to re-include KAV_TI from the old table.
-        return ['malicious_pe'] if 'malicious_pe' in getattr(self.settings, 'malicious_dbs', []) else []
+        database = getattr(self.settings, 'aidpe_db', 'AIDefender_PE')
+        return [database] if database == 'AIDefender_PE' else []
 
     @property
     def sha256_only(self):
-        return getattr(self.settings, 'pe_lookup_db', 'malicious_pe') == 'AIDefender_PE'
+        return True
 
     @property
     def configured(self) -> bool:
@@ -62,20 +59,18 @@ class SampleRepository:
         if not self.configured:
             logger.info("MySQL未配置，跳过样本库查询")
             return None
+        database = self.query_databases[0]
         table = self.table_name(sha256)
-        for database in self.query_databases:
-            if not DB_RE.match(database):
-                continue
-            try:
-                record = self._query(database, table, sha256.lower())
-            except Exception as error:
-                logger.warning("样本库查询失败 %s.%s: %s", database, table, error)
-                raise RuntimeError(f"样本库暂不可用: {error}") from error
-            if record:
-                record = dict(record)
-                record["_source_db"] = database
-                record["_source_table"] = table
-                return record
+        try:
+            record = self._query(database, table, sha256.lower())
+        except Exception as error:
+            logger.warning("AIDefender_PE查询失败 %s.%s: %s", database, table, error)
+            raise RuntimeError("样本结果暂不可用") from error
+        if record:
+            record = dict(record)
+            record["_source_db"] = database
+            record["_source_table"] = table
+            return record
         return None
 
     def _query(self, database: str, table: str, sha256: str) -> Optional[Dict[str, Any]]:
@@ -102,21 +97,8 @@ class SampleRepository:
         kind = identify_hash(value)
         if kind == 'sha256':
             return self.find_malicious(value)
-        if self.sha256_only:
-            raise ValueError('当前样本库仅支持SHA256精确查询')
-        if not self.configured:
-            return None
-        for database in self.query_databases:
-            if not DB_RE.fullmatch(database):
-                continue
-            try:
-                record = self._query_fingerprint(database, kind, value)
-            except Exception as error:
-                logger.warning('指纹查询失败 %s (%s): %s', database, kind, error)
-                raise RuntimeError('样本库暂不可用') from error
-            if record:
-                return record
-        return None
+        # The AIDefender_PE schema intentionally stores only SHA256 and model results.
+        raise ValueError('当前样本库仅支持SHA256精确查询')
 
     def _query_fingerprint(self, database: str, kind: str, value: str) -> Optional[Dict[str, Any]]:
         # Shards are named by SHA256, so a fuzzy-hash lookup must inspect every shard.
@@ -158,10 +140,32 @@ class SampleRepository:
             item = record.get(key)
             return None if item is None or item == "" else item
 
+        model_results = {}
+        for key in DEFAULT_MODEL_NAMES:
+            item = record.get(key)
+            if item is None or item == '':
+                continue
+            model_results[key] = item
+
+        def json_value(key):
+            item = record.get(key)
+            if isinstance(item, str):
+                try:
+                    return json.loads(item)
+                except (TypeError, ValueError):
+                    return item
+            return item
+
         return {
             "identity": {output: value(key) for key, output in identity.items() if value(key) is not None},
             "hashes": {output: value(key) for key, output in hashes.items() if value(key) is not None},
             "labels": {output: value(key) for key, output in labels.items() if value(key) is not None},
+            "model_results": {name: json_value(name) for name in model_results},
+            "codefender_result": json_value('codefender_result'),
+            "detection_status": value('detection_status'),
+            "source": value('source'),
+            "model_version": value('model_version'),
+            "uploaded_at": value('uploaded_at'),
             "source_db": record.get("_source_db"),
             "source_table": record.get("_source_table"),
         }

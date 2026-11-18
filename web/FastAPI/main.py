@@ -28,6 +28,7 @@ from app.upload_form import single_file_form
 from app.file_info import save_upload, UploadStorageFull
 from app.sample_repository import SampleRepository, identify_hash
 from app.stored_results import saved_model_payload
+from app.aidpe_result_store import ResultOutbox, PrimaryResultWriter, archive_detected_sample
 from app.stats_repository import StatsRepository
 from app.detection_queue import DetectionTaskStore, ProcessLease, QueueFull, ExpiredRequest
 
@@ -39,6 +40,8 @@ logging.basicConfig(
 logger = logging.getLogger("aidefender")
 sample_repository = SampleRepository(settings)
 stats_repository = StatsRepository(settings)
+aidpe_outbox = ResultOutbox(settings.aidpe_outbox_path)
+aidpe_writer = PrimaryResultWriter(settings)
 task_store = DetectionTaskStore(
     Path(__file__).resolve().parent / "data" / "detection_tasks.sqlite3",
     settings.task_ttl_seconds,
@@ -127,14 +130,15 @@ async def lifespan(_app):
             for base in settings.codefender_api_bases:
                 _endpoint_pool.quarantine(base, model_runtime.node_evidence(base))
         stats_task = asyncio.create_task(_stats_loop())
+        aidpe_result_task = asyncio.create_task(_aidpe_result_loop())
         worker_tasks = [asyncio.create_task(_detection_worker()) for _ in range(settings.max_concurrent_scans)]
         cleanup_task = asyncio.create_task(_cleanup_loop())
         try:
             yield
         finally:
-            for task in worker_tasks + [stats_task, cleanup_task]:
+            for task in worker_tasks + [stats_task, aidpe_result_task, cleanup_task]:
                 task.cancel()
-            await asyncio.gather(*worker_tasks, stats_task, cleanup_task, return_exceptions=True)
+            await asyncio.gather(*worker_tasks, stats_task, aidpe_result_task, cleanup_task, return_exceptions=True)
     finally:
         process_lease.release()
 
@@ -283,7 +287,7 @@ async def detection_stats() -> dict:
 
 @app.get("/samples/{sha256}")
 async def sample_by_sha256(sha256: str) -> dict:
-    """Look up a malicious sample by its content hash for the web search bar."""
+    """Look up a PE result by its content hash for the web search bar."""
     if not re.fullmatch(r"[0-9a-fA-F]{64}", sha256 or ""):
         raise HTTPException(status_code=422, detail="请输入有效的 SHA256")
     query_id = await asyncio.to_thread(task_store.begin_hash_query, 'sha256', sha256.lower())
@@ -293,18 +297,26 @@ async def sample_by_sha256(sha256: str) -> dict:
         await asyncio.to_thread(task_store.finish_hash_query, query_id, 'failed')
         raise HTTPException(status_code=503, detail="样本库暂不可用") from error
     await asyncio.to_thread(task_store.finish_hash_query, query_id, 'hit' if record else 'miss',
-                            record.get('sha256') if record else None)
+                            record.get('sha256') if record else None,
+                            _stored_query_verdict(record) if record else None)
     if not record:
         raise HTTPException(status_code=404, detail="样本库中未找到该 SHA256")
     public_record = SampleRepository.public_fields(record)
     identity = public_record.get("identity", {})
+    is_malicious = record.get('source') == 'malicious_pe'
+    models = dict(public_record.get('model_results') or {})
+    ensemble = public_record.get('codefender_result')
+    if ensemble:
+        models['集成结果'] = ensemble
+    verdict = ((ensemble or {}).get('display_result') or (ensemble or {}).get('result')) if isinstance(ensemble, dict) else None
     return {
         "success": True,
-        "database_hit": True,
-        "detection_mode": "sample_database",
-        "detection_status": "malicious",
-        "verdict": "Malicious",
-        "reason": "命中 NKAMG 恶意样本库",
+        "database_hit": is_malicious,
+        "record_found": True,
+        "detection_mode": "models" if models else "sample_database",
+        "detection_status": public_record.get('detection_status') or ('malicious' if is_malicious else 'completed'),
+        "verdict": "Malicious" if is_malicious else verdict,
+        "reason": "已读取检测结果" if models else "已读取样本记录",
         "is_pe": True,
         "filename": identity.get("文件名", "-"),
         "file_size": identity.get("文件大小", 0),
@@ -312,6 +324,7 @@ async def sample_by_sha256(sha256: str) -> dict:
         "sha256": sha256.lower(),
         "sample_record": public_record,
         **saved_model_payload(record, DEFAULT_MODEL_NAMES),
+        "model_version": public_record.get('model_version'),
         "detection_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }
 
@@ -333,24 +346,46 @@ async def search_sample_hash(value: str) -> dict:
         await asyncio.to_thread(task_store.finish_hash_query, query_id, 'failed')
         raise HTTPException(status_code=503, detail='样本库暂不可用') from error
     await asyncio.to_thread(task_store.finish_hash_query, query_id, 'hit' if record else 'miss',
-                            record.get('sha256') if record else None)
-    label = 'Malicious' if record and kind == 'sha256' else 'Suspicious' if record else 'Benign'
+                            record.get('sha256') if record else None,
+                            _stored_query_verdict(record) if record else None)
     public_record = SampleRepository.public_fields(record)
+    is_malicious = bool(record and record.get('source') == 'malicious_pe')
+    models = dict(public_record.get('model_results') or {})
+    ensemble = public_record.get('codefender_result')
+    if ensemble:
+        models['集成结果'] = ensemble
+    ensemble_label = ((ensemble or {}).get('display_result') or (ensemble or {}).get('result')) if isinstance(ensemble, dict) else None
     identity = public_record.get('identity', {})
     return {
         'success': True, 'hash_search': True, 'hash_type': kind,
-        'query_hash': normalized, 'database_hit': bool(record),
-        'detection_mode': 'hash_search', 'model_skipped': True,
-        'verdict': label, 'detection_status': label.lower(),
-        'reason': (f'{kind.upper()} 匹配样本库' if record else
+        'query_hash': normalized, 'database_hit': is_malicious,
+        'record_found': bool(record),
+        'detection_mode': 'models' if models else 'hash_search', 'model_skipped': True,
+        'verdict': ('Malicious' if is_malicious else ensemble_label) if record else 'Unknown',
+        'detection_status': public_record.get('detection_status') if record else 'not_detected',
+        'reason': ('已读取检测结果' if record else
                    '样本库未匹配到该指纹' if sample_repository.configured else '样本库未配置'),
         'filename': identity.get('文件名', '-'),
         'sha256': identity.get('SHA256', normalized if kind == 'sha256' else ''),
         'md5': identity.get('MD5', ''), 'file_size': identity.get('文件大小', 0),
         'sample_record': public_record,
         **saved_model_payload(record, DEFAULT_MODEL_NAMES),
+        'model_version': public_record.get('model_version'),
         'detection_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
     }
+
+
+def _stored_query_verdict(record: dict) -> str:
+    if record.get('source') == 'malicious_pe':
+        return 'malicious_library'
+    result = record.get('codefender_result')
+    if isinstance(result, str):
+        try:
+            result = json.loads(result)
+        except ValueError:
+            result = None
+    label = ((result or {}).get('display_result') or (result or {}).get('result')) if isinstance(result, dict) else None
+    return {'Malicious': 'malicious', 'Benign': 'benign'}.get(label, 'inconclusive')
 
 
 async def _lookup_uploaded_sample(info: dict):
@@ -365,17 +400,24 @@ async def _lookup_uploaded_sample(info: dict):
 
     if sample_record:
         public_record = SampleRepository.public_fields(sample_record)
+        is_malicious = sample_record.get('source') == 'malicious_pe'
+        model_results = dict(public_record.get('model_results') or {})
+        ensemble = public_record.get('codefender_result')
+        if ensemble:
+            model_results['集成结果'] = ensemble
+        verdict = ((ensemble or {}).get('display_result') or (ensemble or {}).get('result')) if isinstance(ensemble, dict) else None
         return _payload(
             info,
-            detection_status="malicious",
-            detection_mode="sample_database",
-            verdict="Malicious",
-            reason="命中 NKAMG 恶意样本库，跳过33模型检测",
-            database_hit=True,
+            detection_status=public_record.get('detection_status') or ('malicious' if is_malicious else 'completed'),
+            detection_mode="models" if model_results else "sample_database",
+            verdict="Malicious" if is_malicious else verdict,
+            database_hit=is_malicious,
+            record_found=True,
             database_error=None,
             model_skipped=True,
             sample_record=public_record,
             **({'exe_result': {}, 'results': {}} | saved_model_payload(sample_record, DEFAULT_MODEL_NAMES)),
+            model_version=public_record.get('model_version'),
         ), None
     return None, database_error
 
@@ -446,6 +488,18 @@ async def _detection_worker() -> None:
             raise
 
 
+async def _enqueue_failed_model_result(task_id: str, row: dict, info: dict) -> None:
+    if row.get('request_source') != 'web' or not info.get('is_pe'):
+        return
+    current = await asyncio.to_thread(task_store.get, task_id)
+    progress = json.loads(current.get('progress_json') or '{}') if current else {}
+    partial = progress.get('exe_result') or progress.get('results') or progress.get('models') or {}
+    result = _payload(info, detection_status='failed', detection_mode='models',
+                      database_hit=False, exe_result=partial, results=partial,
+                      model_version=settings.model_revision)
+    await asyncio.to_thread(aidpe_outbox.enqueue, result, settings.model_revision)
+
+
 async def _process_detection_task(task_id: str, file_path: Path, row: dict) -> None:
     started = monotonic_time.monotonic()
     queued_seconds = max(0, (datetime.now() - datetime.fromisoformat(row['created_at'])).total_seconds())
@@ -463,9 +517,13 @@ async def _process_detection_task(task_id: str, file_path: Path, row: dict) -> N
         api_request = row.get('request_source') == 'api'
         result = await _run_detection(file_path, info, on_progress=None if api_request else progress,
                                       force_models=api_request)
+        result['model_version'] = settings.model_revision
+        result['uploaded_at'] = row.get('created_at')
         result['timing'] = {'queue_seconds': round(queued_seconds, 3),
                             'processing_seconds': round(monotonic_time.monotonic() - started, 3)}
         await asyncio.to_thread(task_store.complete, task_id, result)
+        if result.get('detection_mode') == 'models' and result.get('is_pe'):
+            await asyncio.to_thread(aidpe_outbox.enqueue, result, settings.model_revision)
         logger.info('检测任务完成 task_id=%s processing_seconds=%.3f', task_id, monotonic_time.monotonic() - started)
     except model_runtime.ModelTaskFailure as error:
         # The separate Docker observer may lag the socket disconnect briefly.
@@ -480,15 +538,33 @@ async def _process_detection_task(task_id: str, file_path: Path, row: dict) -> N
         if is_oom:
             await asyncio.to_thread(task_store.remember_memory_failure, task_id, settings.model_revision, detail)
         await asyncio.to_thread(task_store.set_status, task_id, 'failed', detail, code, False)
+        if 'info' in locals():
+            try:
+                await _enqueue_failed_model_result(task_id, row, info)
+            except Exception:
+                logger.exception('检测失败结果未能写入持久台账 task_id=%s', task_id)
         logger.error('检测任务终止 task_id=%s code=%s', task_id, code)
     except Exception as error:
         logger.exception('检测任务失败 task_id=%s', task_id)
         await asyncio.to_thread(task_store.set_status, task_id, 'failed', '检测任务失败，请联系管理员检查；未自动重复检测。', 'DETECTION_FAILED', False)
+        if 'info' in locals():
+            try:
+                await _enqueue_failed_model_result(task_id, row, info)
+            except Exception:
+                logger.exception('检测失败结果未能写入持久台账 task_id=%s', task_id)
     finally:
-        try:
-            await asyncio.to_thread(file_path.unlink, missing_ok=True)
-        except OSError:
-            logger.warning('样本清理失败 task_id=%s', task_id, exc_info=True)
+        if row.get('request_source') == 'web' and row.get('sha256') and file_path.is_file():
+            try:
+                await asyncio.to_thread(archive_detected_sample, file_path, settings.aidpe_sample_root,
+                                        row['sha256'], locals().get('result'))
+                logger.info('网页上传样本已核验并进入短期归档 task_id=%s sha256=%s', task_id, row['sha256'])
+            except Exception:
+                logger.exception('网页上传样本归档失败，暂留原文件 task_id=%s sha256=%s', task_id, row['sha256'])
+        else:
+            try:
+                await asyncio.to_thread(file_path.unlink, missing_ok=True)
+            except OSError:
+                logger.warning('样本清理失败 task_id=%s', task_id, exc_info=True)
 
 
 async def _cleanup_loop() -> None:
@@ -540,15 +616,24 @@ async def upload_preflight(body: UploadPreflight, x_detection_id: str = Header(d
     if not record:
         return {'upload_required': True, 'request_id': x_detection_id, 'sha256': sha256}
     public_record = SampleRepository.public_fields(record)
+    is_malicious = public_record.get('source') == 'malicious_pe'
+    model_results = dict(public_record.get('model_results') or {})
+    ensemble = public_record.get('codefender_result')
+    if ensemble:
+        model_results['集成结果'] = ensemble
+    ensemble_label = ((ensemble or {}).get('display_result') or (ensemble or {}).get('result')) if isinstance(ensemble, dict) else None
     result = {
         'success': True, 'hash_search': True, 'hash_type': 'sha256', 'query_hash': sha256,
         'sha256': sha256, 'filename': body.filename, 'original_filename': body.filename,
         'file_size': body.file_size, 'is_pe': True, 'pe_structure_checked': False,
-        'file_uploaded': False, 'database_hit': True, 'model_skipped': True,
-        'detection_mode': 'sample_database', 'detection_status': 'malicious',
-        'verdict': 'Malicious', 'reason': '命中恶意样本库',
-        'sample_record': public_record, 'exe_result': {}, 'results': {},
+        'file_uploaded': False, 'database_hit': is_malicious, 'record_found': True, 'model_skipped': True,
+        'detection_mode': 'models' if model_results else 'sample_database',
+        'detection_status': public_record.get('detection_status') or ('malicious' if is_malicious else 'completed'),
+        'verdict': 'Malicious' if is_malicious else ensemble_label,
+        'reason': '已读取检测结果' if model_results else '已读取样本记录',
+        'sample_record': public_record,
         **saved_model_payload(record, DEFAULT_MODEL_NAMES),
+        'model_version': public_record.get('model_version'),
         'detection_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
     }
     try:
@@ -556,6 +641,53 @@ async def upload_preflight(body: UploadPreflight, x_detection_id: str = Header(d
     except (ValueError, ExpiredRequest) as error:
         raise HTTPException(status_code=409, detail='此请求标识已使用，请重新选择文件') from error
     return {**task_store.public_status(row), 'upload_required': False}
+
+
+async def _aidpe_result_loop() -> None:
+    while True:
+        entry = await asyncio.to_thread(aidpe_outbox.claim_due)
+        if not entry:
+            await asyncio.sleep(5)
+            continue
+        try:
+            await asyncio.to_thread(aidpe_writer.write, entry['payload'])
+            replicated = False
+            for _ in range(60):
+                record = await asyncio.to_thread(sample_repository.find_malicious, entry['sha256'])
+                if record and _replicated_result_matches(record, entry['payload']):
+                    replicated = True
+                    break
+                await asyncio.sleep(5)
+            if not replicated:
+                raise RuntimeError('Primary result awaits TXY replica readback')
+            await asyncio.to_thread(aidpe_outbox.mark_replicated, entry['sha256'])
+            logger.info('AIDefender_PE result replicated sha256=%s', entry['sha256'])
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:
+            await asyncio.to_thread(aidpe_outbox.mark_retry, entry['sha256'], entry['attempts'], type(error).__name__)
+            logger.warning('AIDefender_PE result remains in durable outbox sha256=%s error=%s',
+                           entry['sha256'], type(error).__name__)
+
+
+def _replicated_result_matches(record: dict, payload: dict) -> bool:
+    if (record.get('source') not in ('web_upload', 'malicious_pe')
+            or record.get('model_version') != payload.get('model_version')
+            or record.get('detection_status') != payload.get('detection_status')):
+        return False
+
+    def decoded(value):
+        if isinstance(value, str):
+            try:
+                return json.loads(value)
+            except ValueError:
+                return value
+        return value
+
+    for name, value in (payload.get('models') or {}).items():
+        if decoded(record.get(name)) != value:
+            return False
+    return decoded(record.get('codefender_result')) == payload.get('codefender_result')
 
 
 @app.post("/detect")

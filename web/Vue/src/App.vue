@@ -36,7 +36,7 @@
         <div class="upload-subtitle">选择或拖入 PE 文件，查看检测结果。</div>
         <div class="upload-actions">
           <el-button type="primary" :loading="loading" @click="selectFile">选择待检文件</el-button>
-          <span>单文件不超过 {{ formatFileSize(maxUploadSize) }} · 检测结束后删除样本</span>
+          <span>单文件不超过 {{ formatFileSize(maxUploadSize) }}</span>
         </div>
         <div v-if="loading" class="upload-progress" role="status"><span class="pulse-dot"></span>{{ detectionMessage }}</div>
         <el-alert v-if="detectionFailure" type="error" :closable="false" show-icon title="分析失败 · Failed" role="alert">
@@ -135,9 +135,10 @@
             <el-tag v-if="!uploadResult.hash_search || uploadResult.pe_info_source === 'local'" :type="uploadResult.is_pe ? 'success' : 'warning'">
               {{ uploadResult.is_pe ? 'PE结构：有效' : '检测失败：非 PE 文件' }}
             </el-tag>
-            <el-tag v-if="uploadResult.hash_search" :type="uploadResult.database_hit ? 'danger' : 'info'">{{ uploadResult.database_hit ? '判断恶意 · 恶意库命中' : '查询未命中 · 不代表安全' }}</el-tag>
-            <el-tag v-else-if="uploadResult.database_hit" type="danger">Malicious · 命中 NKAMG 样本库</el-tag>
-            <el-tag v-else-if="uploadResult.is_pe && uploadResult.detection_mode === 'models'" type="info">样本库：未命中</el-tag>
+            <el-tag v-if="uploadResult.hash_search" :type="uploadResult.database_hit ? 'danger' : 'info'">{{ uploadResult.database_hit ? '判断恶意' : uploadResult.record_found ? '已有检测结果' : '查询未命中 · 不代表安全' }}</el-tag>
+            <el-tag v-else-if="uploadResult.database_hit" type="danger">判断恶意</el-tag>
+            <el-tag v-else-if="uploadResult.is_pe && uploadResult.record_found" type="info">已有检测结果</el-tag>
+            <el-tag v-else-if="uploadResult.is_pe && uploadResult.detection_mode === 'models'" type="info">待分析结果</el-tag>
             <el-tag v-if="!isModelReport && ensembleResult && ['Malicious', 'Benign'].includes(ensembleResult.result)" :type="ensembleResult.result === 'Malicious' ? 'danger' : 'success'">
               {{ uploadResult.database_hit ? `CoDefender：${ensembleLabel}` : ensembleLabel }}
             </el-tag>
@@ -165,7 +166,7 @@
 
       <div v-show="showSection === 'fileInfo'" class="panel">
         <div v-if="uploadResult.hash_search" class="database-hit" :class="`hash-result-${uploadResult.verdict.toLowerCase()}`">
-          <strong>{{ uploadResult.database_hit ? '判断恶意 · 恶意库命中' : `查询未命中，不代表安全 · ${uploadResult.reason}` }}</strong>
+          <strong>{{ uploadResult.database_hit ? '判断恶意' : `查询未命中，不代表安全 · ${uploadResult.reason}` }}</strong>
           <span class="mono break-text">{{ uploadResult.hash_type.toUpperCase() }}：{{ uploadResult.query_hash }}</span>
         </div>
         <div v-else-if="!uploadResult.is_pe" class="detection-warning">
@@ -173,9 +174,6 @@
           <div>文件类型：非 PE 文件</div>
           <div>原因：{{ uploadResult.reason || '不是有效PE样本' }}</div>
           <div>文件头：<span class="mono">{{ uploadResult.file_header || '-' }}</span></div>
-        </div>
-        <div v-else-if="uploadResult.database_hit" class="database-hit">
-          <strong>判断恶意 · 恶意库命中</strong>
         </div>
         <el-descriptions :column="1" border>
           <el-descriptions-item v-if="!uploadResult.hash_search || uploadResult.pe_info_source === 'local'" label="文件名">{{ uploadResult.filename || '-' }}</el-descriptions-item>
@@ -216,11 +214,12 @@
       </div>
 
       <div v-show="showSection === 'modelDetection'" class="panel">
-        <div v-if="uploadResult.database_hit && !storedReport" class="database-hit">判断恶意 · 恶意库命中。模型结果尚未补充。</div>
-        <div v-else-if="uploadResult.hash_search && !storedReport" class="database-hit">SHA256查询未命中，不代表安全。</div>
+        <div v-if="uploadResult.database_hit && !storedReport" class="database-hit">判断恶意。模型结果尚未补充。</div>
+        <div v-else-if="uploadResult.hash_search && !uploadResult.record_found && !storedReport" class="database-hit">SHA256查询未命中，不代表安全。</div>
+        <div v-else-if="uploadResult.hash_search && uploadResult.record_found && !storedReport" class="database-hit">已有记录，模型结果尚未补充。</div>
         <div v-else-if="!storedReport && !uploadResult.is_pe" class="detection-warning">本文件不是 PE，未提交 33 模型检测。</div>
         <div v-else-if="ensembleResult?.source === 'signature'" class="database-hit">Malicious · 命中引擎签名库，已跳过 33 模型检测。</div>
-        <template v-else>
+        <template v-if="isModelReport">
         <div class="summary-row">
           <el-tag size="large" type="info">{{ storedReport ? '库内已保存结果' : detectionFailure ? '分析已中止 · 以下仅为部分结果' : uploadResult.partial ? '检测中 · 已返回部分结果' : '检测结束' }} · 共 {{ modelCount }} 个模型</el-tag>
           <el-tag v-if="storedReport && uploadResult.stored_model_report.missing_model_count" size="large" type="info">尚未补充 {{ uploadResult.stored_model_report.missing_model_count }} 项</el-tag>
@@ -250,6 +249,7 @@
           </el-table-column>
         </el-table>
         </template>
+        <div v-if="uploadResult.is_pe && !isModelReport && !uploadResult.hash_search" class="database-hit">暂无模型结果</div>
       </div>
     </section>
   </main>
@@ -365,7 +365,7 @@ const ensembleResult = computed(() => {
   return results['集成结果'] || null
 })
 
-const isModelReport = computed(() => Boolean(uploadResult.value?.is_pe && !uploadResult.value.hash_search && !uploadResult.value.database_hit && ensembleResult.value?.source !== 'signature'))
+const isModelReport = computed(() => Boolean(uploadResult.value?.is_pe && Object.keys(modelResults.value).length && ensembleResult.value?.source !== 'signature'))
 const storedReport = computed(() => hasStoredModelReport(uploadResult.value))
 const ensembleLabel = computed(() => {
   const label = ensembleResult.value?.display_result || ensembleResult.value?.result
@@ -499,7 +499,7 @@ async function searchSample() {
   try {
     const response = await apiService.get(`${apiBaseUrl.value}/sample-search`, { params: { value: hashQuery.value.toLowerCase() }, timeout: 15000 })
     setDetectionResult(response.data)
-    ElMessage.success(response.data.database_hit ? '恶意样本库命中' : 'SHA256查询未命中，不代表安全')
+    ElMessage.success(response.data.database_hit ? '判断恶意' : response.data.record_found ? '已有检测结果' : 'SHA256查询未命中，不代表安全')
   } catch (error) {
     ElMessage.error(error.response?.data?.detail || '样本库查询失败')
   } finally {

@@ -33,15 +33,18 @@ def begin_hash_query(connection, hash_type=None, value=None):
     return cursor.lastrowid
 
 
-def finish_hash_query(connection, query_id, outcome, sample_sha256=None):
+def finish_hash_query(connection, query_id, outcome, sample_sha256=None, verdict=None):
     if outcome not in ('hit', 'miss', 'failed'):
         raise ValueError('Unsupported query outcome')
-    connection.execute('''UPDATE hash_query_metrics SET outcome=?, sample_sha256=?, verdict=CASE
-        WHEN ?='miss' THEN NULL
-        WHEN ?='hit' AND hash_type='sha256' THEN 'malicious'
-        WHEN ?='hit' AND hash_type IN ('tlsh','ssdeep') THEN 'suspicious'
-        ELSE NULL END WHERE id=? AND outcome='pending' ''',
-        (outcome, sample_sha256, outcome, outcome, outcome, query_id))
+    if verdict is None:
+        row = connection.execute('SELECT hash_type FROM hash_query_metrics WHERE id=?', (query_id,)).fetchone()
+        hash_type = row['hash_type'] if row else None
+        verdict = ('malicious_library' if outcome == 'hit' and hash_type in (None, 'sha256')
+                   else 'suspicious' if outcome == 'hit' else None)
+    if verdict not in (None, 'malicious_library', 'malicious', 'benign', 'suspicious', 'inconclusive'):
+        raise ValueError('Unsupported query verdict')
+    connection.execute('''UPDATE hash_query_metrics SET outcome=?, sample_sha256=?, verdict=?
+        WHERE id=? AND outcome='pending' ''', (outcome, sample_sha256, verdict, query_id))
 
 
 def begin(connection, task_id, sha256=None):
@@ -104,15 +107,21 @@ def summary(connection):
     queries = {row['outcome']: row['n'] for row in connection.execute(
         "SELECT outcome,COUNT(*) AS n FROM hash_query_metrics WHERE queried_at >= (SELECT value FROM metrics_metadata WHERE key='live_stats_started_at') GROUP BY outcome")}
     query_verdicts = {row['verdict']: row['n'] for row in connection.execute('''
-        SELECT verdict,COUNT(*) AS n FROM hash_query_metrics
-        WHERE queried_at>=? AND outcome IN ('hit','miss') GROUP BY verdict''', (started_at,))}
+        SELECT COALESCE(verdict, CASE
+            WHEN outcome='hit' AND (hash_type IS NULL OR hash_type='sha256') THEN 'malicious_library'
+            WHEN outcome='hit' THEN 'suspicious'
+            ELSE NULL END) AS verdict, COUNT(*) AS n
+        FROM hash_query_metrics WHERE queried_at>=? AND outcome IN ('hit','miss') GROUP BY 1''', (started_at,))
+        if row['verdict'] is not None}
     uploads = sum(counts.values())
     query_total = sum(queries.values())
     # Public overview groups are a partition of requests, not extra counters.
     # Keep historical verdicts intact: every recorded library hit belongs to
     # the malicious group, including prior similarity/unknown-type hits.
-    malicious = verdicts.get('malicious', 0) + verdicts.get('suspicious', 0) + queries.get('hit', 0)
-    benign = verdicts.get('benign', 0)
+    malicious = (verdicts.get('malicious', 0) + verdicts.get('suspicious', 0)
+                 + query_verdicts.get('malicious_library', 0)
+                 + query_verdicts.get('malicious', 0) + query_verdicts.get('suspicious', 0))
+    benign = verdicts.get('benign', 0) + query_verdicts.get('benign', 0)
     suspicious = verdicts.get('suspicious', 0) + query_verdicts.get('suspicious', 0)
     active_uploads = sum(counts.get(status, 0) for status in ('pending', 'queued', 'running', 'preparing'))
     in_progress = active_uploads + queries.get('pending', 0)
@@ -131,7 +140,7 @@ def summary(connection):
         'classified_total': classified, 'other_total': in_progress,
         'in_progress_total': in_progress,
         'inconclusive_total': verdicts.get('inconclusive', 0),
-        'database_total': modes.get('sample_database', 0) + queries.get('hit', 0), 'model_total': modes.get('models', 0),
+        'database_total': modes.get('sample_database', 0) + query_verdicts.get('malicious_library', 0), 'model_total': modes.get('models', 0),
         'failed_total': counts.get('failed', 0), 'cancelled_total': counts.get('cancelled', 0),
         'unsupported_total': counts.get('unsupported', 0), 'pending_total': counts.get('pending', 0),
         'unique_completed_samples': unique, 'partial_model_total': partial, 'monthly': monthly,
