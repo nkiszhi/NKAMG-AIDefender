@@ -54,12 +54,13 @@ class ExternalAPITests(unittest.IsolatedAsyncioTestCase):
             await asyncio.sleep(0.01)
         self.fail('No accepted task reached the worker')
 
-    async def submit_and_process(self, label='Generic.ML.High', error=None):
+    async def submit_and_process(self, label='Generic.ML.High', error=None, include_details=False):
         with patch.object(main, 'scan_file', return_value=model_result(label), side_effect=error) as scan, \
              patch.object(main.sample_repository, 'find_malicious', side_effect=AssertionError('API must use models')):
             worker = asyncio.create_task(self.process_one())
             try:
-                response = await self.client.post('/api/v1/detect?wait_seconds=5',
+                query = 'wait_seconds=5&include_details=true' if include_details else 'wait_seconds=5'
+                response = await self.client.post('/api/v1/detect?' + query,
                                                   files={'file': ('sample.bin', bytes(make_pe()))})
                 await worker
             finally:
@@ -74,19 +75,31 @@ class ExternalAPITests(unittest.IsolatedAsyncioTestCase):
 
     async def test_each_success_is_one_final_verdict_and_one_persistent_count(self):
         for index, label in enumerate(main.API_ML_LABELS, 1):
-            response = await self.submit_and_process(label)
+            response = await self.submit_and_process(label, include_details=True)
             self.assertEqual(response.status_code, 200)
-            self.assertEqual(response.json(), {'result': label})
+            detail_payload = response.json()
+            self.assertEqual(detail_payload['result'], label)
+            self.assertEqual(len(detail_payload['sha256']), 64)
+            self.assertEqual(set(detail_payload['model_results']), set(DEFAULT_MODEL_NAMES))
+            self.assertEqual(detail_payload['model_revision'], main.settings.model_revision)
+            self.assertTrue(detail_payload['detection_time'])
+            self.assertEqual(detail_payload['codefender_result']['total_models'], 33)
+            self.assertEqual(detail_payload['codefender_result']['ok_models'], 33)
             self.assertEqual(self.store.detection_summary()['received_total'], index)
             self.assertEqual(self.store.detection_summary()['model_total'], index)
             task_id = response.headers['X-Detection-ID']
-            result = await self.client.get(f'/api/v1/detect/tasks/{task_id}')
-            self.assertEqual(result.json(), {'result': label})
+            result = await self.client.get(f'/api/v1/detect/tasks/{task_id}?include_details=true')
+            self.assertEqual(result.json(), detail_payload)
             self.assertEqual(self.store.detection_summary()['received_total'], index)
         restarted = DetectionTaskStore(self.store.path, 3600)
         self.assertEqual(restarted.detection_summary()['received_total'], 4)
         self.assertEqual(restarted.detection_summary()['malicious_total'], 3)
         self.assertEqual(restarted.detection_summary()['benign_total'], 1)
+
+    async def test_default_success_contract_stays_compact(self):
+        response = await self.submit_and_process()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {'result': 'Generic.ML.High'})
 
     async def test_failure_deletes_sample_and_is_not_benign(self):
         response = await self.submit_and_process(error=RuntimeError('test model failure'))

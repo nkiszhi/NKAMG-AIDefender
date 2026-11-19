@@ -908,8 +908,13 @@ async def _api_final_result(row, response, wait_seconds, *, include_details=Fals
             # No local/remote database is written by this response projection.
             models = {name: value for name, value in (result.get('exe_result') or {}).items()
                       if name in DEFAULT_MODEL_NAMES and isinstance(value, dict)}
+            model_summary = dict(ensemble)
+            model_summary.update(total_models=len(DEFAULT_MODEL_NAMES), ok_models=len(models),
+                                 excluded_models=len(DEFAULT_MODEL_NAMES) - len(models), source='models')
             return {'result': label, 'sha256': result.get('sha256'),
-                    'model_results': models, 'codefender_result': ensemble}
+                    'model_results': models, 'codefender_result': model_summary,
+                    'model_revision': settings.model_revision,
+                    'detection_time': result.get('detection_time', '')}
         return {'result': label}
     if row['status'] in ('failed', 'cancelled'):
         return _api_error(task_id, 502, row.get('error') or '模型检测失败',
